@@ -4,9 +4,12 @@
 提供所有端共用的 fixtures 和 hooks。
 """
 
+from typing import Dict
+
 import pytest
 
 from common.data_factory import DataFactory
+from common.user_manager import UserManager, UserManagerError, UserResource
 
 
 @pytest.fixture(scope="session")
@@ -53,10 +56,39 @@ def pytest_runtest_makereport(item, call):
 
 def pytest_configure(config):
     """注册自定义标记。"""
-    config.addinivalue_line("markers", "windows: Windows 端测试")
-    config.addinivalue_line("markers", "web: Web 端测试")
-    config.addinivalue_line("markers", "mac: Mac 端测试")
-    config.addinivalue_line("markers", "ios: iOS 端测试")
-    config.addinivalue_line("markers", "android: Android 端测试")
-    config.addinivalue_line("markers", "smoke: 冒烟测试")
-    config.addinivalue_line("markers", "regression: 回归测试")
+    config.addinivalue_line(
+        "markers", "users: 用户资源需求标记，如 @pytest.mark.users({'userA': 'web'})"
+    )
+
+
+@pytest.fixture(scope="function")
+def users(request) -> Dict[str, UserResource]:
+    """用户资源 fixture。
+
+    自动申请和释放用户资源，用例级别生命周期。
+
+    用法:
+        在测试类上声明: @pytest.mark.users({"userA": "web"})
+
+    Returns:
+        用户资源字典，key 为 userA/userB，value 为 UserResource 实例。
+
+    Raises:
+        UserManagerError: 资源申请失败时抛出。
+    """
+    # 获取 users 标记
+    marker = request.node.get_closest_marker("users")
+    if not marker:
+        return {}
+
+    users_requirement = marker.args[0] if marker.args else marker.kwargs
+
+    # 加载配置并申请资源
+    from common.config_loader import ConfigLoader
+
+    config = ConfigLoader().load()
+
+    with UserManager(config) as manager:
+        resources = manager.apply(users_requirement)
+        yield resources
+        # 退出 context manager 时自动释放

@@ -64,6 +64,8 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 - 断言函数（assertions.py）
 - 数据工厂方法（data_factory.py）
 - 工具函数（utils.py）
+- 用户资源管理器（user_manager.py）
+- 配置加载器（config_loader.py）
 
 #### 3.3 扫描已有测试用例
 
@@ -101,6 +103,25 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 **场景 2：需要新增断言方法**
 - 标记：`扩展: 在 LoginAW 中新增 should_show_welcome_text() 方法`
+
+#### 4.3 用户资源需求分析
+
+根据用例涉及的用户数量和端，分析用户资源需求：
+
+**单用户场景**：
+- 用例只涉及一个终端
+- 标记：`用户资源: userA -> {端}`
+
+**多用户场景**：
+- 用例涉及多个终端（如跨平台通话、多人协作等）
+- 标记：`用户资源: userA -> {端}, userB -> {端}`
+
+**输出格式**：
+```
+用户资源需求:
+  - TC-001: userA -> web
+  - TC-002: userA -> web, userB -> windows
+```
 
 ### 第 5 步：输出代码生成计划
 
@@ -142,7 +163,8 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 **核心原则**：
 - 一个测试文件 = 一条测试用例
-- 测试用例直接创建 AW 实例，不依赖 fixture
+- 测试用例使用 `@pytest.mark.users()` 标记声明用户需求
+- 测试方法通过 `users` 参数获取用户资源
 
 为每条用例规划一个独立的测试文件：
 
@@ -150,14 +172,16 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 - 操作: 新建文件
 - 测试类: TestLoginSuccess
 - 对应用例: TC-001
-- pytest 标记: @pytest.mark.web, @pytest.mark.smoke
+- pytest 标记: @pytest.mark.users({"userA": "web"})
+- 用户资源: userA -> web
 - 使用的 AW: LoginAW
 
 #### 4.2 文件: {端}/testcase/test_login_wrong_password.py
 - 操作: 新建文件
 - 测试类: TestLoginWrongPassword
 - 对应用例: TC-002
-- pytest 标记: @pytest.mark.web
+- pytest 标记: @pytest.mark.users({"userA": "web"})
+- 用户资源: userA -> web
 - 使用的 AW: LoginAW
 
 **文件命名规则**：

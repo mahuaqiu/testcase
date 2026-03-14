@@ -1,0 +1,38 @@
+# testcase 工程配置文件
+# 复制此文件为 config.yaml 并填入实际值
+
+# 资源管理服务配置
+resource_manager:
+  # 资源管理服务地址
+  # 为空时使用 mock_users 本地调试模式
+  # 也可通过环境变量 RESOURCE_MANAGER_URL 覆盖
+  base_url: ""
+  # 请求超时时间（秒）
+  timeout: 30
+  # 本地调试模式：预设用户资源（当 base_url 为空时生效）
+  mock_users:
+    userA:
+      account: "your_account_a"
+      password: "your_password_a"
+      ip: "127.0.0.1"
+      type: "normal"
+    userB:
+      account: "your_account_b"
+      password: "your_password_b"
+      ip: "127.0.0.1"
+      type: "normal"
+
+# testagent 服务配置
+testagent:
+  # testagent 服务地址
+  # 也可通过环境变量 TESTAGENT_URL 覆盖
+  base_url: "http://localhost:8080"
+  # 请求超时时间（秒）
+  timeout: 300
+
+# 测试配置
+test:
+  # 截图保存目录
+  screenshot_dir: "screenshots"
+  # 测试失败时是否自动截图
+  screenshot_on_failure: true
