@@ -18,8 +18,7 @@ testcase/
 │
 ├── windows/          # Windows 端
 │   ├── aw/           # 业务操作封装层
-│   ├── testcase/     # 测试用例
-│   └── conftest.py   # 端级 fixtures
+│   └── testcase/     # 测试用例
 │
 ├── web/              # Web 端
 ├── mac/              # Mac 端
@@ -67,15 +66,16 @@ testcase/
 | 类型 | 命名规则 | 示例 |
 |------|----------|------|
 | AW 文件 | `{业务名}_aw.py` | `login_aw.py`, `order_aw.py` |
-| 测试文件 | `test_{功能名}.py` | `test_login.py`, `test_order.py` |
-| conftest | `conftest.py` | 固定名称 |
+| 测试文件 | `test_{功能名}_{场景}.py` | `test_login_success.py`, `test_login_wrong_password.py` |
+
+**核心原则：一个测试文件 = 一条测试用例**
 
 ### 2.2 类命名
 
 | 类型 | 命名规则 | 示例 |
 |------|----------|------|
 | AW 类 | `{业务名}AW` | `LoginAW`, `OrderAW` |
-| 测试类 | `Test{功能名}` | `TestLogin`, `TestOrder` |
+| 测试类 | `Test{功能}{场景}` | `TestLoginSuccess`, `TestLoginWrongPassword` |
 
 ### 2.3 方法命名
 
@@ -83,15 +83,7 @@ testcase/
 |------|----------|------|
 | AW 方法 | `do_{业务动作}` | `do_login()`, `do_logout()`, `do_create_order()` |
 | AW 断言方法 | `should_{期望结果}` | `should_login_success()`, `should_show_error()` |
-| 测试方法 | `test_{场景描述}` | `test_login_success()`, `test_login_with_wrong_password()` |
-
-### 2.4 fixture 命名
-
-| 类型 | 命名规则 | 示例 |
-|------|----------|------|
-| 客户端 fixture | `{端}_client` | `windows_client`, `web_client` |
-| AW fixture | `{业务名}_aw` | `login_aw`, `order_aw` |
-| 配置 fixture | `{端}_config` | `windows_config`, `web_config` |
+| 测试方法 | `test_execute` | 固定方法名 |
 
 ---
 
@@ -141,7 +133,8 @@ class XxxAW:
 
     def should_xxx_success(self) -> None:
         """断言{期望结果}。"""
-        self.client.ocr_wait(self.PLATFORM, "成功", match_mode="contains")
+        result = self.client.ocr_wait(self.PLATFORM, "成功", match_mode="contains")
+        assert self.client.is_success(result), "操作未成功"
 ```
 
 ### 3.2 AW 方法规范
@@ -151,7 +144,6 @@ class XxxAW:
 3. **每个业务方法必须有中文 docstring**：说明步骤和参数
 4. **使用 `self.PLATFORM` 常量**：避免硬编码平台名
 5. **优先使用 OCR 操作**：`ocr_click`, `ocr_input`, `ocr_wait` 等跨平台通用方法
-6. **需要会话复用时使用 session_id**：调用 `create_session()` 创建会话
 
 ### 3.3 操作方法说明
 
@@ -175,48 +167,42 @@ testagent 支持 OCR 识别、图像识别和坐标操作三种方式：
 
 ### 4.1 测试类结构
 
+**核心原则**：
+- 一个测试文件 = 一条测试用例
+- 测试用例直接创建 AW 实例，不依赖 fixture
+
 ```python
 """
-{功能名称}测试用例。
+{用例标题}测试用例。
 
-测试范围: {简述测试覆盖的功能}
+测试场景: {场景描述}
 """
 
 import pytest
 
-from {端}.aw.login_aw import LoginAW
+from common.testagent_client import TestagentClient
+from {端}.aw.xxx_aw import XxxAW
 
 
 @pytest.mark.{端}  # windows / web / mac / ios / android
-class TestXxx:
-    """{功能}测试集。"""
+@pytest.mark.smoke  # P0 用例加 smoke 标记，否则不加
+class Test{功能}{场景}:
+    """{用例标题}测试。"""
 
-    def test_xxx_success(self, {端}_client, login_aw):
-        """正常场景：{操作}，应{结果}。"""
-        login_aw.do_login("testuser", "Test@123")
-        login_aw.should_login_success()
-
-    def test_xxx_with_error(self, {端}_client, login_aw):
-        """异常场景：{操作}，应{结果}。"""
-        login_aw.do_login("testuser", "wrong_password")
-        login_aw.should_show_error("密码错误")
+    def test_execute(self):
+        """执行测试：{操作}，应{结果}。"""
+        client = TestagentClient()
+        xxx_aw = XxxAW(client)
+        xxx_aw.do_xxx("参数值")
+        xxx_aw.should_xxx_success()
 ```
 
 ### 4.2 测试方法规范
 
-1. **测试方法命名**：`test_{场景描述}`
-   - 正常场景：`test_login_success`, `test_create_order_success`
-   - 异常场景：`test_login_with_wrong_password`, `test_create_order_without_required_field`
-
-2. **docstring 格式**：`{场景类型}：{操作}，应{结果}`
-   - 示例：`"""正常场景：正确账号密码登录，应跳转首页。"""`
-   - 示例：`"""异常场景：密码错误登录，应显示错误提示。"""`
-
+1. **测试方法命名**：统一使用 `test_execute`
+2. **docstring 格式**：`执行测试：{操作}，应{结果}`
 3. **测试方法只调用 AW 层**：不直接调用 testagent_client
-4. **每个测试方法独立**：不依赖其他测试方法的执行结果
-5. **使用 pytest.mark 标记**：
-   - 端标记：`@pytest.mark.windows`, `@pytest.mark.web` 等
-   - 类型标记：`@pytest.mark.smoke`, `@pytest.mark.regression`
+4. **每个测试文件独立**：一个文件对应一条用例
 
 ### 4.3 测试用例优先级
 
@@ -228,49 +214,9 @@ class TestXxx:
 
 ---
 
-## 五、fixture 规范
+## 五、断言规范
 
-### 5.1 fixture 定义位置
-
-| fixture 类型 | 定义位置 | scope |
-|--------------|----------|-------|
-| 全局配置 | `conftest.py` (根目录) | session |
-| 端级客户端/配置 | `{端}/conftest.py` | session |
-| AW fixture | `{端}/conftest.py` | function |
-
-### 5.2 AW fixture 定义
-
-在 `{端}/conftest.py` 中注册 AW fixture：
-
-```python
-@pytest.fixture
-def login_aw(windows_client) -> LoginAW:
-    """登录业务操作封装。
-
-    Returns:
-        LoginAW 实例。
-    """
-    return LoginAW(windows_client)
-```
-
-### 5.3 fixture 使用示例
-
-```python
-@pytest.mark.windows
-class TestLogin:
-    """登录测试集。"""
-
-    def test_login_success(self, windows_client, login_aw):
-        """正常场景：正确账号密码登录，应登录成功。"""
-        login_aw.do_login("testuser", "Test@123")
-        login_aw.should_login_success()
-```
-
----
-
-## 六、断言规范
-
-### 6.1 使用 common/assertions.py
+### 5.1 使用 common/assertions.py
 
 优先使用公共断言函数：
 
@@ -284,7 +230,7 @@ assert_text_contains(text, "成功")
 assert_response_ok(response)
 ```
 
-### 6.2 AW 层断言
+### 5.2 AW 层断言
 
 AW 层应提供 `should_*` 断言方法，使用 OCR 断言：
 
@@ -295,7 +241,7 @@ def should_login_success(self) -> None:
     assert self.client.is_success(result), f"登录未成功"
 ```
 
-### 6.3 断言消息规范
+### 5.3 断言消息规范
 
 断言失败时应提供清晰的错误信息：
 
@@ -309,11 +255,9 @@ assert actual == expected
 
 ---
 
-## 七、目录结构规范
+## 六、目录结构规范
 
-### 7.1 按功能划分文件
-
-当测试用例增多时，按功能模块划分文件：
+### 6.1 按功能划分文件
 
 ```
 web/
@@ -321,21 +265,20 @@ web/
 │   ├── login_aw.py        # 登录业务
 │   ├── order_aw.py        # 订单业务
 │   └── user_aw.py         # 用户管理业务
-├── testcase/
-│   ├── test_login.py      # 登录测试
-│   ├── test_order.py      # 订单测试
-│   └── test_user.py       # 用户管理测试
-└── conftest.py
+└── testcase/
+    ├── test_login_success.py         # 登录成功用例
+    ├── test_login_wrong_password.py  # 密码错误用例
+    └── test_order_create_success.py  # 创建订单用例
 ```
 
-### 7.2 避免过深的目录层级
+### 6.2 避免过深的目录层级
 
 测试用例文件按功能模块划分，但 **不超过两级目录**：
 
 ```
 # 推荐
-web/testcase/test_login.py
-web/testcase/test_order.py
+web/testcase/test_login_success.py
+web/testcase/test_order_create_success.py
 
 # 不推荐（层级过深）
 web/testcase/user/test_login.py
@@ -344,9 +287,9 @@ web/testcase/order/create/test_create_order.py
 
 ---
 
-## 八、代码风格
+## 七、代码风格
 
-### 8.1 Import 顺序
+### 7.1 Import 顺序
 
 ```python
 # 标准库
@@ -362,7 +305,7 @@ from common.testagent_client import TestagentClient
 from common.assertions import assert_response_ok
 ```
 
-### 8.2 Docstring 格式
+### 7.2 Docstring 格式
 
 使用 Google 风格的 docstring：
 
@@ -381,7 +324,7 @@ def do_login(self, username: str, password: str) -> None:
     """
 ```
 
-### 8.3 类型注解
+### 7.3 类型注解
 
 所有 public 方法应添加类型注解：
 
@@ -395,21 +338,21 @@ def get_user_info(self, user_id: int) -> Dict[str, Any]:
 
 ---
 
-## 九、测试端对应关系
+## 八、测试端对应关系
 
-| 端 | 目录 | fixture 前缀 | pytest.mark |
-|------|------|--------------|-------------|
-| Windows | `windows/` | `windows_` | `@pytest.mark.windows` |
-| Web | `web/` | `web_` | `@pytest.mark.web` |
-| Mac | `mac/` | `mac_` | `@pytest.mark.mac` |
-| iOS | `ios/` | `ios_` | `@pytest.mark.ios` |
-| Android | `android/` | `android_` | `@pytest.mark.android` |
+| 端 | 目录 | pytest.mark |
+|------|------|-------------|
+| Windows | `windows/` | `@pytest.mark.windows` |
+| Web | `web/` | `@pytest.mark.web` |
+| Mac | `mac/` | `@pytest.mark.mac` |
+| iOS | `ios/` | `@pytest.mark.ios` |
+| Android | `android/` | `@pytest.mark.android` |
 
 ---
 
-## 十、示例代码
+## 九、示例代码
 
-### 10.1 完整 AW 示例
+### 9.1 完整 AW 示例
 
 ```python
 """
@@ -435,6 +378,16 @@ class LoginAW:
 
     # ── 业务流程方法 ─────────────────────────────────────────
 
+    def do_navigate_to_login(self, url: str) -> None:
+        """导航到登录页面。
+
+        步骤: 使用浏览器导航到指定的登录 URL。
+
+        Args:
+            url: 登录页面 URL。
+        """
+        self.client.navigate(self.PLATFORM, url)
+
     def do_login(self, username: str, password: str) -> None:
         """执行登录操作。
 
@@ -444,24 +397,22 @@ class LoginAW:
             username: 用户名。
             password: 密码。
         """
-        # 使用 OCR 识别并输入
         self.client.ocr_input(self.PLATFORM, username, offset={"x": 100, "y": 0})
         self.client.ocr_input(self.PLATFORM, password, offset={"x": 100, "y": 0})
         self.client.ocr_click(self.PLATFORM, "登录")
 
-    def do_logout(self) -> None:
-        """执行登出操作。
+    def do_accept_privacy(self) -> None:
+        """接受隐私政策。
 
-        步骤: 点击用户菜单 → 点击退出登录。
+        步骤: 点击同意按钮。
         """
-        self.client.ocr_click(self.PLATFORM, "用户")
-        self.client.ocr_click(self.PLATFORM, "退出")
+        self.client.ocr_click(self.PLATFORM, "同意")
 
     # ── 断言方法 ─────────────────────────────────────────────
 
     def should_login_success(self) -> None:
         """断言登录成功。"""
-        result = self.client.ocr_wait(self.PLATFORM, "欢迎", timeout=10000)
+        result = self.client.ocr_wait(self.PLATFORM, "会议", timeout=10000)
         assert self.client.is_success(result), "登录失败"
 
     def should_show_error(self, error_msg: str) -> None:
@@ -474,56 +425,50 @@ class LoginAW:
         assert self.client.is_success(result), f"未显示错误提示: {error_msg}"
 ```
 
-### 10.2 完整测试用例示例
+### 9.2 完整测试用例示例
 
 ```python
 """
-登录功能测试用例。
+正确账号密码登录成功测试用例。
 
-测试范围: 用户登录功能，包括正常登录、异常登录场景。
+测试场景: 使用正确的账号密码登录华为云会议 Web 端
 """
 
 import pytest
 
-from common.data_factory import DataFactory
+from common.testagent_client import TestagentClient
+from web.aw.login_aw import LoginAW
 
 
 @pytest.mark.web
-class TestLogin:
-    """登录测试集。"""
+@pytest.mark.smoke
+class TestLoginSuccess:
+    """正确账号密码登录成功测试。"""
 
-    @pytest.mark.smoke
-    def test_login_success(self, web_client, login_aw):
-        """正常场景：正确账号密码登录，应登录成功。"""
-        user = DataFactory.get_test_user("user")
-        login_aw.do_login(user["username"], user["password"])
+    def test_execute(self):
+        """执行测试：正确账号密码登录，应登录成功。"""
+        client = TestagentClient()
+        login_aw = LoginAW(client)
+        login_aw.do_navigate_to_login("https://meeting.huaweicloud.com/#/login")
+        login_aw.do_login("15158009950", "majiayang123")
+        login_aw.do_accept_privacy()
         login_aw.should_login_success()
-
-    def test_login_with_wrong_password(self, web_client, login_aw):
-        """异常场景：密码错误登录，应显示错误提示。"""
-        login_aw.do_login("testuser", "wrong_password")
-        login_aw.should_show_error("密码错误")
-
-    def test_login_with_empty_username(self, web_client, login_aw):
-        """异常场景：用户名为空，应显示提示。"""
-        login_aw.do_login("", "Test@123")
-        login_aw.should_show_error("请输入用户名")
 ```
 
 ---
 
-## 十一、Skill 生成代码检查清单
+## 十、Skill 生成代码检查清单
 
 当 testcase-coder Skill 生成代码时，必须确保：
 
 - [ ] AW 文件命名符合 `{业务名}_aw.py` 格式
 - [ ] AW 类命名符合 `{业务名}AW` 格式
 - [ ] AW 方法以 `do_` 或 `should_` 开头
-- [ ] 测试文件命名符合 `test_{功能名}.py` 格式
-- [ ] 测试类命名符合 `Test{功能名}` 格式
-- [ ] 测试方法以 `test_` 开头
+- [ ] 测试文件命名符合 `test_{功能名}_{场景}.py` 格式
+- [ ] 测试类命名符合 `Test{功能}{场景}` 格式
+- [ ] 测试方法使用 `test_execute`
 - [ ] 所有类和方法有中文 docstring
 - [ ] 测试方法只调用 AW 层，不直接调用 testagent_client
+- [ ] 测试用例直接创建 AW 实例，不依赖 fixture
 - [ ] 使用正确的端标记（`@pytest.mark.{端}`）
-- [ ] 在 conftest.py 中注册新的 AW fixture
 - [ ] import 路径正确，模块存在
