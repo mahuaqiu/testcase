@@ -1,0 +1,101 @@
+"""
+登录业务操作封装。
+
+封装华为云会议登录相关流程，包括导航到登录页、执行登录、同意隐私政策等操作。
+"""
+
+from typing import Optional
+
+from common.testagent_client import TestagentClient
+from common.user_manager import UserResource
+
+
+class LoginAW:
+    """登录业务操作封装。
+
+    封装华为云会议 Web 端登录流程，通过 OCR 识别和操作完成登录。
+
+    Args:
+        client: TestagentClient 实例。
+        user: 用户资源实例（可选），用于动态获取账号密码。
+    """
+
+    PLATFORM = "web"
+
+    def __init__(
+        self, client: TestagentClient, user: Optional[UserResource] = None
+    ):
+        self.client = client
+        self.user = user
+
+    # ── 业务流程方法 ─────────────────────────────────────────
+
+    def do_navigate_to_login(self, url: str) -> None:
+        """导航到登录页面。
+
+        步骤: 使用浏览器导航到指定的登录 URL。
+
+        Args:
+            url: 登录页面 URL。
+        """
+        self.client.navigate(self.PLATFORM, url)
+
+    def do_login(
+        self,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> None:
+        """执行登录操作。
+
+        步骤: 输入账号 → 输入密码 → 点击登录按钮。
+
+        优先使用传入参数，其次使用 user 资源。
+
+        Args:
+            username: 用户名/手机号（可选）。
+            password: 密码（可选）。
+
+        Raises:
+            ValueError: 未提供账号密码且无用户资源时抛出。
+        """
+        # 优先使用传入参数，其次使用 user 资源
+        account = username or (self.user.account if self.user else None)
+        pwd = password or (self.user.password if self.user else None)
+
+        if not account or not pwd:
+            raise ValueError("未提供账号密码，且无用户资源")
+
+        # 使用 OCR 识别并输入账号
+        self.client.ocr_input(self.PLATFORM, account, offset={"x": 100, "y": 0})
+        # 使用 OCR 识别并输入密码
+        self.client.ocr_input(self.PLATFORM, pwd, offset={"x": 100, "y": 0})
+        # 点击登录按钮
+        self.client.ocr_click(self.PLATFORM, "登录")
+
+    def do_accept_privacy(self) -> None:
+        """接受隐私政策。
+
+        步骤: 点击同意/接受按钮。
+        """
+        self.client.ocr_click(self.PLATFORM, "同意")
+
+    # ── 断言方法 ─────────────────────────────────────────────
+
+    def should_login_success(self) -> None:
+        """断言登录成功。
+
+        验证登录成功后页面显示"会议"文字。
+        """
+        result = self.client.ocr_wait(self.PLATFORM, "会议", timeout=10000)
+        assert self.client.is_success(result), "登录失败：未检测到会议页面"
+
+    def should_show_error(self, error_msg: str) -> None:
+        """断言显示错误提示。
+
+        Args:
+            error_msg: 期望的错误信息。
+        """
+        result = self.client.ocr_wait(
+            self.PLATFORM, error_msg, timeout=5000, match_mode="contains"
+        )
+        assert self.client.is_success(result), f"未显示错误提示: {error_msg}"
