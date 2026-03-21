@@ -80,13 +80,14 @@ class TestLoginSuccess:
 | 方法 | 说明 |
 |------|------|
 | `ocr_click(platform, text)` | OCR 识别点击（推荐） |
-| `ocr_input(platform, text, offset)` | OCR 定位后输入 |
+| `ocr_input(platform, label, text)` | OCR 定位后输入 |
 | `ocr_wait(platform, text)` | 等待文字出现 |
 | `image_click(platform, image_path)` | 图像识别点击 |
 | `click(platform, x, y)` | 坐标点击 |
-| `swipe(platform, direction)` | 滑动（移动端） |
+| `swipe(platform, from_x, from_y, to_x, to_y)` | 滑动（移动端） |
 | `navigate(platform, url)` | 导航 URL（Web） |
-| `launch_app(platform, bundle_id)` | 启动应用 |
+| `start_app(platform, value)` | 启动应用/浏览器 |
+| `stop_app(platform, value)` | 关闭应用/浏览器 |
 
 ## 详细规范
 

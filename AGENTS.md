@@ -117,18 +117,18 @@ class XxxAW:
 
     # ── 业务流程方法 ─────────────────────────────────────────
 
-    def do_xxx(self, param1: str, param2: str) -> None:
+    def do_login(self, username: str, password: str) -> None:
         """{业务动作描述}。
 
         步骤: 步骤1 → 步骤2 → 步骤3。
 
         Args:
-            param1: 参数1说明。
-            param2: 参数2说明。
+            username: 参数1说明。
+            password: 参数2说明。
         """
         # 调用 testagent_client 执行操作（使用 OCR 识别）
-        self.client.ocr_input(self.PLATFORM, param1, offset={"x": 100, "y": 0})
-        self.client.ocr_input(self.PLATFORM, param2, offset={"x": 100, "y": 0})
+        self.client.ocr_input(self.PLATFORM, "用户名", username, offset={"x": 100, "y": 0})
+        self.client.ocr_input(self.PLATFORM, "密码", password, offset={"x": 100, "y": 0})
         self.client.ocr_click(self.PLATFORM, "提交")
 
     # ── 断言方法 ─────────────────────────────────────────────
@@ -154,14 +154,15 @@ testagent 支持 OCR 识别、图像识别和坐标操作三种方式：
 | 方法 | 说明 | 适用场景 |
 |------|------|----------|
 | `ocr_click(platform, text)` | OCR 识别文字并点击 | 跨平台通用，推荐 |
-| `ocr_input(platform, text, offset)` | OCR 定位后输入内容 | 输入框操作 |
+| `ocr_input(platform, label, text)` | OCR 定位后输入内容 | 输入框操作 |
 | `ocr_wait(platform, text)` | 等待文字出现 | 同步等待、断言 |
 | `ocr_assert(platform, text)` | 断言文字存在 | 验证结果 |
 | `image_click(platform, image_path)` | 图像识别点击 | 图标、按钮等 |
 | `click(platform, x, y)` | 坐标点击 | 精确位置 |
-| `swipe(platform, direction)` | 滑动操作 | 移动端 |
+| `swipe(platform, from_x, from_y, to_x, to_y)` | 滑动操作 | 移动端 |
 | `navigate(platform, url)` | 导航 URL | Web 端 |
-| `launch_app(platform, bundle_id)` | 启动应用 | 移动端/桌面端 |
+| `start_app(platform, value)` | 启动应用/浏览器 | 移动端/桌面端 |
+| `stop_app(platform, value)` | 关闭应用/浏览器 | 移动端/桌面端 |
 
 ---
 
@@ -405,8 +406,8 @@ class LoginAW:
         if not account or not pwd:
             raise ValueError("未提供账号密码，且无用户资源")
 
-        self.client.ocr_input(self.PLATFORM, account, offset={"x": 100, "y": 0})
-        self.client.ocr_input(self.PLATFORM, pwd, offset={"x": 100, "y": 0})
+        self.client.ocr_input(self.PLATFORM, "账号", account, offset={"x": 100, "y": 0})
+        self.client.ocr_input(self.PLATFORM, "密码", pwd, offset={"x": 100, "y": 0})
         self.client.ocr_click(self.PLATFORM, "登录")
 
     def do_accept_privacy(self) -> None:
@@ -613,8 +614,8 @@ def do_login(
     if not account or not pwd:
         raise ValueError("未提供账号密码，且无用户资源")
 
-    self.client.ocr_input(self.PLATFORM, account, offset={"x": 100, "y": 0})
-    self.client.ocr_input(self.PLATFORM, pwd, offset={"x": 100, "y": 0})
+    self.client.ocr_input(self.PLATFORM, "账号", account, offset={"x": 100, "y": 0})
+    self.client.ocr_input(self.PLATFORM, "密码", pwd, offset={"x": 100, "y": 0})
     self.client.ocr_click(self.PLATFORM, "登录")
 ```
 

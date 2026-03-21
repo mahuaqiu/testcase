@@ -7,7 +7,6 @@ API 文档参考: api.yaml
 """
 
 import time
-import uuid
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -25,16 +24,15 @@ class TestagentClient:
     Example:
         client = TestagentClient("http://localhost:8080")
 
-        # 执行单步操作
+        # 同步执行任务
         result = client.execute("web", [
             {"action_type": "navigate", "value": "https://example.com"},
             {"action_type": "ocr_click", "value": "登录"},
         ])
 
-        # 使用会话复用
-        session = client.create_session("web")
-        client.execute("web", actions, session_id=session["session_id"])
-        client.close_session("web", session["session_id"])
+        # 异步执行任务
+        task = client.execute_async("web", actions)
+        result = client.get_task(task["task_id"])
     """
 
     def __init__(self, base_url: str = "http://localhost:8080", timeout: int = 300):
@@ -80,31 +78,23 @@ class TestagentClient:
         except requests.exceptions.RequestException as e:
             raise TestagentError(f"请求失败: {e}") from e
 
-    # ── 健康检查与状态 ─────────────────────────────────────────────
+    # ── Worker 状态与设备 ─────────────────────────────────────────────
 
-    def health_check(self) -> Dict[str, Any]:
-        """健康检查。
-
-        Returns:
-            服务状态信息。
-        """
-        return self._request("GET", "/health")
-
-    def get_status(self) -> Dict[str, Any]:
-        """获取 Worker 状态。
+    def get_worker_devices(self) -> Dict[str, Any]:
+        """获取 Worker 状态和设备信息。
 
         Returns:
-            Worker 详细状态信息。
+            Worker 状态及所有连接设备信息。
         """
-        return self._request("GET", "/status")
+        return self._request("GET", "/worker_devices")
 
-    def get_info(self) -> Dict[str, Any]:
-        """获取 Worker 详细信息。
+    def refresh_devices(self) -> Dict[str, Any]:
+        """刷新设备列表。
 
         Returns:
-            Worker 完整信息，包括支持的平台、设备列表等。
+            刷新后的 Worker 状态及设备列表。
         """
-        return self._request("GET", "/info")
+        return self._request("POST", "/devices/refresh")
 
     # ── 任务执行（核心） ─────────────────────────────────────────────
 
@@ -113,17 +103,15 @@ class TestagentClient:
         platform: str,
         actions: List[Dict[str, Any]],
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """执行任务（同步）。
+        """同步执行任务。
 
         Args:
             platform: 平台类型（web/windows/mac/ios/android）。
             actions: 动作列表。
             device_id: 设备 ID（移动端必填）。
-            session_id: 会话 ID（复用会话时使用）。
             user_id: 用户标识。
             config: 任务配置。
 
@@ -134,7 +122,7 @@ class TestagentClient:
             result = client.execute("web", [
                 {"action_type": "navigate", "value": "https://example.com"},
                 {"action_type": "ocr_click", "value": "登录"},
-                {"action_type": "ocr_input", "value": "用户名", "offset": {"x": 100, "y": 0}},
+                {"action_type": "ocr_input", "value": "用户名", "text": "admin", "offset": {"x": 100, "y": 0}},
             ])
         """
         task_request = {
@@ -144,14 +132,84 @@ class TestagentClient:
 
         if device_id:
             task_request["device_id"] = device_id
-        if session_id:
-            task_request["session_id"] = session_id
         if user_id:
             task_request["user_id"] = user_id
         if config:
             task_request["config"] = config
 
         return self._request("POST", "/task/execute", data=task_request)
+
+    def execute_async(
+        self,
+        platform: str,
+        actions: List[Dict[str, Any]],
+        device_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """异步执行任务。
+
+        立即返回 task_id，任务在后台执行。
+
+        Args:
+            platform: 平台类型（web/windows/mac/ios/android）。
+            actions: 动作列表。
+            device_id: 设备 ID（移动端必填）。
+            user_id: 用户标识。
+            config: 任务配置。
+
+        Returns:
+            包含 task_id 和 status 的响应。
+
+        Raises:
+            TestagentError: 设备/平台冲突时抛出 409 错误。
+        """
+        task_request = {
+            "platform": platform,
+            "actions": actions,
+        }
+
+        if device_id:
+            task_request["device_id"] = device_id
+        if user_id:
+            task_request["user_id"] = user_id
+        if config:
+            task_request["config"] = config
+
+        return self._request("POST", "/task/execute_async", data=task_request)
+
+    def get_task(self, task_id: str) -> Dict[str, Any]:
+        """查询任务结果。
+
+        一次性查询：查询后任务从内存中销毁，再次查询返回 404。
+
+        Args:
+            task_id: 任务 ID。
+
+        Returns:
+            任务状态或结果。
+
+        Raises:
+            TestagentError: 任务不存在时抛出 404 错误。
+        """
+        return self._request("GET", f"/task/{task_id}")
+
+    def cancel_task(self, task_id: str) -> Dict[str, Any]:
+        """取消任务。
+
+        如果只有一个 action，执行完再取消；
+        有多个 action，当前 action 执行完后停止。
+
+        Args:
+            task_id: 任务 ID。
+
+        Returns:
+            取消结果。
+
+        Raises:
+            TestagentError: 任务不存在时抛出 404 错误。
+        """
+        return self._request("DELETE", f"/task/{task_id}")
 
     # ── 单步操作封装 ─────────────────────────────────────────────
 
@@ -160,9 +218,8 @@ class TestagentClient:
         platform: str,
         text: str,
         offset: Optional[Dict[str, int]] = None,
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """OCR 文字识别点击。
 
@@ -172,7 +229,6 @@ class TestagentClient:
             offset: 点击偏移量 {"x": 0, "y": 0}。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
@@ -185,50 +241,49 @@ class TestagentClient:
         if offset:
             action["offset"] = offset
 
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def ocr_input(
         self,
         platform: str,
-        input_text: str,
+        label: str,
+        text: str,
         offset: Optional[Dict[str, int]] = None,
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """OCR 文字识别后输入。
 
-        先定位输入区域，然后输入内容。
+        先定位文字位置，然后在偏移处输入内容。
 
         Args:
             platform: 平台类型。
-            input_text: 要输入的内容。
+            label: 要定位的文字标签。
+            text: 要输入的内容。
             offset: 输入框相对文字的偏移量。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "ocr_input",
-            "value": input_text,
+            "value": label,
+            "text": text,
             "timeout": timeout,
         }
         if offset:
             action["offset"] = offset
 
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def ocr_wait(
         self,
         platform: str,
         text: str,
-        timeout: int = 30000,
-        match_mode: str = "exact",
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """等待 OCR 文字出现。
 
@@ -236,9 +291,7 @@ class TestagentClient:
             platform: 平台类型。
             text: 等待出现的文字。
             timeout: 超时时间（毫秒）。
-            match_mode: 匹配模式（exact/fuzzy/contains/regex）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
@@ -247,28 +300,23 @@ class TestagentClient:
             "action_type": "ocr_wait",
             "value": text,
             "timeout": timeout,
-            "match_mode": match_mode,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def ocr_assert(
         self,
         platform: str,
         text: str,
-        match_mode: str = "exact",
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """OCR 断言文字存在。
 
         Args:
             platform: 平台类型。
             text: 期望存在的文字。
-            match_mode: 匹配模式。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
@@ -276,40 +324,32 @@ class TestagentClient:
         action = {
             "action_type": "ocr_assert",
             "value": text,
-            "match_mode": match_mode,
             "timeout": timeout,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def ocr_get_text(
         self,
         platform: str,
-        text: str,
-        match_mode: str = "exact",
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> str:
-        """OCR 获取文字。
+        """OCR 获取屏幕所有文字。
 
         Args:
             platform: 平台类型。
-            text: 要定位的文字。
-            match_mode: 匹配模式。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             识别到的文字内容。
         """
         action = {
             "action_type": "ocr_get_text",
-            "value": text,
-            "match_mode": match_mode,
+            "value": "",
             "timeout": timeout,
         }
-        result = self.execute(platform, [action], device_id, session_id)
+        result = self.execute(platform, [action], device_id)
         # 从结果中提取文字
         if result.get("status") == "success" and result.get("actions"):
             return result["actions"][0].get("output", "")
@@ -320,9 +360,8 @@ class TestagentClient:
         platform: str,
         image_path: str,
         threshold: float = 0.8,
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像识别点击。
 
@@ -332,27 +371,25 @@ class TestagentClient:
             threshold: 匹配阈值（0-1）。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_click",
-            "image_path": image_path,
+            "value": image_path,
             "threshold": threshold,
             "timeout": timeout,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def image_wait(
         self,
         platform: str,
         image_path: str,
         threshold: float = 0.8,
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """等待图像出现。
 
@@ -362,27 +399,25 @@ class TestagentClient:
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_wait",
-            "image_path": image_path,
+            "value": image_path,
             "threshold": threshold,
             "timeout": timeout,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def image_assert(
         self,
         platform: str,
         image_path: str,
         threshold: float = 0.8,
-        timeout: int = 30000,
+        timeout: int = 5000,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像断言。
 
@@ -392,18 +427,17 @@ class TestagentClient:
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_assert",
-            "image_path": image_path,
+            "value": image_path,
             "threshold": threshold,
             "timeout": timeout,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def click(
         self,
@@ -411,7 +445,6 @@ class TestagentClient:
         x: int,
         y: int,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """坐标点击。
 
@@ -420,7 +453,6 @@ class TestagentClient:
             x: X 坐标。
             y: Y 坐标。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
@@ -430,103 +462,95 @@ class TestagentClient:
             "x": x,
             "y": y,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def swipe(
         self,
         platform: str,
-        direction: str,
-        x: Optional[int] = None,
-        y: Optional[int] = None,
-        end_x: Optional[int] = None,
-        end_y: Optional[int] = None,
+        from_x: int,
+        from_y: int,
+        to_x: int,
+        to_y: int,
+        duration: int = 500,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """滑动操作。
 
         Args:
             platform: 平台类型。
-            direction: 滑动方向（up/down/left/right）。
-            x: 起点 X 坐标（可选）。
-            y: 起点 Y 坐标（可选）。
-            end_x: 终点 X 坐标（可选）。
-            end_y: 终点 Y 坐标（可选）。
+            from_x: 起点 X 坐标。
+            from_y: 起点 Y 坐标。
+            to_x: 终点 X 坐标。
+            to_y: 终点 Y 坐标。
+            duration: 滑动持续时间（毫秒），默认 500ms。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "swipe",
-            "direction": direction,
+            "from": {"x": from_x, "y": from_y},
+            "to": {"x": to_x, "y": to_y},
+            "duration": duration,
         }
-        if x is not None:
-            action["x"] = x
-        if y is not None:
-            action["y"] = y
-        if end_x is not None:
-            action["end_x"] = end_x
-        if end_y is not None:
-            action["end_y"] = end_y
-
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def input_text(
         self,
         platform: str,
+        x: int,
+        y: int,
         text: str,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """输入文字。
+        """在指定坐标输入文字。
 
         Args:
             platform: 平台类型。
+            x: X 坐标。
+            y: Y 坐标。
             text: 要输入的文字。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "input",
-            "value": text,
+            "x": x,
+            "y": y,
+            "text": text,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def press(
         self,
         platform: str,
         key: str,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """按键操作。
 
         Args:
             platform: 平台类型。
-            key: 按键值（如 Enter, Escape, Backspace 等）。
+            key: 按键名称（如 Enter, Escape, ArrowDown, Control+A 等）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "press",
-            "value": key,
+            "key": key,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def screenshot(
         self,
         platform: str,
         name: Optional[str] = None,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """截图。
 
@@ -534,7 +558,6 @@ class TestagentClient:
             platform: 平台类型。
             name: 截图名称（可选）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果，包含截图数据。
@@ -543,31 +566,29 @@ class TestagentClient:
             "action_type": "screenshot",
             "value": name or f"screenshot_{int(time.time())}",
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     def wait(
         self,
         platform: str,
         duration_ms: int,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """等待。
+        """固定等待。
 
         Args:
             platform: 平台类型。
             duration_ms: 等待时间（毫秒）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "wait",
-            "wait": duration_ms,
+            "value": str(duration_ms),
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
     # ── Web 端专用 ─────────────────────────────────────────────
 
@@ -576,7 +597,6 @@ class TestagentClient:
         platform: str,
         url: str,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """导航到 URL（Web 端）。
 
@@ -584,7 +604,6 @@ class TestagentClient:
             platform: 平台类型。
             url: 目标 URL。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
@@ -593,179 +612,58 @@ class TestagentClient:
             "action_type": "navigate",
             "value": url,
         }
-        return self.execute(platform, [action], device_id, session_id)
+        return self.execute(platform, [action], device_id)
 
-    # ── 应用操作（App 端） ─────────────────────────────────────────────
+    # ── 应用操作 ─────────────────────────────────────────────
 
-    def launch_app(
+    def start_app(
         self,
         platform: str,
-        app_path: Optional[str] = None,
-        bundle_id: Optional[str] = None,
-        package_name: Optional[str] = None,
+        value: str,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """启动应用。
+        """启动应用/浏览器。
 
         Args:
             platform: 平台类型。
-            app_path: 应用路径（Windows/Mac）。
-            bundle_id: iOS Bundle ID。
-            package_name: Android 包名。
+            value: 应用标识。
+                - Web: 浏览器类型（chromium/firefox/webkit）
+                - Android: 应用包名，如 "com.example.app"
+                - iOS: Bundle ID，如 "com.example.app"
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
-            "action_type": "launch_app",
+            "action_type": "start_app",
+            "value": value,
         }
-        if app_path:
-            action["app_path"] = app_path
-        if bundle_id:
-            action["bundle_id"] = bundle_id
-        if package_name:
-            action["package_name"] = package_name
+        return self.execute(platform, [action], device_id)
 
-        return self.execute(platform, [action], device_id, session_id)
-
-    def close_app(
+    def stop_app(
         self,
         platform: str,
-        bundle_id: Optional[str] = None,
-        package_name: Optional[str] = None,
+        value: Optional[str] = None,
         device_id: Optional[str] = None,
-        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """关闭应用。
+        """关闭应用/浏览器。
 
         Args:
             platform: 平台类型。
-            bundle_id: iOS Bundle ID。
-            package_name: Android 包名。
+            value: 应用标识（可选，不填则关闭当前应用）。
             device_id: 设备 ID。
-            session_id: 会话 ID。
 
         Returns:
             执行结果。
         """
         action = {
-            "action_type": "close_app",
+            "action_type": "stop_app",
         }
-        if bundle_id:
-            action["bundle_id"] = bundle_id
-        if package_name:
-            action["package_name"] = package_name
+        if value:
+            action["value"] = value
 
-        return self.execute(platform, [action], device_id, session_id)
-
-    # ── 会话管理 ─────────────────────────────────────────────
-
-    def create_session(
-        self,
-        platform: str,
-        device_id: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """创建会话。
-
-        创建一个新的自动化会话，可用于复用浏览器/应用实例。
-
-        Args:
-            platform: 平台类型。
-            device_id: 设备 ID（移动端）。
-            options: 会话选项（如 headless, browser_type 等）。
-
-        Returns:
-            会话信息，包含 session_id。
-        """
-        data = {"platform": platform}
-        if device_id:
-            data["device_id"] = device_id
-        if options:
-            data["options"] = options
-
-        return self._request("POST", "/session", data=data)
-
-    def get_session(
-        self,
-        platform: str,
-        session_id: str,
-    ) -> Dict[str, Any]:
-        """获取会话状态。
-
-        Args:
-            platform: 平台类型。
-            session_id: 会话 ID。
-
-        Returns:
-            会话状态信息。
-        """
-        return self._request(
-            "GET",
-            f"/session/{session_id}",
-            params={"platform": platform},
-        )
-
-    def close_session(
-        self,
-        platform: str,
-        session_id: str,
-    ) -> Dict[str, Any]:
-        """关闭会话。
-
-        Args:
-            platform: 平台类型。
-            session_id: 会话 ID。
-
-        Returns:
-            关闭结果。
-        """
-        return self._request(
-            "DELETE",
-            f"/session/{session_id}",
-            params={"platform": platform},
-        )
-
-    # ── 设备管理 ─────────────────────────────────────────────
-
-    def get_devices(self) -> List[Dict[str, Any]]:
-        """获取设备列表。
-
-        Returns:
-            设备列表。
-        """
-        return self._request("GET", "/devices")
-
-    def refresh_devices(self) -> Dict[str, Any]:
-        """刷新设备列表。
-
-        Returns:
-            刷新结果，包含新增和移除的设备。
-        """
-        return self._request("POST", "/devices/refresh")
-
-    def get_screenshot(
-        self,
-        platform: str,
-        session_id: str,
-    ) -> Dict[str, Any]:
-        """获取实时截图。
-
-        Args:
-            platform: 平台类型。
-            session_id: 会话 ID。
-
-        Returns:
-            截图数据（base64）。
-        """
-        return self._request(
-            "POST",
-            "/screenshot",
-            data={"platform": platform, "session_id": session_id},
-        )
+        return self.execute(platform, [action], device_id)
 
     # ── 任务状态检查 ─────────────────────────────────────────────
 
