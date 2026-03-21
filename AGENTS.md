@@ -10,37 +10,54 @@
 
 ```
 testcase/
-├── common/           # 公共模块
+├── common/                    # 公共模块
 │   ├── testagent_client.py   # testagent HTTP 客户端
 │   ├── assertions.py         # 断言函数
 │   ├── data_factory.py       # 测试数据工厂
 │   ├── config_loader.py      # 配置加载器
 │   ├── user_manager.py       # 用户资源管理器
+│   ├── user.py               # User 类（代理转发 AW）
+│   ├── keepalive.py          # 保活线程管理器
+│   ├── hooks_resolver.py     # Hooks 解析器
+│   ├── report_logger.py      # 报告日志收集器
+│   ├── report_generator.py   # HTML 报告生成器
 │   └── utils.py              # 工具函数
 │
-├── windows/          # Windows 端
-│   ├── aw/           # 业务操作封装层
-│   └── testcase/     # 测试用例
+├── aw/                        # AW 业务封装层
+│   ├── base_aw.py            # AW 基类
+│   ├── common/               # 公共 AW（各平台通用）
+│   ├── windows/              # Windows 端 AW
+│   ├── web/                  # Web 端 AW
+│   ├── ios/                  # iOS 端 AW
+│   ├── android/              # Android 端 AW
+│   └── mac/                  # Mac 端 AW
 │
-├── web/              # Web 端
-├── mac/              # Mac 端
-├── ios/              # iOS 端
-└── android/          # Android 端
+├── testcases/                 # 测试用例层
+│   ├── windows/              # Windows 端测试用例
+│   ├── web/                  # Web 端测试用例
+│   ├── ios/                  # iOS 端测试用例
+│   ├── android/              # Android 端测试用例
+│   ├── mac/                  # Mac 端测试用例
+│   └── integration/          # 多端集成测试
+│
+├── report/                    # 测试报告目录
+├── conftest.py                # pytest 配置与 fixtures
+└── config.yaml                # 配置文件
 ```
 
 ### 1.2 两层架构
 
-本工程采用 **AW 层 + testcase 层** 的两层架构：
+本工程采用 **AW 层 + testcases 层** 的两层架构：
 
 | 层级 | 目录 | 职责 | 使用者 |
 |------|------|------|--------|
-| AW 层 | `{端}/aw/` | 封装多步骤业务流程，调用 testagent HTTP API | 测试开发 |
-| testcase 层 | `{端}/testcase/` | 测试用例业务代码，调用 AW 层方法 | 测试人员 |
+| AW 层 | `aw/{平台}/` | 封装多步骤业务流程，继承 BaseAW | 测试开发 |
+| testcases 层 | `testcases/{平台}/` | 测试用例业务代码，通过 User 调用 AW 方法 | 测试人员 |
 
 **核心原则**：
-- **测试人员只关注 testcase 层**，通过调用 AW 层方法完成测试
-- **AW 层封装底层细节**，通过 HTTP 调用 testagent 服务
-- **testcase 层不直接调用 testagent**，保持关注点分离
+- **测试人员只关注 testcases 层**，通过 User 实例调用 AW 方法完成测试
+- **User 实例自动加载 AW**，测试代码直接调用 `user.do_xxx()`
+- **AW 层继承 BaseAW**，提供便捷方法封装 testagent 调用
 
 ### 1.3 与 testagent 工程的关系
 
