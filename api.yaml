@@ -5,7 +5,7 @@ openapi: "3.0.0"
 info:
   title: "Test Worker API"
   description: "多端自动化测试执行基建 API"
-  version: "2.0.0"
+  version: "3.0.0"
 
 servers:
   - url: "http://{host}:{port}"
@@ -16,23 +16,10 @@ servers:
         default: "8080"
 
 paths:
-  /health:
+  /worker_devices:
     get:
-      summary: "健康检查"
-      description: "检查 Worker 服务是否正常运行"
-      responses:
-        "200":
-          description: "服务正常"
-          content:
-            application/json:
-              example:
-                status: "ok"
-                timestamp: "2026-03-14T10:30:00.000000"
-
-  /status:
-    get:
-      summary: "获取 Worker 状态"
-      description: "获取 Worker 详细状态信息"
+      summary: "获取 Worker 状态和设备信息"
+      description: "获取 Worker 状态及所有连接设备信息"
       responses:
         "200":
           description: "成功"
@@ -43,38 +30,22 @@ paths:
                 status: "running"
                 started_at: "2026-03-14T10:00:00.000000"
                 supported_platforms: ["web", "windows", "android", "ios"]
-                active_sessions: 2
-                devices_count: 3
+                devices:
+                  web: []
+                  windows: []
+                  android:
+                    - id: "emulator-5554"
+                      status: "idle"
+                  ios:
+                    - id: "00008030-001234567890ABCD"
+                      status: "idle"
         "503":
           description: "Worker 未初始化"
 
-  /info:
-    get:
-      summary: "获取 Worker 详细信息"
-      description: "获取支持的平台、设备列表等完整信息"
-      responses:
-        "200":
-          description: "成功"
-          content:
-            application/json:
-              example:
-                worker_id: "worker_abc123"
-                hostname: "DESKTOP-ABC"
-                ip_addresses: ["192.168.1.100", "10.0.0.1"]
-                os_type: "Windows"
-                os_version: "10.0.19045"
-                supported_platforms: ["web", "windows", "android", "ios"]
-                status: "running"
-                port: 8080
-                devices:
-                  - id: "emulator-5554"
-                    platform: "android"
-                    name: "Pixel_4_API_30"
-
   /task/execute:
     post:
-      summary: "执行任务（同步）"
-      description: "同步执行自动化测试任务，阻塞等待结果返回"
+      summary: "同步执行任务"
+      description: "同步执行自动化测试任务，阻塞等待结果返回，不生成 task_id"
       requestBody:
         required: true
         content:
@@ -88,27 +59,12 @@ paths:
                   value: "https://example.com"
                 - action_type: "ocr_click"
                   value: "登录"
-                - action_type: "ocr_input"
-                  value: "用户名"
-                  offset:
-                    x: 100
-                    y: 0
                 - action_type: "screenshot"
                   value: "result"
               device_id: null
-              user_id: "user_001"
-              session_id: null
-              config:
-                timeout: 300000
-                action_timeout: 30000
-                screenshot_on_error: true
-                slow_motion: 0
-                retry_count: 0
-              callback_url: null
-              priority: 0
       responses:
         "200":
-          description: "任务执行完成"
+          description: "任务执行完成（不包含 task_id）"
           content:
             application/json:
               schema:
@@ -116,138 +72,103 @@ paths:
         "503":
           description: "Worker 未初始化"
 
-  /task:
+  /task/execute_async:
     post:
-      summary: "提交任务（异步）"
-      description: "提交任务到队列，异步执行"
-      responses:
-        "501":
-          description: "功能未实现"
-
-  /task/{task_id}:
-    get:
-      summary: "查询任务结果"
-      description: "根据任务 ID 查询执行结果"
-      parameters:
-        - name: task_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "501":
-          description: "功能未实现"
-
-  /task/{task_id}:
-    delete:
-      summary: "取消任务"
-      description: "取消正在执行的任务"
-      parameters:
-        - name: task_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "501":
-          description: "功能未实现"
-
-  /session:
-    post:
-      summary: "创建会话"
-      description: "创建一个新的自动化会话，可用于复用浏览器/应用实例"
+      summary: "异步执行任务"
+      description: "异步执行自动化测试任务，立即返回 task_id，任务在后台执行"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SessionRequest"
+              $ref: "#/components/schemas/TaskRequest"
             example:
               platform: "web"
-              device_id: null
-              options:
-                headless: false
-                browser_type: "chromium"
+              actions:
+                - action_type: "navigate"
+                  value: "https://example.com"
+                - action_type: "ocr_click"
+                  value: "登录"
       responses:
         "200":
-          description: "会话创建成功"
+          description: "任务已提交"
           content:
             application/json:
               example:
-                session_id: "sess_xyz789"
-                platform: "web"
-                device_id: null
-                created_at: "2026-03-14T10:30:00.000000"
-        "500":
-          description: "创建失败"
+                task_id: "task_20260317_120000_abc123"
+                status: "running"
+        "409":
+          description: "设备/平台冲突"
+          content:
+            application/json:
+              example:
+                detail: "Device/Platform is busy"
+        "503":
+          description: "Worker 未初始化"
 
-  /session/{session_id}:
+  /task/{task_id}:
     get:
-      summary: "获取会话状态"
-      description: "查询指定会话的状态信息"
+      summary: "查询任务结果"
+      description: "根据任务 ID 查询执行结果。一次性查询：查询后任务从内存中销毁，再次查询返回 404"
       parameters:
-        - name: session_id
+        - name: task_id
           in: path
           required: true
           schema:
             type: string
-        - name: platform
-          in: query
-          required: true
-          schema:
-            type: string
       responses:
         "200":
-          description: "成功"
+          description: "任务状态或结果"
+          content:
+            application/json:
+              examples:
+                running:
+                  summary: "执行中"
+                  value:
+                    task_id: "task_20260317_120000_abc123"
+                    status: "running"
+                completed:
+                  summary: "执行完成"
+                  value:
+                    task_id: "task_20260317_120000_abc123"
+                    status: "success"
+                    platform: "web"
+                    duration_ms: 1500
+                    actions: []
+        "404":
+          description: "任务不存在"
           content:
             application/json:
               example:
-                session_id: "sess_xyz789"
-                platform: "web"
-                device_id: null
-                created_at: "2026-03-14T10:30:00.000000"
-                last_active: "2026-03-14T10:35:00.000000"
-        "404":
-          description: "会话不存在"
+                detail: "Task not found"
+        "503":
+          description: "Worker 未初始化"
 
     delete:
-      summary: "关闭会话"
-      description: "关闭并销毁指定会话"
+      summary: "取消任务"
+      description: "取消正在执行的任务。取消逻辑：如果只有一个 action，执行完再取消；有多个 action，当前 action 执行完后停止。"
       parameters:
-        - name: session_id
+        - name: task_id
           in: path
           required: true
           schema:
             type: string
-        - name: platform
-          in: query
-          required: true
-          schema:
-            type: string
       responses:
         "200":
-          description: "成功"
+          description: "取消成功"
           content:
             application/json:
               example:
-                closed: true
-
-  /devices:
-    get:
-      summary: "获取设备列表"
-      description: "获取当前连接的所有设备信息"
-      responses:
-        "200":
-          description: "成功"
+                success: true
+                message: "Task cancelled"
+        "404":
+          description: "任务不存在"
           content:
             application/json:
               example:
-                - id: "emulator-5554"
-                  platform: "android"
-                  name: "Pixel_4_API_30"
-                - id: "00008030-001234567890ABCD"
-                  platform: "ios"
-                  name: "iPhone 14"
+                detail: "Task not found"
+        "503":
+          description: "Worker 未初始化"
 
   /devices/refresh:
     post:
@@ -259,36 +180,19 @@ paths:
           content:
             application/json:
               example:
+                worker_id: "worker_abc123"
+                status: "running"
                 devices:
-                  - id: "emulator-5554"
-                    platform: "android"
-                    name: "Pixel_4_API_30"
-                added: ["new_device_id"]
-                removed: ["old_device_id"]
-
-  /screenshot:
-    post:
-      summary: "获取实时截图"
-      description: "获取指定会话的当前屏幕截图"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ScreenshotRequest"
-            example:
-              platform: "web"
-              session_id: "sess_xyz789"
-      responses:
-        "200":
-          description: "成功"
-          content:
-            application/json:
-              example:
-                image: "iVBORw0KGgoAAAANSUhEUgAA..."
-                format: "png"
-        "500":
-          description: "获取失败"
+                  web: []
+                  windows: []
+                  android:
+                    - id: "emulator-5554"
+                      status: "idle"
+                  ios:
+                    - id: "00008030-001234567890ABCD"
+                      status: "idle"
+        "503":
+          description: "Worker 未初始化"
 
 components:
   schemas:
@@ -301,30 +205,43 @@ components:
         platform:
           type: string
           enum: [web, android, ios, windows, mac]
-          description: "目标平台"
+          description: |
+            目标平台，支持以下值：
+            - web: Web 浏览器自动化（Playwright）
+            - android: Android 设备自动化（Appium + UiAutomator2）
+            - ios: iOS 设备自动化（Appium + XCUITest）
+            - windows: Windows 桌面自动化（pyautogui）
+            - mac: macOS 桌面自动化（pyautogui）
         actions:
           type: array
           items:
             $ref: "#/components/schemas/Action"
-          description: "动作列表"
+          description: "动作列表，按顺序依次执行"
         device_id:
           type: string
-          description: "设备 ID（移动端必填）"
+          description: |
+            设备 ID，移动端必填：
+            - Web/Windows/Mac: 不需要填写
+            - Android: 填写设备序列号，如 "emulator-5554"
+            - iOS: 填写设备 UDID，如 "00008030-001234567890ABCD"
         user_id:
           type: string
-          description: "用户标识"
-        session_id:
-          type: string
-          description: "会话 ID（复用会话）"
+          description: "用户标识，用于追溯和日志记录"
         config:
           $ref: "#/components/schemas/TaskConfig"
-        callback_url:
-          type: string
-          description: "回调地址"
-        priority:
-          type: integer
-          default: 0
-          description: "优先级"
+      example:
+        platform: "web"
+        actions:
+          - action_type: "navigate"
+            value: "https://example.com"
+          - action_type: "ocr_click"
+            value: "登录"
+            offset:
+              x: 0
+              y: 0
+            timeout: 5000
+          - action_type: "screenshot"
+            value: "result"
 
     TaskConfig:
       type: object
@@ -332,23 +249,29 @@ components:
         timeout:
           type: integer
           default: 300000
-          description: "总超时时间(ms)"
+          description: "任务总超时时间（毫秒），超过此时间任务将被强制终止"
         action_timeout:
           type: integer
           default: 30000
-          description: "单个动作超时时间(ms)"
+          description: "单个动作超时时间（毫秒），超过此时间当前动作将失败"
         screenshot_on_error:
           type: boolean
           default: true
-          description: "错误时是否截图"
+          description: "任务失败时是否自动截图，截图将以 base64 编码返回"
         slow_motion:
           type: integer
           default: 0
-          description: "慢动作延迟(ms)"
+          description: "慢动作延迟（毫秒），每个动作之间插入延迟，便于观察调试"
         retry_count:
           type: integer
           default: 0
-          description: "失败重试次数"
+          description: "失败重试次数，任务失败后自动重试"
+      example:
+        timeout: 60000
+        action_timeout: 10000
+        screenshot_on_error: true
+        slow_motion: 500
+        retry_count: 1
 
     Action:
       type: object
@@ -372,76 +295,129 @@ components:
             - press
             - screenshot
             - wait
+            - start_app
+            - stop_app
             - navigate
-            - launch_app
-            - close_app
-          description: "动作类型"
+          description: |
+            动作类型，分为以下几类：
+
+            【OCR 文字识别动作】
+            - ocr_click: 点击屏幕上识别到的文字
+            - ocr_input: 在识别到的文字附近输入文本
+            - ocr_wait: 等待指定文字出现
+            - ocr_assert: 断言指定文字存在
+            - ocr_get_text: 获取屏幕上所有文字
+
+            【图像识别动作】
+            - image_click: 点击匹配到的图像位置
+            - image_wait: 等待指定图像出现
+            - image_assert: 断言指定图像存在
+
+            【坐标动作】
+            - click: 点击指定坐标
+            - swipe: 滑动手势
+            - input: 在指定坐标输入文本
+
+            【其他动作】
+            - press: 按键操作
+            - screenshot: 截图
+            - wait: 固定等待
+            - start_app: 启动应用/浏览器
+            - stop_app: 关闭应用/浏览器
+            - navigate: 跳转 URL（Web 专用）
         value:
           type: string
-          description: "文字/URL/按键值"
-        image_path:
+          description: |
+            动作核心值，根据 action_type 不同含义不同：
+            - ocr_click/ocr_input/ocr_wait/ocr_assert: 要识别的文字内容
+            - image_click/image_wait/image_assert: 图像文件路径（相对或绝对路径）
+            - click/input: 此字段不使用
+            - swipe: 此字段不使用
+            - screenshot: 截图名称/标识
+            - wait: 等待的毫秒数，如 "1000"
+            - start_app: 应用包名或浏览器类型
+              - Web: "chromium"、"firefox"、"webkit"
+              - Android: 应用包名，如 "com.example.app"
+              - iOS: Bundle ID，如 "com.example.app"
+            - stop_app: 应用包名（可选，不填则关闭当前应用）
+            - navigate: 要跳转的 URL
+        text:
           type: string
-          description: "图像模板路径"
+          description: "输入的文本内容，仅 ocr_input 和 input 动作必填"
         offset:
           type: object
+          description: |
+            相对于识别结果（文字/图像）中心的偏移量，用于微调点击位置：
+            - x: 横向偏移（正值向右，负值向左）
+            - y: 纵向偏移（正值向下，负值向上）
+            示例：{"x": 100, "y": 0} 表示向右偏移 100 像素
           properties:
             x:
               type: integer
+              description: "横向偏移（像素）"
             y:
               type: integer
-          description: "点击偏移"
+              description: "纵向偏移（像素）"
         threshold:
           type: number
           default: 0.8
-          description: "图像匹配阈值"
+          description: "图像匹配阈值（0.0-1.0），仅用于 image_* 动作。值越高匹配越严格，默认 0.8"
         timeout:
           type: integer
-          default: 30000
-          description: "超时时间(ms)"
-        match_mode:
-          type: string
-          enum: [exact, fuzzy, contains, regex]
-          default: exact
-          description: "OCR 匹配模式"
-        screenshot:
-          type: boolean
-          default: false
-          description: "是否截图"
-        wait:
-          type: integer
-          description: "等待时间(ms)"
+          default: 5000
+          description: "超时时间（毫秒），用于等待类动作。默认 5000ms"
         x:
           type: integer
-          description: "X 坐标"
+          description: "X 坐标（像素），仅 click 和 input 动作必填"
         y:
           type: integer
-          description: "Y 坐标"
-        end_x:
+          description: "Y 坐标（像素），仅 click 和 input 动作必填"
+        from:
+          type: object
+          description: "滑动起始坐标，仅 swipe 动作必填"
+          properties:
+            x:
+              type: integer
+              description: "起始点 X 坐标"
+            y:
+              type: integer
+              description: "起始点 Y 坐标"
+        to:
+          type: object
+          description: "滑动结束坐标，仅 swipe 动作必填"
+          properties:
+            x:
+              type: integer
+              description: "结束点 X 坐标"
+            y:
+              type: integer
+              description: "结束点 Y 坐标"
+        duration:
           type: integer
-          description: "终点 X 坐标（滑动）"
-        end_y:
-          type: integer
-          description: "终点 Y 坐标（滑动）"
-        direction:
+          description: "滑动持续时间（毫秒），仅 swipe 动作可选，默认 500ms"
+        key:
           type: string
-          enum: [up, down, left, right]
-          description: "滑动方向"
-        app_path:
-          type: string
-          description: "应用路径"
-        bundle_id:
-          type: string
-          description: "iOS Bundle ID"
-        package_name:
-          type: string
-          description: "Android 包名"
+          description: |
+            按键名称，仅 press 动作必填。常用按键：
+            - 功能键: Enter、Escape、Tab、Backspace、Delete
+            - 方向键: ArrowUp、ArrowDown、ArrowLeft、ArrowRight
+            - 修饰键: Control、Alt、Shift、Meta
+            - 组合键示例: Control+A、Control+C、Alt+F4
+      example:
+        action_type: "ocr_click"
+        value: "登录"
+        offset:
+          x: 0
+          y: 10
+        timeout: 5000
 
     TaskResult:
       type: object
+      description: "任务执行结果。同步执行时不包含 task_id 字段"
       properties:
         task_id:
           type: string
-          description: "任务 ID"
+          description: "任务 ID（仅异步执行返回）"
         status:
           type: string
           enum: [pending, running, success, failed, timeout, cancelled]
@@ -464,16 +440,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ActionResult"
-        screenshots:
-          type: array
-          items:
-            $ref: "#/components/schemas/ScreenshotInfo"
         error:
           type: string
           description: "错误信息"
-        metadata:
-          type: object
-          description: "元数据"
+        error_screenshot:
+          type: string
+          description: "失败截图（base64 编码）"
 
     ActionResult:
       type: object
@@ -501,47 +473,97 @@ components:
           type: string
           description: "截图（base64 或路径）"
 
-    ScreenshotInfo:
-      type: object
-      properties:
-        name:
-          type: string
-          description: "截图名称"
-        action_index:
-          type: integer
-          description: "对应动作索引"
-        data:
-          type: string
-          description: "base64 数据"
-        path:
-          type: string
-          description: "文件路径"
+  # ==================== 动作类型详细示例 ====================
+  # 以下为各动作类型的完整传参示例，供调用方参考
 
-    SessionRequest:
-      type: object
-      required:
-        - platform
-      properties:
-        platform:
-          type: string
-          enum: [web, android, ios, windows, mac]
-          description: "平台"
-        device_id:
-          type: string
-          description: "设备 ID（移动端必填）"
-        options:
-          type: object
-          description: "会话选项"
+  # ---------- OCR 文字识别动作 ----------
+  # ocr_click - 点击识别到的文字
+  # 示例 1: 点击"登录"按钮
+  # {"action_type": "ocr_click", "value": "登录"}
+  # 示例 2: 点击"登录"按钮并向右偏移 100 像素（适用于文字右侧有按钮）
+  # {"action_type": "ocr_click", "value": "登录", "offset": {"x": 100, "y": 0}}
+  # 示例 3: 点击"登录"按钮并设置超时
+  # {"action_type": "ocr_click", "value": "登录", "timeout": 10000}
 
-    ScreenshotRequest:
-      type: object
-      required:
-        - platform
-        - session_id
-      properties:
-        platform:
-          type: string
-          description: "平台"
-        session_id:
-          type: string
-          description: "会话 ID"
+  # ocr_input - 在文字附近输入文本
+  # 示例: 在"用户名"标签右侧输入账号
+  # {"action_type": "ocr_input", "value": "用户名", "text": "admin", "offset": {"x": 80, "y": 0}}
+
+  # ocr_wait - 等待文字出现
+  # 示例: 等待"加载完成"出现，最多等 10 秒
+  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 10000}
+
+  # ocr_assert - 断言文字存在
+  # 示例: 断言"操作成功"文字存在
+  # {"action_type": "ocr_assert", "value": "操作成功", "timeout": 5000}
+
+  # ocr_get_text - 获取屏幕所有文字
+  # 示例: 获取当前屏幕文字内容
+  # {"action_type": "ocr_get_text", "value": ""}
+
+  # ---------- 图像识别动作 ----------
+  # image_click - 点击匹配的图像
+  # 示例: 点击 images/button.png 图像，匹配阈值 0.9
+  # {"action_type": "image_click", "value": "images/button.png", "threshold": 0.9}
+
+  # image_wait - 等待图像出现
+  # 示例: 等待 images/icon.png 出现，最多等 8 秒
+  # {"action_type": "image_wait", "value": "images/icon.png", "timeout": 8000, "threshold": 0.85}
+
+  # image_assert - 断言图像存在
+  # 示例: 断言 images/logo.png 存在
+  # {"action_type": "image_assert", "value": "images/logo.png", "threshold": 0.8}
+
+  # ---------- 坐标动作 ----------
+  # click - 点击指定坐标
+  # 示例: 点击屏幕坐标 (500, 300)
+  # {"action_type": "click", "x": 500, "y": 300}
+
+  # swipe - 滑动手势
+  # 示例 1: 从 (500, 1000) 滑动到 (500, 500)，耗时 500ms
+  # {"action_type": "swipe", "from": {"x": 500, "y": 1000}, "to": {"x": 500, "y": 500}, "duration": 500}
+  # 示例 2: 向左滑动（翻页）
+  # {"action_type": "swipe", "from": {"x": 800, "y": 500}, "to": {"x": 200, "y": 500}, "duration": 300}
+
+  # input - 在指定坐标输入文本
+  # 示例: 在 (300, 400) 位置输入 "hello world"
+  # {"action_type": "input", "x": 300, "y": 400, "text": "hello world"}
+
+  # ---------- 其他动作 ----------
+  # press - 按键操作
+  # 示例 1: 按回车键
+  # {"action_type": "press", "key": "Enter"}
+  # 示例 2: 按 Escape 键
+  # {"action_type": "press", "key": "Escape"}
+  # 示例 3: 按下箭头键
+  # {"action_type": "press", "key": "ArrowDown"}
+  # 示例 4: Ctrl+A 全选（组合键）
+  # {"action_type": "press", "key": "Control+A"}
+
+  # screenshot - 截图
+  # 示例: 截取当前屏幕，命名为 "result"
+  # {"action_type": "screenshot", "value": "result"}
+
+  # wait - 固定等待
+  # 示例: 等待 2 秒
+  # {"action_type": "wait", "value": "2000"}
+
+  # start_app - 启动应用/浏览器
+  # 示例 1 (Web): 启动 Chromium 浏览器
+  # {"action_type": "start_app", "value": "chromium"}
+  # 示例 2 (Web): 启动 Firefox 浏览器
+  # {"action_type": "start_app", "value": "firefox"}
+  # 示例 3 (Android): 启动应用
+  # {"action_type": "start_app", "value": "com.example.app"}
+  # 示例 4 (iOS): 启动应用
+  # {"action_type": "start_app", "value": "com.example.app"}
+
+  # stop_app - 关闭应用/浏览器
+  # 示例 1: 关闭当前应用/浏览器
+  # {"action_type": "stop_app"}
+  # 示例 2 (Android): 关闭指定应用
+  # {"action_type": "stop_app", "value": "com.example.app"}
+
+  # navigate - 跳转 URL（仅 Web 平台）
+  # 示例: 跳转到示例网站
+  # {"action_type": "navigate", "value": "https://example.com"}
