@@ -1,94 +1,189 @@
 """
 全局 pytest 配置。
 
-提供所有端共用的 fixtures 和 hooks。
+提供用户资源管理、hooks 执行、失败截图、报告生成等功能。
 """
 
-from typing import Dict
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any
 
 import pytest
 
-from common.data_factory import DataFactory
-from common.user_manager import UserManager, UserManagerError, UserResource
+from common.config_loader import ConfigLoader
+from common.user_manager import UserManager
+from common.user import User
+from common.hooks_resolver import HooksResolver
+from common.keepalive import KeepAliveManager
+from common.report_logger import ReportLogger
+from common.report_generator import HTMLReportGenerator
 
 
-@pytest.fixture(scope="session")
-def config():
-    """全局配置。
+# ── 全局配置 ─────────────────────────────────────────
 
-    Returns:
-        配置字典。
-    """
-    return {
-        "testagent_url": "http://localhost:8080",
-        "timeout": 30,
-        "retry_count": 3,
-        "screenshot_dir": "screenshots",
-    }
+_config = None
+_keepalive_managers: Dict[str, KeepAliveManager] = {}
 
 
-@pytest.fixture(scope="session")
-def data_factory() -> DataFactory:
-    """数据工厂 fixture。
-
-    Returns:
-        DataFactory 实例。
-    """
-    return DataFactory()
+def get_config() -> Dict[str, Any]:
+    """获取全局配置（单例）。"""
+    global _config
+    if _config is None:
+        _config = ConfigLoader().load()
+    return _config
 
 
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    """测试失败时截图（需要各端 conftest 配合实现）。"""
-    outcome = yield
-    report = outcome.get_result()
-
-    if report.when == "call" and report.failed:
-        # 调用各端的失败处理 hook
-        if hasattr(item, "funcargs"):
-            for name, value in item.funcargs.items():
-                if hasattr(value, "screenshot"):
-                    try:
-                        value.screenshot(f"failure_{item.name}")
-                    except Exception:
-                        pass
-
+# ── 标记注册 ─────────────────────────────────────────
 
 def pytest_configure(config):
     """注册自定义标记。"""
     config.addinivalue_line(
         "markers", "users: 用户资源需求标记，如 @pytest.mark.users({'userA': 'web'})"
     )
+    config.addinivalue_line(
+        "markers", "hooks: 用例级别 hooks 标记，如 @pytest.mark.hooks(setup=['+login'])"
+    )
 
+
+# ── 用户资源 Fixture ─────────────────────────────────
 
 @pytest.fixture(scope="function")
-def users(request) -> Dict[str, UserResource]:
+def users(request) -> Dict[str, User]:
     """用户资源 fixture。
 
-    自动申请和释放用户资源，用例级别生命周期。
-
-    用法:
-        在测试类上声明: @pytest.mark.users({"userA": "web"})
+    自动申请用户资源、执行 hooks、启动保活、生成报告。
 
     Returns:
-        用户资源字典，key 为 userA/userB，value 为 UserResource 实例。
-
-    Raises:
-        UserManagerError: 资源申请失败时抛出。
+        用户资源字典，key 为 userA/userB，value 为 User 实例。
     """
-    # 获取 users 标记
     marker = request.node.get_closest_marker("users")
     if not marker:
         return {}
 
     users_requirement = marker.args[0] if marker.args else marker.kwargs
+    if not users_requirement:
+        return {}
 
-    # 加载配置并申请资源
-    from common.config_loader import ConfigLoader
+    # 重置日志收集器
+    ReportLogger.reset()
+    logger = ReportLogger.get_current()
+    logger.log_step("用例开始")
 
-    config = ConfigLoader().load()
+    config = get_config()
+    raw_resources: Dict[str, Any] = {}
+    user_instances: Dict[str, User] = {}
 
     with UserManager(config) as manager:
         resources = manager.apply(users_requirement)
-        yield resources
-        # 退出 context manager 时自动释放
+        raw_resources = manager.get_raw_resources()
+
+        # 创建 User 实例
+        for user_id, resource in resources.items():
+            user = User(
+                user_id=user_id,
+                platform=resource.platform,
+                ip=resource.ip,
+                port=getattr(resource, 'port', 8080),  # 兼容旧数据
+                account=resource.account,
+                password=resource.password,
+                **resource.extra
+            )
+            user_instances[user_id] = user
+
+        # 启动保活（远程模式）
+        rm_config = config.get("resource_manager", {})
+        base_url = rm_config.get("base_url", "")
+        if base_url:
+            for user_id, user in user_instances.items():
+                keepalive = KeepAliveManager(base_url, rm_config.get("timeout", 30))
+                keepalive.start({user_id: raw_resources.get(user_id, {})})
+                _keepalive_managers[user_id] = keepalive
+
+        # 执行 setup hooks
+        hooks_config = config.get("hooks", {})
+        case_hooks = _get_case_hooks(request.node)
+
+        for user_id, user in user_instances.items():
+            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
+            _execute_hooks(user, final_hooks.get("setup", []))
+
+        logger.log_step("初始化完成")
+
+        yield user_instances
+
+        # 执行 teardown hooks
+        for user_id, user in user_instances.items():
+            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
+            _execute_hooks(user, final_hooks.get("teardown", []))
+
+        # 停止保活
+        for user_id, keepalive in _keepalive_managers.items():
+            keepalive.stop()
+        _keepalive_managers.clear()
+
+        logger.log_step("用例结束")
+
+
+# ── 报告生成 Hook ─────────────────────────────────
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """测试结束后生成报告。"""
+    outcome = yield
+    report = outcome.get_result()
+
+    if report.when == "call":
+        logger = ReportLogger.get_current()
+
+        # 失败时截图
+        if report.failed and "users" in item.funcargs:
+            users = item.funcargs["users"]
+            for user_id, user in users.items():
+                try:
+                    base64_data = user.screenshot()
+                    if base64_data:
+                        logger.log_screenshot(user_id, base64_data)
+                except Exception:
+                    pass
+
+            # 记录错误
+            logger.log_error(str(report.longrepr))
+
+        # 生成报告
+        today = datetime.now().strftime("%Y_%m_%d")
+        report_dir = Path("report") / today
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_path = report_dir / f"{item.name}.html"
+
+        HTMLReportGenerator.generate(
+            report_path=report_path,
+            case_name=item.name,
+            case_title=item.instance.__doc__ or "" if item.instance else "",
+            logs=logger.get_logs(),
+            duration_ms=logger.get_duration(),
+            status="passed" if report.passed else "failed",
+            error_msg=str(report.longrepr) if report.failed else ""
+        )
+
+
+# ── 辅助函数 ─────────────────────────────────────────
+
+def _get_case_hooks(node) -> Dict[str, Any]:
+    """获取用例级别的 hooks 标记。"""
+    marker = node.get_closest_marker("hooks")
+    if not marker:
+        return {}
+    return marker.args[0] if marker.args else marker.kwargs
+
+
+def _execute_hooks(user: User, hooks: list) -> None:
+    """执行 hooks 方法。"""
+    logger = ReportLogger.get_current()
+    for hook_name in hooks:
+        method_name = f"do_{hook_name}"
+        if hasattr(user, method_name):
+            try:
+                logger.log_step(f"执行 hook: {hook_name}")
+                getattr(user, method_name)()
+            except Exception as e:
+                logger.log_error(f"Hook 执行失败 [{hook_name}]: {e}")

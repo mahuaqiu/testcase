@@ -8,19 +8,36 @@ resource_manager:
   # 本地调试模式：预设用户资源（当 base_url 为空时生效）
   mock_users:
     userA:
-      account: "test_user_a"
-      password: "Password@123"
-      ip: "127.0.0.1"
-      type: "normal"
+      ip: "192.168.0.102"
+      port: 8080
+      account: "15158009950"
+      password: "majiayang123"
     userB:
+      ip: "192.168.0.103"
+      port: 8080
       account: "test_user_b"
       password: "Password@456"
-      ip: "127.0.0.1"
-      type: "normal"
+
+# 平台默认 hooks 配置
+hooks:
+  windows:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  web:
+    setup: []
+    teardown: []
+  ios:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  android:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  mac:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
 
 # testagent 服务配置
 testagent:
-  base_url: "http://localhost:8080"
   timeout: 300
 
 # 测试配置
