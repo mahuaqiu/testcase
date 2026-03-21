@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from common.config_loader import ConfigLoader
+from common.keepalive import KeepAliveManager
 
 
 @dataclass
@@ -68,6 +69,8 @@ class UserManager:
         self.config = config or ConfigLoader().load()
         self._resources: Dict[str, UserResource] = {}
         self._session = requests.Session()
+        self._raw_resources: Dict[str, Any] = {}  # 存储原始响应
+        self._keepalive: Optional[KeepAliveManager] = None
 
         rm_config = self.config.get("resource_manager", {})
         self._base_url = rm_config.get("base_url", "").rstrip("/")
@@ -101,7 +104,14 @@ class UserManager:
             return self._apply_mock(users)
 
         # 远程模式：调用 API
-        return self._apply_remote(users)
+        result = self._apply_remote(users)
+
+        # 启动保活
+        if self._base_url and self._raw_resources:
+            self._keepalive = KeepAliveManager(self._base_url, self._timeout)
+            self._keepalive.start(self._raw_resources)
+
+        return result
 
     def _apply_mock(self, users: Dict[str, str]) -> Dict[str, UserResource]:
         """本地调试模式：使用 mock_users 配置。
@@ -157,6 +167,9 @@ class UserManager:
         except requests.RequestException as e:
             raise UserManagerError(f"申请用户资源失败: {e}") from e
 
+        # 保存原始响应（用于 keepalive 和 release）
+        self._raw_resources = data
+
         # 解析响应
         for user_id, user_data in data.items():
             self._resources[user_id] = UserResource(
@@ -176,6 +189,11 @@ class UserManager:
 
         调用外部 API 释放资源。释放失败不会抛出异常，但会记录日志。
         """
+        # 先停止保活
+        if self._keepalive:
+            self._keepalive.stop()
+            self._keepalive = None
+
         if not self._resources or not self._base_url:
             return
 
@@ -189,6 +207,7 @@ class UserManager:
             pass
         finally:
             self._resources.clear()
+            self._raw_resources.clear()
 
     def get_user(self, user_id: str) -> UserResource:
         """获取指定用户的资源信息。
@@ -260,6 +279,14 @@ class UserManager:
             存在返回 True，否则返回 False。
         """
         return user_id in self._resources
+
+    def get_raw_resources(self) -> Dict[str, Any]:
+        """获取原始资源响应（用于 keepalive 和 release）。
+
+        Returns:
+            原始响应字典。
+        """
+        return self._raw_resources.copy()
 
     @property
     def resources(self) -> Dict[str, UserResource]:
