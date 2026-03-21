@@ -6,11 +6,10 @@
 
 from typing import Optional
 
-from common.testagent_client import TestagentClient
-from common.user_manager import UserResource
+from aw.base_aw import BaseAW
 
 
-class LoginAW:
+class LoginAW(BaseAW):
     """登录业务操作封装。
 
     封装华为云会议 Web 端登录流程，通过 OCR 识别和操作完成登录。
@@ -22,12 +21,6 @@ class LoginAW:
 
     PLATFORM = "web"
 
-    def __init__(
-        self, client: TestagentClient, user: Optional[UserResource] = None
-    ):
-        self.client = client
-        self.user = user
-
     # ── 业务流程方法 ─────────────────────────────────────────
 
     def do_navigate_to_login(self, url: str) -> None:
@@ -38,7 +31,7 @@ class LoginAW:
         Args:
             url: 登录页面 URL。
         """
-        self.client.navigate(self.PLATFORM, url)
+        self.navigate(url)
 
     def do_login(
         self,
@@ -66,18 +59,18 @@ class LoginAW:
             raise ValueError("未提供账号密码，且无用户资源")
 
         # 使用 OCR 识别并输入账号
-        self.client.ocr_input(self.PLATFORM, account, offset={"x": 100, "y": 0})
+        self.ocr_input(account, account, offset={"x": 100, "y": 0})
         # 使用 OCR 识别并输入密码
-        self.client.ocr_input(self.PLATFORM, pwd, offset={"x": 100, "y": 0})
+        self.ocr_input("密码", pwd, offset={"x": 100, "y": 0})
         # 点击登录按钮
-        self.client.ocr_click(self.PLATFORM, "登录")
+        self.ocr_click("登录")
 
     def do_accept_privacy(self) -> None:
         """接受隐私政策。
 
         步骤: 点击同意/接受按钮。
         """
-        self.client.ocr_click(self.PLATFORM, "同意")
+        self.ocr_click("同意")
 
     # ── 断言方法 ─────────────────────────────────────────────
 
@@ -86,7 +79,7 @@ class LoginAW:
 
         验证登录成功后页面显示"会议"文字。
         """
-        result = self.client.ocr_wait(self.PLATFORM, "会议", timeout=10000)
+        result = self.ocr_wait("会议", timeout=10000)
         assert self.client.is_success(result), "登录失败：未检测到会议页面"
 
     def should_show_error(self, error_msg: str) -> None:
@@ -95,7 +88,5 @@ class LoginAW:
         Args:
             error_msg: 期望的错误信息。
         """
-        result = self.client.ocr_wait(
-            self.PLATFORM, error_msg, timeout=5000, match_mode="contains"
-        )
+        result = self.ocr_wait(error_msg, timeout=5000)
         assert self.client.is_success(result), f"未显示错误提示: {error_msg}"
