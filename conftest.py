@@ -150,8 +150,8 @@ def pytest_runtest_makereport(item, call):
             logger.log_error(str(report.longrepr))
 
         # 生成报告
-        today = datetime.now().strftime("%Y_%m_%d")
-        report_dir = Path("report") / today
+        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        report_dir = Path("report") / timestamp
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{item.name}.html"
 
