@@ -20,7 +20,7 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 ### 第 1 步：读取项目规范
 
 读取 `AGENTS.md` 文件，了解：
-- 两层架构（AW 层 + testcase 层）
+- 两层架构（AW 层 + testcases 层）
 - 命名规范（文件、类、方法）
 - 断言规范
 
@@ -28,13 +28,13 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 根据结构化步骤中的 "测试端" 字段，确定要操作的目录：
 
-| 测试端 | AW 目录 | testcase 目录 |
-|--------|---------|---------------|
-| Windows | `windows/aw/` | `windows/testcase/` |
-| Web | `web/aw/` | `web/testcase/` |
-| Mac | `mac/aw/` | `mac/testcase/` |
-| iOS | `ios/aw/` | `ios/testcase/` |
-| Android | `android/aw/` | `android/testcase/` |
+| 测试端 | AW 目录 | testcases 目录 |
+|--------|---------|----------------|
+| Windows | `aw/windows/` | `testcases/windows/` |
+| Web | `aw/web/` | `testcases/web/` |
+| Mac | `aw/mac/` | `testcases/mac/` |
+| iOS | `aw/ios/` | `testcases/ios/` |
+| Android | `aw/android/` | `testcases/android/` |
 
 ### 第 3 步：扫描已有代码资源
 
@@ -42,16 +42,18 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 #### 3.1 扫描 AW 层
 
-搜索对应端 `aw/` 目录下所有 `*_aw.py` 文件，**读取每个文件**，记录：
-- 类名
+搜索对应端 `aw/{平台}/` 目录下所有 `*_aw.py` 文件，**读取每个文件**，记录：
+- 类名（继承自 BaseAW）
 - 所有 `do_*` 业务方法名和 docstring
 - 所有 `should_*` 断言方法名和 docstring
 - PLATFORM 常量
 
+同时扫描 `aw/common/` 目录下的公共 AW。
+
 输出清单格式：
 ```
 已有 AW:
-  - LoginAW (web/aw/login_aw.py)
+  - LoginAW (aw/web/login_aw.py)
     - 业务方法: do_login(username, password), do_logout()
     - 断言方法: should_login_success(), should_show_error(msg)
     - 平台: web
@@ -59,19 +61,17 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 #### 3.2 扫描公共库
 
-读取 `common/__init__.py` 和各模块文件，记录可用的：
+读取 `common/` 目录下的模块文件，记录可用的：
 - TestagentClient 方法
 - 断言函数（assertions.py）
 - 数据工厂方法（data_factory.py）
 - 工具函数（utils.py）
-- 用户资源管理器（user_manager.py）
-- 配置加载器（config_loader.py）
+- User 类（user.py）
 
 #### 3.3 扫描已有测试用例
 
-搜索对应端 `testcase/` 目录下所有 `test_*.py` 文件，记录：
+搜索对应端 `testcases/{平台}/` 目录下所有 `test_*.py` 文件，记录：
 - 文件名和测试类名
-- import 风格
 - 已有的测试文件名（避免命名冲突）
 
 ### 第 4 步：匹配分析
@@ -92,7 +92,7 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 **场景 3：需要新建 AW 类**
 - 示例：用例涉及"订单"流程，但没有 `OrderAW`
-- 标记：`新建: OrderAW ({端}/aw/order_aw.py)`
+- 标记：`新建: OrderAW (aw/{端}/order_aw.py)`
 
 #### 4.2 断言方法匹配
 
@@ -115,12 +115,13 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 **多用户场景**：
 - 用例涉及多个终端（如跨平台通话、多人协作等）
 - 标记：`用户资源: userA -> {端}, userB -> {端}`
+- 文件放在 `testcases/integration/` 目录
 
 **输出格式**：
 ```
 用户资源需求:
   - TC-001: userA -> web
-  - TC-002: userA -> web, userB -> windows
+  - TC-002: userA -> web, userB -> windows (集成测试)
 ```
 
 ### 第 5 步：输出代码生成计划
@@ -142,8 +143,9 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 ### 2. 需要新建的 AW 文件
 
-#### 2.1 新建 {端}/aw/order_aw.py
+#### 2.1 新建 aw/{端}/order_aw.py
 - 类名: OrderAW
+- 继承: BaseAW
 - PLATFORM: {端}
 - 需要的业务方法:
   - do_create_order(product_name, quantity) — 创建订单
@@ -154,7 +156,7 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 
 ### 3. 需要扩展的 AW 文件
 
-#### 3.1 扩展 {端}/aw/login_aw.py
+#### 3.1 扩展 aw/{端}/login_aw.py
 - 在 LoginAW 中新增方法:
   - do_login_with_captcha(username, password, captcha) — 验证码登录
   - should_show_captcha_error(msg) — 断言验证码错误
@@ -164,11 +166,11 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 **核心原则**：
 - 一个测试文件 = 一条测试用例
 - 测试用例使用 `@pytest.mark.users()` 标记声明用户需求
-- 测试方法通过 `users` 参数获取用户资源
+- 测试方法直接通过 User 实例调用 AW 方法
 
 为每条用例规划一个独立的测试文件：
 
-#### 4.1 文件: {端}/testcase/test_login_success.py
+#### 4.1 文件: testcases/{端}/test_login_success.py
 - 操作: 新建文件
 - 测试类: TestLoginSuccess
 - 对应用例: TC-001
@@ -176,13 +178,13 @@ description: "代码库分析与生成计划。接收结构化测试步骤，搜
 - 用户资源: userA -> web
 - 使用的 AW: LoginAW
 
-#### 4.2 文件: {端}/testcase/test_login_wrong_password.py
-- 操作: 新建文件
-- 测试类: TestLoginWrongPassword
+#### 4.2 文件: testcases/integration/test_cross_platform_call.py
+- 操作: 新建文件（多端集成测试）
+- 测试类: TestCrossPlatformCall
 - 对应用例: TC-002
-- pytest 标记: @pytest.mark.users({"userA": "web"})
-- 用户资源: userA -> web
-- 使用的 AW: LoginAW
+- pytest 标记: @pytest.mark.users({"userA": "web", "userB": "windows"})
+- 用户资源: userA -> web, userB -> windows
+- 使用的 AW: CallAW (web), CallAW (windows)
 
 **文件命名规则**：
 - 正常流程: `test_{功能}_success.py`
@@ -203,4 +205,4 @@ testcase-coder 应按以下顺序生成代码：
 2. **标注所有依赖**：每条用例用到哪些 AW
 3. **一个文件一条用例**：每条用例对应一个独立的测试文件
 4. **避免命名冲突**：检查已有的测试文件名，新文件不能重名
-5. **给出执行顺序**：先 AW 层后 testcase 层
+5. **给出执行顺序**：先 AW 层后 testcases 层

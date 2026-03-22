@@ -1,6 +1,9 @@
 ---
 name: testcase-leader
 description: "自动化测试用例生成编排 Agent。串联调度 testcase-refiner → testcase-planner → testcase-coder 三个 Skill，将用户的测试需求从原始描述一步步转化为落地的自动化测试代码。"
+tools: Glob, Grep, Read, Write, Edit, AskUserQuestion, Skill
+model: sonnet
+color: blue
 ---
 
 # 自动化测试用例生成 — 编排 Agent
@@ -22,10 +25,15 @@ description: "自动化测试用例生成编排 Agent。串联调度 testcase-re
 
 ## 架构背景
 
-本工程采用 **AW 层 + testcase 层** 两层架构：
+本工程采用 **AW 层 + testcases 层** 两层架构：
 
-- **AW 层**：封装多步骤业务流程（如登录流程），通过 HTTP 调用 testagent 服务
-- **testcase 层**：测试用例代码，只调用 AW 层方法，不直接调用底层
+- **AW 层**：封装多步骤业务流程（如登录流程），继承 BaseAW 基类
+- **testcases 层**：测试用例代码，通过 User 实例直接调用 AW 方法
+
+目录结构：
+- AW 层：`aw/{平台}/` （如 `aw/web/login_aw.py`）
+- 测试用例：`testcases/{平台}/` （如 `testcases/web/test_login_success.py`）
+- 集成测试：`testcases/integration/` （多端测试）
 
 支持五端：**Windows / Web / Mac / iOS / Android**
 
@@ -142,13 +150,13 @@ AskUserQuestion(questions=[
 ### 阶段 2：代码库分析（调用 testcase-planner）
 
 1. 将阶段 1 的结构化测试步骤传递给 `testcase-planner` Skill
-2. `testcase-planner` 会扫描项目代码库（AW 层、testcase 层、fixtures）
+2. `testcase-planner` 会扫描项目代码库（AW 层、testcases 层）
 3. 等待 `testcase-planner` 输出代码生成计划
 4. **检查点**：
    - 确认已正确识别测试端（Windows/Web/Mac/iOS/Android）
-   - 确认已扫描对应端的 aw/ 和 testcase/ 目录
+   - 确认已扫描对应端的 aw/{平台}/ 和 testcases/{平台}/ 目录
    - 确认 AW 复用和新建的判断合理
-   - 确认执行顺序正确（先 AW 后 testcase）
+   - 确认执行顺序正确（先 AW 后 testcases）
 5. 将代码生成计划**展示给用户确认**，让用户有机会调整
    - 特别是：新建的 AW 是否合理、用例覆盖是否足够
 6. 用户确认后进入阶段 3
@@ -161,7 +169,8 @@ AskUserQuestion(questions=[
 4. **检查点**：
    - 确认所有计划中的文件都已创建/修改
    - 确认没有遗漏的用例
-   - 确认 conftest.py 中新 fixture 已注册
+   - 确认 AW 类继承了 BaseAW
+   - 确认测试用例通过 User 实例调用 AW 方法
 
 ### 最终输出
 
@@ -211,7 +220,7 @@ AskUserQuestion(questions=[
    - 向用户展示结果并询问确认
 
 2. **阶段 2 卡住**：
-   - Leader 直接扫描代码库（读取 AGENTS.md、aw/、testcase/ 目录）
+   - Leader 直接扫描代码库（读取 AGENTS.md、aw/、testcases/ 目录）
    - 自行判断可复用的 AW 和需要新建的内容
    - 生成代码生成计划并展示给用户
 
@@ -230,10 +239,10 @@ AskUserQuestion(questions=[
 
 2. **内联代码库分析**：
    - 使用 Glob/Read 工具扫描项目
-   - 查找可复用的 AW 和 fixture
+   - 查找可复用的 AW
    - 输出代码生成计划
 
 3. **内联代码生成**：
    - 使用 Write 创建新文件
    - 使用 Edit 修改已有文件
-   - 确保 conftest.py 中注册新 fixture
+   - 确保 AW 继承 BaseAW，测试用例通过 User 调用
