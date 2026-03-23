@@ -45,13 +45,13 @@ class ConfigLoader:
         if self._loaded:
             return self._config
 
-        # 1. 加载基础配置
-        base_path = Path(config_path)
+        # 1. 加载基础配置（使用项目根目录的绝对路径）
+        base_path = Path(__file__).parent.parent / config_path
         if base_path.exists():
             self._config = self._load_yaml(base_path)
 
-        # 2. 加载本地配置覆盖
-        local_path = Path("config.local.yaml")
+        # 2. 加载本地配置覆盖（使用项目根目录的绝对路径）
+        local_path = Path(__file__).parent.parent / "config.local.yaml"
         if local_path.exists():
             local_config = self._load_yaml(local_path)
             self._deep_merge(self._config, local_config)

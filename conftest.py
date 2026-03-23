@@ -83,7 +83,7 @@ def users(request) -> Dict[str, User]:
                 user_id=user_id,
                 platform=resource.platform,
                 ip=resource.ip,
-                port=getattr(resource, 'port', 8080),  # 兼容旧数据
+                port=resource.port,
                 account=resource.account,
                 password=resource.password,
                 **resource.extra

@@ -22,6 +22,7 @@ class UserResource:
         user_id: 用户标识，如 userA、userB。
         platform: 平台类型，如 web、windows、mac、ios、android。
         ip: 机器 IP 地址。
+        port: Worker 端口。
         account: 登录账号。
         password: 登录密码。
         user_type: 用户类型，如 normal、admin。
@@ -31,6 +32,7 @@ class UserResource:
     user_id: str
     platform: str
     ip: str
+    port: int
     account: str
     password: str
     user_type: str = "normal"
@@ -137,6 +139,7 @@ class UserManager:
                 user_id=user_id,
                 platform=platform,
                 ip=mock_data.get("ip", "127.0.0.1"),
+                port=mock_data.get("port", 8080),
                 account=mock_data.get("account", ""),
                 password=mock_data.get("password", ""),
                 user_type=mock_data.get("type", "normal"),
@@ -176,6 +179,7 @@ class UserManager:
                 user_id=user_id,
                 platform=user_data.get("platform", users.get(user_id, "")),
                 ip=user_data.get("ip", ""),
+                port=user_data.get("port", 8080),
                 account=user_data.get("account", ""),
                 password=user_data.get("password", ""),
                 user_type=user_data.get("type", "normal"),
