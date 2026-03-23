@@ -12,24 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 安装依赖
 pip install -r requirements.txt
 
-# 运行所有测试
-pytest
-
-# 运行指定平台测试
-pytest -m windows
-pytest -m web
-pytest -m android
-pytest -m ios
-pytest -m mac
-
 # 运行单个测试文件
 pytest web/testcase/test_login_success.py
-
-# 运行冒烟测试
-pytest -m smoke
-
-# 并行执行
-pytest -n 4
 ```
 
 ## 架构：两层结构
