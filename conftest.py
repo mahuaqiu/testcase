@@ -67,7 +67,6 @@ def users(request) -> Dict[str, User]:
     # 重置日志收集器
     ReportLogger.reset()
     logger = ReportLogger.get_current()
-    logger.log_step("用例开始")
 
     config = get_config()
     raw_resources: Dict[str, Any] = {}
@@ -106,8 +105,6 @@ def users(request) -> Dict[str, User]:
         for user_id, user in user_instances.items():
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
             _execute_hooks(user, final_hooks.get("setup", []))
-
-        logger.log_step("初始化完成")
 
         yield user_instances
 
