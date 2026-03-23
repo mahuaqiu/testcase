@@ -9,40 +9,39 @@
 ### 1.1 整体架构
 
 ```
-testcase/
-├── common/                    # 公共模块
-│   ├── testagent_client.py   # testagent HTTP 客户端
-│   ├── assertions.py         # 断言函数
-│   ├── data_factory.py       # 测试数据工厂
-│   ├── config_loader.py      # 配置加载器
-│   ├── user_manager.py       # 用户资源管理器
-│   ├── user.py               # User 类（代理转发 AW）
-│   ├── keepalive.py          # 保活线程管理器
-│   ├── hooks_resolver.py     # Hooks 解析器
-│   ├── report_logger.py      # 报告日志收集器
-│   ├── report_generator.py   # HTML 报告生成器
-│   └── utils.py              # 工具函数
-│
-├── aw/                        # AW 业务封装层
-│   ├── base_aw.py            # AW 基类
-│   ├── common/               # 公共 AW（各平台通用）
-│   ├── windows/              # Windows 端 AW
-│   ├── web/                  # Web 端 AW
-│   ├── ios/                  # iOS 端 AW
-│   ├── android/              # Android 端 AW
-│   └── mac/                  # Mac 端 AW
-│
-├── testcases/                 # 测试用例层
-│   ├── windows/              # Windows 端测试用例
-│   ├── web/                  # Web 端测试用例
-│   ├── ios/                  # iOS 端测试用例
-│   ├── android/              # Android 端测试用例
-│   ├── mac/                  # Mac 端测试用例
-│   └── integration/          # 多端集成测试
-│
-├── report/                    # 测试报告目录
-├── conftest.py                # pytest 配置与 fixtures
-└── config.yaml                # 配置文件
+testcases/                    # 测试用例目录
+├── {平台}/                   # windows/web/mac/ios/android
+│   └── {业务模块}/           # 如 login, meeting, share 等
+│       └── test_*.py        # 测试用例文件
+└── integration/              # 跨平台集成测试
+
+aw/                          # AW 业务封装层
+├── base_aw.py               # AW 基类
+├── common/                  # 公共 AW（各平台通用）
+│   └── check_aw.py
+├── windows/                 # Windows 端 AW
+├── web/                     # Web 端 AW
+│   └── login_aw.py
+├── ios/                     # iOS 端 AW
+├── android/                 # Android 端 AW
+└── mac/                     # Mac 端 AW
+
+common/                      # 公共模块
+├── testagent_client.py      # testagent HTTP 客户端
+├── assertions.py            # 断言函数
+├── data_factory.py          # 测试数据工厂
+├── config_loader.py         # 配置加载器
+├── user_manager.py          # 用户资源管理器
+├── user.py                  # User 类（代理转发 AW）
+├── keepalive.py             # 保活线程管理器
+├── hooks_resolver.py        # Hooks 解析器
+├── report_logger.py         # 报告日志收集器
+├── report_generator.py      # HTML 报告生成器
+└── utils.py                 # 工具函数
+
+report/                      # 测试报告目录
+conftest.py                  # pytest 配置与 fixtures
+config.yaml                  # 配置文件
 ```
 
 ### 1.2 两层架构
@@ -271,32 +270,47 @@ assert actual == expected
 
 ## 六、目录结构规范
 
-### 6.1 按功能划分文件
+### 6.1 按业务模块划分
+
+测试用例按业务模块组织，每个平台下有子目录：
 
 ```
-web/
-├── aw/
-│   ├── login_aw.py        # 登录业务
-│   ├── order_aw.py        # 订单业务
-│   └── user_aw.py         # 用户管理业务
-└── testcase/
-    ├── test_login_success.py         # 登录成功用例
-    ├── test_login_wrong_password.py  # 密码错误用例
-    └── test_order_create_success.py  # 创建订单用例
+testcases/
+├── web/
+│   ├── login/                        # 登录业务模块
+│   │   ├── test_login_success.py
+│   │   └── test_login_wrong_password.py
+│   └── meeting/                      # 会议业务模块
+│       └── test_meeting_create.py
+├── windows/
+│   ├── login/
+│   └── meeting/
+└── integration/                      # 跨平台集成测试
+    └── test_cross_platform_call.py
+
+aw/
+├── web/
+│   ├── login_aw.py                   # 登录业务 AW
+│   └── meeting_aw.py                 # 会议业务 AW
+└── windows/
+    ├── login_aw.py
+    └── meeting_aw.py
 ```
 
-### 6.2 避免过深的目录层级
+### 6.2 目录层级规范
 
-测试用例文件按功能模块划分，但 **不超过两级目录**：
+- **testcases 层**：`testcases/{平台}/{业务模块}/test_*.py`
+- **aw 层**：`aw/{平台}/{业务名}_aw.py`
 
 ```
 # 推荐
-web/testcase/test_login_success.py
-web/testcase/test_order_create_success.py
+testcases/web/login/test_login_success.py
+testcases/web/meeting/test_meeting_create.py
+aw/web/login_aw.py
 
 # 不推荐（层级过深）
-web/testcase/user/test_login.py
-web/testcase/order/create/test_create_order.py
+testcases/web/user/auth/login/test_login.py
+aw/web/user/login_aw.py
 ```
 
 ---
