@@ -13,21 +13,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 pip install -r requirements.txt
 
 # 运行单个测试文件
-pytest web/testcase/test_login_success.py
+pytest testcases/web/login/test_weblogin_001.py
 ```
 
 ## 架构：两层结构
 
 ```
-testcase/
-├── common/              # 公共模块
-│   ├── testagent_client.py   # testagent HTTP 客户端
-│   ├── assertions.py         # 断言函数
-│   └── utils.py              # 工具函数
-├── {平台}/               # windows/web/mac/ios/android
-│   ├── aw/              # 业务操作封装层
-│   └── testcase/        # 测试用例
-└── config.yaml          # 配置文件
+testcases/                    # 测试用例目录
+├── {平台}/                   # windows/web/mac/ios/android
+│   └── {业务模块}/           # 如 login, meeting, share 等
+│       └── test_*.py        # 测试用例文件
+└── integration/              # 跨平台集成测试
+
+aw/                          # 业务操作封装层
+├── common/                  # 公共 AW
+└── {平台}/                   # windows/web/mac/ios/android
+    └── {业务模块}_aw.py      # 如 login_aw.py
+
+common/                      # 公共模块
+├── testagent_client.py      # testagent HTTP 客户端
+├── assertions.py            # 断言函数
+└── utils.py                 # 工具函数
+
+config.yaml                  # 配置文件
 ```
 
 **核心原则**：
