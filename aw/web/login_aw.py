@@ -3,7 +3,7 @@
 
 封装华为云会议登录相关流程，包括导航到登录页、执行登录、同意隐私政策等操作。
 """
-
+import time
 from typing import Optional
 
 from aw.base_aw import BaseAW
@@ -64,6 +64,8 @@ class LoginAW(BaseAW):
         self.ocr_input("密码", pwd, offset={"x": 100, "y": 0})
         # 点击登录按钮
         self.ocr_click("登录")
+        time.sleep(0.5)
+        self.do_accept_privacy()
 
     def do_accept_privacy(self) -> None:
         """接受隐私政策。
@@ -78,15 +80,16 @@ class LoginAW(BaseAW):
         """断言登录成功。
 
         验证登录成功后页面显示"会议"文字。
+        失败时会自动抛出 AWError。
         """
-        result = self.ocr_wait("会议", timeout=10000)
-        assert self.client.is_success(result), "登录失败：未检测到会议页面"
+        self.ocr_wait("会议", timeout=10000)
 
     def should_show_error(self, error_msg: str) -> None:
         """断言显示错误提示。
 
         Args:
             error_msg: 期望的错误信息。
+
+        失败时会自动抛出 AWError。
         """
-        result = self.ocr_wait(error_msg, timeout=5000)
-        assert self.client.is_success(result), f"未显示错误提示: {error_msg}"
+        self.ocr_wait(error_msg, timeout=5000)

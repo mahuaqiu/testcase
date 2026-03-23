@@ -17,5 +17,4 @@ class TestLoginSuccess:
 
         user.do_navigate_to_login("https://meeting.huaweicloud.com/#/login")
         user.do_login()
-        user.do_accept_privacy()
         user.should_login_success()
