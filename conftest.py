@@ -178,13 +178,29 @@ def _get_case_hooks(node) -> Dict[str, Any]:
 
 
 def _execute_hooks(user: User, hooks: list) -> None:
-    """执行 hooks 方法。"""
+    """执行 hooks 方法。
+
+    支持两种格式：
+    - 字符串: "start_app" - 使用默认参数
+    - 字典: {"start_app": "edge"} - 传入参数
+    """
     logger = ReportLogger.get_current()
-    for hook_name in hooks:
+    for hook_item in hooks:
+        # 解析 hook 名称和参数
+        if isinstance(hook_item, dict):
+            hook_name, hook_arg = next(iter(hook_item.items()))
+        else:
+            hook_name = hook_item
+            hook_arg = None
+
         method_name = f"do_{hook_name}"
         if hasattr(user, method_name):
             try:
-                logger.log_step(f"执行 hook: {hook_name}")
-                getattr(user, method_name)()
+                logger.log_step(f"执行 hook: {hook_name}" + (f"({hook_arg})" if hook_arg else ""))
+                method = getattr(user, method_name)
+                if hook_arg is not None:
+                    method(hook_arg)
+                else:
+                    method()
             except Exception as e:
                 logger.log_error(f"Hook 执行失败 [{hook_name}]: {e}")

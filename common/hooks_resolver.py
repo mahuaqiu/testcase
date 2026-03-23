@@ -7,14 +7,17 @@ class HooksResolver:
     """Hooks 解析器。
 
     合并平台默认 hooks 和用例级别 hooks。
+    支持字符串和字典格式的 hooks：
+    - 字符串: "start_app" - 使用默认参数
+    - 字典: {"start_app": "edge"} - 传入参数
     """
 
     @staticmethod
     def resolve(
         platform: str,
-        default_hooks: Dict[str, Dict[str, List[str]]],
-        case_hooks: Dict[str, List[str]] = None
-    ) -> Dict[str, List[str]]:
+        default_hooks: Dict[str, Dict[str, List[Any]]],
+        case_hooks: Dict[str, List[Any]] = None
+    ) -> Dict[str, List[Any]]:
         """解析最终的 hooks 列表。
 
         Args:
@@ -47,23 +50,43 @@ class HooksResolver:
             to_replace = None
 
             for item in case_list:
-                if item.startswith("+"):
-                    to_add.append(item[1:])
-                elif item.startswith("-"):
-                    to_remove.append(item[1:])
+                # 提取 hook 名称（支持字符串和字典格式）
+                if isinstance(item, dict):
+                    hook_name = next(iter(item.keys()))
+                else:
+                    hook_name = item
+
+                if hook_name.startswith("+"):
+                    to_add.append(item)
+                elif hook_name.startswith("-"):
+                    to_remove.append(hook_name[1:])
                 else:
                     to_replace = True
 
             if to_replace:
                 # 完全覆盖
-                result[hook_type] = [item for item in case_list if not item.startswith(("+", "-"))]
+                result[hook_type] = [
+                    item for item in case_list
+                    if not (isinstance(item, str) and item.startswith(("+", "-")))
+                    and not (isinstance(item, dict) and next(iter(item.keys())).startswith(("+", "-")))
+                ]
             else:
                 # 增量修改
                 for item in to_remove:
-                    if item in result[hook_type]:
-                        result[hook_type].remove(item)
+                    # 移除匹配的 hook（支持字符串和字典格式）
+                    result[hook_type] = [
+                        h for h in result[hook_type]
+                        if not (h == item or (isinstance(h, dict) and item in h))
+                    ]
                 for item in to_add:
-                    if item not in result[hook_type]:
+                    # 添加新 hook
+                    hook_name = next(iter(item.keys()))[1:] if isinstance(item, dict) else item[1:]
+                    # 检查是否已存在
+                    exists = any(
+                        h == hook_name or (isinstance(h, dict) and hook_name in h)
+                        for h in result[hook_type]
+                    )
+                    if not exists:
                         result[hook_type].append(item)
 
         return result

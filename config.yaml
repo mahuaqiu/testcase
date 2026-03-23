@@ -9,7 +9,7 @@ resource_manager:
   mock_users:
     userA:
       ip: "192.168.0.102"
-      port: 8080
+      port: 8088
       account: "15158009950"
       password: "majiayang123"
     userB:
@@ -24,8 +24,8 @@ hooks:
     setup: ["start_app"]
     teardown: ["stop_app"]
   web:
-    setup: []
-    teardown: []
+    setup: ["start_app"]
+    teardown: ["stop_app"]
   ios:
     setup: ["start_app"]
     teardown: ["stop_app"]

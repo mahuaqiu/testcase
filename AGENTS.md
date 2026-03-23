@@ -692,3 +692,109 @@ export RESOURCE_MANAGER_URL="http://resource-server:8080"
 - **申请时机**：测试方法执行前，`users` fixture 自动申请
 - **释放时机**：测试方法执行后（无论成功或失败），自动释放
 - **隔离性**：每条测试用例独立申请和释放资源，互不影响
+
+---
+
+## 十一、Hooks 配置
+
+### 11.1 概述
+
+Hooks 用于在测试用例执行前后自动执行特定操作，如启动/关闭应用、登录/登出等。
+
+**执行时机**：
+- `setup` hooks：测试用例执行前
+- `teardown` hooks：测试用例执行后（无论成功或失败）
+
+### 11.2 全局配置
+
+在 `config.yaml` 中配置平台默认 hooks：
+
+```yaml
+hooks:
+  web:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  windows:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  ios:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+```
+
+### 11.3 用例级别覆盖
+
+使用 `@pytest.mark.hooks()` 标记覆盖或修改全局配置：
+
+**格式说明**：
+- 字符串 `"hook_name"`：无参数，使用默认值
+- 字典 `{"hook_name": "param"}`：带参数
+
+**前缀说明**：
+| 前缀 | 含义 | 示例 |
+|------|------|------|
+| 无前缀 | 完全覆盖全局配置 | `setup=["custom_hook"]` |
+| `+` | 增量添加 | `setup=["+custom_hook"]` |
+| `-` | 增量移除 | `setup=["-start_app"]` |
+
+**使用示例**：
+
+```python
+# 1. 完全覆盖（替换全局配置，只执行 custom_hook）
+@pytest.mark.hooks(setup=["custom_hook"], teardown=["custom_teardown"])
+
+# 2. 增量增加（保留全局 + 新增）
+@pytest.mark.hooks(setup=["+custom_hook"])
+
+# 3. 增量移除（移除全局的某个 hook）
+@pytest.mark.hooks(setup=["-start_app"])
+
+# 4. 组合：移除默认的，添加新的
+@pytest.mark.hooks(setup=["-start_app", "+custom_hook"])
+
+# 5. 带参数的 hook
+@pytest.mark.hooks(setup=[{"start_app": "edge"}], teardown=[{"stop_app": "edge"}])
+
+# 6. 移除默认 + 添加带参数的
+@pytest.mark.hooks(setup=["-start_app", {"+start_app": "edge"}], teardown=["-stop_app", {"+stop_app": "edge"}])
+```
+
+### 11.4 自定义 Hook 方法
+
+在 AW 层创建 `do_{hook_name}` 方法即可被 hooks 机制调用：
+
+```python
+# aw/web/app_aw.py
+class AppAW(BaseAW):
+    PLATFORM = "web"
+
+    def do_start_app(self, browser: str = "chrome") -> None:
+        """启动浏览器。
+
+        Args:
+            browser: 浏览器名称，默认 chrome。
+        """
+        self.start_app(browser)
+
+    def do_stop_app(self, browser: str = "chrome") -> None:
+        """关闭浏览器。"""
+        self.stop_app(browser)
+```
+
+**命名规范**：
+- Hook 方法必须以 `do_` 开头
+- 配置中使用不带前缀的名称：`start_app` → 调用 `do_start_app()`
+
+### 11.5 Hooks 解析流程
+
+```
+1. 获取平台默认 hooks（config.yaml）
+2. 获取用例级别 hooks 标记（@pytest.mark.hooks）
+3. 合并解析：
+   - 无前缀：完全覆盖
+   - + 前缀：增量添加
+   - - 前缀：增量移除
+4. 执行 setup hooks
+5. 执行测试用例
+6. 执行 teardown hooks
+```
