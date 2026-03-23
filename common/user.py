@@ -60,23 +60,17 @@ class User:
 
     def _load_aw_modules(self) -> None:
         """加载公共 AW 和对应平台的 AW。"""
+        from aw import get_platform_aw_classes
+
         # 1. 加载公共 AW
-        try:
-            from aw.common import get_aw_classes
-            for aw_class in get_aw_classes():
-                instance = aw_class(self.client, self)
-                self._aw_instances[aw_class.__name__] = instance
-        except ImportError:
-            pass
+        for aw_class in get_platform_aw_classes("common"):
+            instance = aw_class(self.client, self)
+            self._aw_instances[aw_class.__name__] = instance
 
         # 2. 加载平台 AW
-        try:
-            from aw import get_platform_aw_classes
-            for aw_class in get_platform_aw_classes(self.platform):
-                instance = aw_class(self.client, self)
-                self._aw_instances[aw_class.__name__] = instance
-        except ImportError:
-            pass
+        for aw_class in get_platform_aw_classes(self.platform):
+            instance = aw_class(self.client, self)
+            self._aw_instances[aw_class.__name__] = instance
 
     def __getattr__(self, name: str) -> Any:
         """代理转发 AW 方法调用。
