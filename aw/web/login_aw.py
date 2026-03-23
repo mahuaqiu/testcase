@@ -59,9 +59,9 @@ class LoginAW(BaseAW):
             raise ValueError("未提供账号密码，且无用户资源")
 
         # 使用 OCR 识别并输入账号
-        self.ocr_input(account, account, offset={"x": 100, "y": 0})
+        self.ocr_input("邮箱/帐号", account)
         # 使用 OCR 识别并输入密码
-        self.ocr_input("密码", pwd, offset={"x": 100, "y": 0})
+        self.ocr_input("密码", pwd)
         # 点击登录按钮
         self.ocr_click("登录")
         time.sleep(0.5)
