@@ -82,19 +82,20 @@ class BaseAW:
         success = result.get("status") == "success"
 
         # 记录 AW 调用日志
+        user_id = self.user.user_id if self.user else ""
         logger.log_aw_call(
             aw_name=self._aw_name,
             method=method,
-            args=kwargs,
+            args={"user_id": user_id, **kwargs},
             success=success,
             result=result,
             duration_ms=duration_ms
         )
 
-        # 记录 worker 调用日志
+        # 记录 worker 调用日志（用于调试，报告中不显示）
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": self.PLATFORM, "method": method, **kwargs},
+            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, **kwargs},
             success=success,
             response=result,
             duration_ms=duration_ms

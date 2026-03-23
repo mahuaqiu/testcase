@@ -9,6 +9,50 @@ class HTMLReportGenerator:
     """HTML 报告生成器。"""
 
     @staticmethod
+    def _clean_response_for_display(response: Dict[str, Any]) -> Dict[str, Any]:
+        """清理响应数据，移除大型 base64 数据用于显示。
+
+        Args:
+            response: 原始响应数据。
+
+        Returns:
+            清理后的响应数据，适合在报告中显示。
+        """
+        if not isinstance(response, dict):
+            return response
+
+        cleaned = {}
+        for key, value in response.items():
+            if key == "screenshots":
+                # 截图数据不显示，只显示数量
+                count = len(value) if isinstance(value, list) else 0
+                if count > 0:
+                    cleaned[key] = f"[{count}张截图]"
+            elif key == "error_screenshot" and isinstance(value, str) and len(value) > 100:
+                # 错误截图不显示在文字中
+                cleaned[key] = "[错误截图]"
+            elif key == "actions" and isinstance(value, list):
+                # 清理 actions 中的 screenshot 数据
+                cleaned[key] = []
+                for action in value:
+                    if isinstance(action, dict):
+                        clean_action = {}
+                        for ak, av in action.items():
+                            if ak == "screenshot" and isinstance(av, str) and len(av) > 100:
+                                clean_action[ak] = "[截图数据]"
+                            elif ak == "output" and isinstance(av, str) and len(av) > 500:
+                                # 可能是 base64 输出
+                                clean_action[ak] = "[输出数据]"
+                            else:
+                                clean_action[ak] = av
+                        cleaned[key].append(clean_action)
+                    else:
+                        cleaned[key].append(value)
+            else:
+                cleaned[key] = value
+        return cleaned
+
+    @staticmethod
     def generate(
         report_path: Path,
         case_name: str,
@@ -137,6 +181,22 @@ class HTMLReportGenerator:
             white-space: pre-wrap;
             word-break: break-all;
         }}
+        .step-screenshots {{
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }}
+        .step-screenshot {{
+            width: 200px;
+            height: 130px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 2px solid #e9ecef;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }}
+        .step-screenshot:hover {{ transform: scale(1.05); }}
         .screenshots-card {{
             background: white;
             border-radius: 16px;
@@ -253,6 +313,20 @@ class HTMLReportGenerator:
                 status_class = "success" if success else "failed"
                 status_text = "成功" if success else "失败"
 
+                # 清理 result 中的 base64 数据
+                clean_result = HTMLReportGenerator._clean_response_for_display(
+                    log.get("result", {})
+                )
+
+                # 提取错误截图用于显示
+                error_screenshot_html = ""
+                result = log.get("result", {})
+                error_screenshot = result.get("error_screenshot", "")
+                if error_screenshot and len(error_screenshot) > 100:
+                    error_screenshot_html = f'''<div class="step-screenshots">
+                        <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
+                    </div>'''
+
                 items.append(f"""
             <div class="log-item {item_class}">
                 <span class="log-time">{time_str}</span>
@@ -263,29 +337,15 @@ class HTMLReportGenerator:
                         <span class="log-status {status_class}">{status_text}</span>
                         <span class="log-duration">{log.get('duration_ms', 0)}ms</span>
                     </div>
-                    {f'<div class="log-detail">{log.get("result", {})}</div>' if not success else ''}
+                    {f'<div class="log-detail">{clean_result}</div>' if not success else ''}
+                    {error_screenshot_html}
                 </div>
             </div>""")
 
             elif log_type == "worker_call":
-                success = log.get("success", False)
-                item_class = "success" if success else "failed"
-                status_class = "success" if success else "failed"
-                status_text = "成功" if success else "失败"
-
-                items.append(f"""
-            <div class="log-item {item_class}">
-                <span class="log-time">{time_str}</span>
-                <span class="log-type type-worker_call">Worker</span>
-                <div class="log-content">
-                    <div class="log-main">
-                        <span class="log-name">POST /{log.get('api', '')}</span>
-                        <span class="log-status {status_class}">{status_text}</span>
-                        <span class="log-duration">{log.get('duration_ms', 0)}ms</span>
-                    </div>
-                    <div class="log-detail">参数: {log.get('params', {})}<br>响应: {log.get('response', {})}</div>
-                </div>
-            </div>""")
+                # Worker 调用日志不再单独显示，避免与 AW 日志重复
+                # 但仍用于底部截图过滤逻辑
+                pass
 
             elif log_type == "error":
                 items.append(f"""
@@ -303,14 +363,55 @@ class HTMLReportGenerator:
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]]) -> str:
-        """构建截图区域 HTML。"""
+        """构建截图区域 HTML。
+
+        只显示步骤中没有截图的用户，避免重复显示。
+        """
+        # 获取所有失败截图
         screenshots = [log for log in logs if log.get("type") == "screenshot"]
 
         if not screenshots:
             return ""
 
+        # 找出步骤中已有截图的用户
+        users_with_step_screenshot = set()
+        for log in logs:
+            if log.get("type") == "aw_call":
+                result = log.get("result", {})
+                has_screenshot = False
+
+                # 检查 error_screenshot（失败时的错误截图）
+                error_screenshot = result.get("error_screenshot", "")
+                if error_screenshot and len(error_screenshot) > 100:
+                    has_screenshot = True
+
+                # 检查 actions 中的截图
+                if not has_screenshot:
+                    actions = result.get("actions", [])
+                    for action in actions:
+                        screenshot = action.get("screenshot", "")
+                        if screenshot and len(screenshot) > 100:
+                            has_screenshot = True
+                            break
+
+                if has_screenshot:
+                    # 从 args 中获取用户ID
+                    args = log.get("args", {})
+                    user_id = args.get("user_id", "")
+                    if user_id:
+                        users_with_step_screenshot.add(user_id)
+
+        # 只显示步骤中没有截图的用户
+        filtered_screenshots = [
+            shot for shot in screenshots
+            if shot.get("user_id", "") not in users_with_step_screenshot
+        ]
+
+        if not filtered_screenshots:
+            return ""
+
         items = []
-        for shot in screenshots:
+        for shot in filtered_screenshots:
             base64_data = shot.get("base64", "")
             user_id = shot.get("user_id", "")
             items.append(f"""
@@ -321,7 +422,7 @@ class HTMLReportGenerator:
 
         return f"""
         <div class="screenshots-card">
-            <h3>📸 失败截图</h3>
+            <h3>📸 其他用户截图</h3>
             <div class="screenshots-grid">
                 {"".join(items)}
             </div>
