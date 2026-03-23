@@ -149,9 +149,10 @@ def pytest_runtest_makereport(item, call):
             # 记录错误
             logger.log_error(str(report.longrepr))
 
-        # 生成报告
+        # 生成报告（始终在项目根目录下）
         timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        report_dir = Path("report") / timestamp
+        project_root = Path(__file__).parent  # conftest.py 所在目录即项目根目录
+        report_dir = project_root / "report" / timestamp
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{item.name}.html"
 
