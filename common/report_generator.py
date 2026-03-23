@@ -313,10 +313,21 @@ class HTMLReportGenerator:
                 status_class = "success" if success else "failed"
                 status_text = "成功" if success else "失败"
 
+                # 清理参数，移除 user_id 用于显示
+                args = log.get("args", {})
+                clean_args = {k: v for k, v in args.items() if k != "user_id"}
+
                 # 清理 result 中的 base64 数据
                 clean_result = HTMLReportGenerator._clean_response_for_display(
                     log.get("result", {})
                 )
+
+                # 构建参数和结果详情
+                detail_parts = []
+                if clean_args:
+                    detail_parts.append(f"参数: {clean_args}")
+                detail_parts.append(f"结果: {clean_result}")
+                detail_html = "<br>".join(detail_parts)
 
                 # 提取错误截图用于显示
                 error_screenshot_html = ""
@@ -337,7 +348,7 @@ class HTMLReportGenerator:
                         <span class="log-status {status_class}">{status_text}</span>
                         <span class="log-duration">{log.get('duration_ms', 0)}ms</span>
                     </div>
-                    {f'<div class="log-detail">{clean_result}</div>' if not success else ''}
+                    <div class="log-detail">{detail_html}</div>
                     {error_screenshot_html}
                 </div>
             </div>""")

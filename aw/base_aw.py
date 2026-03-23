@@ -44,6 +44,7 @@ class BaseAW:
         self,
         method: str,
         action: Callable[..., Dict[str, Any]],
+        log_args: Dict[str, Any],
         *args: Any,
         **kwargs: Any
     ) -> Dict[str, Any]:
@@ -52,6 +53,7 @@ class BaseAW:
         Args:
             method: 方法名。
             action: 实际执行的方法。
+            log_args: 用于日志记录的参数（不含 platform）。
             *args, **kwargs: 传递给 action 的参数。
 
         Returns:
@@ -71,7 +73,7 @@ class BaseAW:
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method=method,
-                args=kwargs,
+                args=log_args,
                 success=False,
                 result={"error": str(e)},
                 duration_ms=duration_ms
@@ -86,7 +88,7 @@ class BaseAW:
         logger.log_aw_call(
             aw_name=self._aw_name,
             method=method,
-            args={"user_id": user_id, **kwargs},
+            args={"user_id": user_id, **log_args},
             success=success,
             result=result,
             duration_ms=duration_ms
@@ -95,7 +97,7 @@ class BaseAW:
         # 记录 worker 调用日志（用于调试，报告中不显示）
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, **kwargs},
+            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, **log_args},
             success=success,
             response=result,
             duration_ms=duration_ms
@@ -114,6 +116,7 @@ class BaseAW:
         return self._execute_with_log(
             "ocr_click",
             self.client.ocr_click,
+            {"text": text, **kwargs},
             self.PLATFORM,
             text,
             **kwargs
@@ -124,6 +127,7 @@ class BaseAW:
         return self._execute_with_log(
             "ocr_input",
             self.client.ocr_input,
+            {"label": label, "content": content, **kwargs},
             self.PLATFORM,
             label,
             content,
@@ -135,6 +139,7 @@ class BaseAW:
         return self._execute_with_log(
             "ocr_wait",
             self.client.ocr_wait,
+            {"text": text, **kwargs},
             self.PLATFORM,
             text,
             **kwargs
@@ -145,6 +150,7 @@ class BaseAW:
         return self._execute_with_log(
             "click",
             self.client.click,
+            {"x": x, "y": y},
             self.PLATFORM,
             x,
             y
@@ -155,6 +161,7 @@ class BaseAW:
         return self._execute_with_log(
             "swipe",
             self.client.swipe,
+            {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs},
             self.PLATFORM,
             from_x,
             from_y,
@@ -168,6 +175,7 @@ class BaseAW:
         return self._execute_with_log(
             "start_app",
             self.client.start_app,
+            {"app_id": app_id},
             self.PLATFORM,
             app_id
         )
@@ -177,6 +185,7 @@ class BaseAW:
         return self._execute_with_log(
             "stop_app",
             self.client.stop_app,
+            {"app_id": app_id},
             self.PLATFORM,
             app_id
         )
@@ -186,6 +195,7 @@ class BaseAW:
         return self._execute_with_log(
             "navigate",
             self.client.navigate,
+            {"url": url},
             self.PLATFORM,
             url
         )
