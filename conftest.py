@@ -107,6 +107,8 @@ def users(request) -> Dict[str, User]:
         base_url = rm_config.get("base_url", "")
         if base_url:
             for user_id, user in user_instances.items():
+                if user.platform == "api":
+                    continue  # API 用户不需要保活
                 keepalive = KeepAliveManager(base_url, rm_config.get("timeout", 30))
                 keepalive.start({user_id: raw_resources.get(user_id, {})})
                 _keepalive_managers[user_id] = keepalive
@@ -116,6 +118,8 @@ def users(request) -> Dict[str, User]:
         case_hooks = _get_case_hooks(request.node)
 
         for user_id, user in user_instances.items():
+            if user.platform == "api":
+                continue  # API 用户不需要执行 hooks
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
             _execute_hooks(user, final_hooks.get("setup", []))
 
@@ -123,6 +127,8 @@ def users(request) -> Dict[str, User]:
 
         # 执行 teardown hooks
         for user_id, user in user_instances.items():
+            if user.platform == "api":
+                continue  # API 用户不需要执行 hooks
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
             _execute_hooks(user, final_hooks.get("teardown", []))
 
