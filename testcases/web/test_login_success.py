@@ -6,6 +6,8 @@ Web端登录成功测试用例。
 
 import pytest
 
+from variable import LoginVar
+
 
 @pytest.mark.users({"userA": "web"})
 class TestLoginSuccess:
@@ -15,6 +17,6 @@ class TestLoginSuccess:
         """执行测试：正确账号密码登录，应登录成功。"""
         user = users["userA"]
 
-        user.do_navigate_to_login("https://meeting.huaweicloud.com/#/login")
+        user.do_navigate_to_login(LoginVar.WEB_LOGIN_URL)
         user.do_login()
         user.should_login_success()
