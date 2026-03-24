@@ -50,9 +50,13 @@ class User:
         self.password = password
         self.extra = extra
 
-        # 初始化 TestagentClient
-        base_url = f"http://{ip}:{port}"
-        self.client = TestagentClient(base_url)
+        # API 平台不需要 TestagentClient
+        if platform == "api":
+            self.client = None
+        else:
+            # 初始化 TestagentClient
+            base_url = f"http://{ip}:{port}"
+            self.client = TestagentClient(base_url)
 
         # 加载 AW 实例
         self._aw_instances: Dict[str, Any] = {}
@@ -67,10 +71,17 @@ class User:
             instance = aw_class(self.client, self)
             self._aw_instances[aw_class.__name__] = instance
 
-        # 2. 加载平台 AW
-        for aw_class in get_platform_aw_classes(self.platform):
-            instance = aw_class(self.client, self)
-            self._aw_instances[aw_class.__name__] = instance
+        # 2. 加载平台 AW（包括 api）
+        if self.platform == "api":
+            # API 平台加载 api 目录下的 AW，client 传 None
+            for aw_class in get_platform_aw_classes("api"):
+                instance = aw_class(None, self)
+                self._aw_instances[aw_class.__name__] = instance
+        else:
+            # 其他平台加载对应平台的 AW
+            for aw_class in get_platform_aw_classes(self.platform):
+                instance = aw_class(self.client, self)
+                self._aw_instances[aw_class.__name__] = instance
 
     def __getattr__(self, name: str) -> Any:
         """代理转发 AW 方法调用。
@@ -96,8 +107,11 @@ class User:
         """截图并返回 base64。
 
         Returns:
-            截图的 base64 编码。
+            截图的 base64 编码。API 平台返回空字符串。
         """
+        if self.platform == "api" or self.client is None:
+            return ""
+
         result = self.client.screenshot(self.platform)
         # 从结果中提取 base64 数据
         if result.get("status") == "success" and result.get("actions"):
