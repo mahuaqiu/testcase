@@ -89,6 +89,19 @@ def users(request) -> Dict[str, User]:
             )
             user_instances[user_id] = user
 
+            # 支持 _api 后缀：创建同一账号的 API 实例
+            api_user_id = f"{user_id}_api"
+            api_user = User(
+                user_id=api_user_id,
+                platform="api",
+                ip=resource.ip,
+                port=resource.port,
+                account=resource.account,
+                password=resource.password,
+                **resource.extra
+            )
+            user_instances[api_user_id] = api_user
+
         # 启动保活（远程模式）
         rm_config = config.get("resource_manager", {})
         base_url = rm_config.get("base_url", "")
