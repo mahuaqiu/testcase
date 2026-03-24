@@ -106,6 +106,7 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 
 import requests
 
+from aw.base_aw import BaseAW
 from common.report_logger import ReportLogger
 
 if TYPE_CHECKING:
@@ -127,23 +128,32 @@ class TokenInfo:
     """Token 信息。"""
     access_token: str
     expire_time: float  # 过期时间戳（秒）
+    user_uuid: str = ""  # 用户 UUID
 
 
-class BaseApiAW:
+class BaseApiAW(BaseAW):
     """API AW 基类。
 
+    继承 BaseAW 以支持 AW 类发现机制。
     提供 HTTP 请求封装、Token 自动管理、日志记录。
 
     Args:
         user: User 实例，用于获取账号密码。
     """
 
+    PLATFORM = "api"  # API 平台标识
+
     # 子类应设置 _LOGIN_URL
     _LOGIN_URL: str = ""
 
-    def __init__(self, user: "User"):
-        self.user = user
-        self._aw_name = self.__class__.__name__
+    def __init__(self, client, user: Optional["User"] = None):
+        """初始化 API AW。
+
+        Args:
+            client: TestagentClient（API AW 不需要，传 None）。
+            user: User 实例。
+        """
+        super().__init__(client, user)
         self._session = requests.Session()
         self._session.headers.update({"Content-Type": "application/json"})
         self._token_info: Optional[TokenInfo] = None
@@ -194,9 +204,13 @@ class BaseApiAW:
         # 计算过期时间（提前 60 秒过期，避免临界情况）
         expire_time = time.time() + valid_period - 60
 
+        # 从登录响应中获取 user_uuid
+        user_uuid = data.get("userUUID", "")
+
         self._token_info = TokenInfo(
             access_token=access_token,
-            expire_time=expire_time
+            expire_time=expire_time,
+            user_uuid=user_uuid
         )
 
         return self._token_info
@@ -359,11 +373,7 @@ class BaseApiAW:
 
 ```bash
 git add aw/api/base_api_aw.py
-git commit -m "feat: 新增 BaseApiAW 基类
-
-- 提供 HTTP 请求封装 (GET/POST/DELETE)
-- Token 自动管理（登录、缓存、过期刷新）
-- 日志记录（集成 ReportLogger）"
+git commit -m "feat: 新增 BaseApiAW 基类，继承 BaseAW 支持 AW 发现"
 ```
 
 ---
@@ -650,33 +660,30 @@ class MeetingManageAW(BaseApiAW):
         """获取用户 UUID。
 
         从登录响应或缓存中获取 user_uuid。
+        如果没有，先触发登录。
 
         Returns:
             user_uuid 字符串。
-        """
-        # 如果 token_info 中有 user_uuid，直接返回
-        # 否则从查询结果中提取
-        # 这里简化处理，从已创建的会议中获取
-        meetings = self.do_query_meetings(limit=1)
-        if meetings:
-            return meetings[0].user_uuid
 
-        # 如果没有会议，需要通过其他方式获取
-        # 这里返回空，实际使用时应该从登录响应中获取
-        return ""
+        Raises:
+            ApiError: 无法获取 user_uuid 时抛出。
+        """
+        # 确保 token 有效
+        self._ensure_token()
+
+        # 从 token_info 中获取
+        if self._token_info and self._token_info.user_uuid:
+            return self._token_info.user_uuid
+
+        # 如果 token_info 中没有 user_uuid，抛出异常
+        raise ApiError("get_user_uuid", 0, "无法获取 user_uuid，请检查登录响应")
 ```
 
 - [ ] **Step 2: 提交**
 
 ```bash
 git add aw/api/meeting_manage_aw.py
-git commit -m "feat: 新增 MeetingManageAW 会议管理 API
-
-- do_login: 显式登录
-- do_create_meeting: 预约/创建会议
-- do_cancel_meeting: 取消指定会议
-- do_query_meetings: 查询会议列表
-- do_cancel_all_meetings: 取消所有会议"
+git commit -m "feat: 新增 MeetingManageAW 会议管理 API"
 ```
 
 ---
@@ -769,9 +776,9 @@ def _load_aw_modules(self) -> None:
 
     # 2. 加载平台 AW（包括 api）
     if self.platform == "api":
-        # API 平台加载 api 目录下的 AW
+        # API 平台加载 api 目录下的 AW，client 传 None
         for aw_class in get_platform_aw_classes("api"):
-            instance = aw_class(self)
+            instance = aw_class(None, self)
             self._aw_instances[aw_class.__name__] = instance
     else:
         # 其他平台加载对应平台的 AW
@@ -803,11 +810,7 @@ def screenshot(self) -> str:
 
 ```bash
 git add common/user.py
-git commit -m "feat: User 类支持 platform='api'
-
-- API 平台不初始化 TestagentClient
-- API 平台加载 aw/api/ 下的 AW
-- screenshot 方法对 API 平台返回空"
+git commit -m "feat: User 类支持 platform='api'"
 ```
 
 ---
@@ -872,10 +875,7 @@ git commit -m "feat: User 类支持 platform='api'
 
 ```bash
 git add conftest.py
-git commit -m "feat: users fixture 支持 _api 后缀映射
-
-- users['userA_api'] 自动创建 platform='api' 的 User 实例
-- 使用同一账号密码，但独立 token"
+git commit -m "feat: users fixture 支持 _api 后缀映射"
 ```
 
 ---
@@ -938,12 +938,7 @@ rm testcases/web/meeting/test_api_aw_demo.py
 
 ```bash
 git add -A
-git commit -m "feat: 完成 API AW 模块实现
-
-- 新增 BaseApiAW 基类（Token 管理、HTTP 请求、日志）
-- 新增 MeetingManageAW（登录、预约、取消、查询会议）
-- User 类支持 platform='api'
-- users fixture 支持 _api 后缀映射"
+git commit -m "feat: 完成 API AW 模块实现"
 ```
 
 ---
