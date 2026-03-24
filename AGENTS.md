@@ -764,8 +764,8 @@ hooks:
 在 AW 层创建 `do_{hook_name}` 方法即可被 hooks 机制调用：
 
 ```python
-# aw/web/app_aw.py
-class AppAW(BaseAW):
+# aw/web/init_aw.py
+class InitAW(BaseAW):
     PLATFORM = "web"
 
     def do_start_app(self, browser: str = "chrome") -> None:

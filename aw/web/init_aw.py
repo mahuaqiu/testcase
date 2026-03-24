@@ -3,8 +3,8 @@
 from aw.base_aw import BaseAW
 
 
-class AppAW(BaseAW):
-    """Web 应用操作封装。
+class InitAW(BaseAW):
+    """Web 应用初始化操作封装。
 
     封装浏览器启动和关闭操作。
 
