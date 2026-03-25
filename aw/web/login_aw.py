@@ -82,7 +82,7 @@ class LoginAW(BaseAW):
         验证登录成功后页面显示"会议"文字。
         失败时会自动抛出 AWError。
         """
-        self.ocr_wait("会议", timeout=10000)
+        self.ocr_wait("我的会议", timeout=5000)
 
     def should_show_error(self, error_msg: str) -> None:
         """断言显示错误提示。
