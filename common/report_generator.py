@@ -60,12 +60,13 @@ class HTMLReportGenerator:
         logs: List[Dict[str, Any]] = [],
         duration_ms: int = 0,
         status: str = "passed",
-        error_msg: str = ""
+        error_msg: str = "",
+        is_api_failure: bool = False
     ) -> None:
         """生成 HTML 报告。"""
         failed_aw_steps = HTMLReportGenerator._get_failed_aw_steps(logs)
         logs_html = HTMLReportGenerator._build_logs_html(logs)
-        screenshots_html = HTMLReportGenerator._build_screenshots_html(logs)
+        screenshots_html = HTMLReportGenerator._build_screenshots_html(logs, is_api_failure)
 
         failed_steps_html = ""
         if failed_aw_steps:
@@ -373,10 +374,17 @@ class HTMLReportGenerator:
         return "\n".join(items) if items else '<div class="log-item"><span style="color: #868e96;">暂无日志</span></div>'
 
     @staticmethod
-    def _build_screenshots_html(logs: List[Dict[str, Any]]) -> str:
+    def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
         """构建截图区域 HTML。
 
         只显示步骤中没有截图的用户，避免重复显示。
+
+        Args:
+            logs: 日志列表。
+            is_api_failure: 是否是 API AW 失败。
+
+        Returns:
+            截图区域 HTML。
         """
         # 获取所有失败截图
         screenshots = [log for log in logs if log.get("type") == "screenshot"]
@@ -431,9 +439,12 @@ class HTMLReportGenerator:
                     <div class="user-id">📷 {user_id}</div>
                 </div>""")
 
+        # 根据失败来源决定标题
+        title = "📸 用户截图" if is_api_failure else "📸 其他用户截图"
+
         return f"""
         <div class="screenshots-card">
-            <h3>📸 其他用户截图</h3>
+            <h3>{title}</h3>
             <div class="screenshots-grid">
                 {"".join(items)}
             </div>

@@ -2,7 +2,7 @@
 
 import threading
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 
 class ReportLogger:
@@ -30,6 +30,7 @@ class ReportLogger:
         self._logs: List[Dict[str, Any]] = []
         self._start_time = datetime.now()
         self._lock = threading.Lock()
+        self._last_failed_aw: Optional[Dict[str, Any]] = None  # 追踪最后失败的 AW
 
     def log_step(self, step: str, detail: str = "") -> None:
         """记录测试步骤。"""
@@ -52,7 +53,7 @@ class ReportLogger:
     ) -> None:
         """记录 AW 方法调用。"""
         with self._lock:
-            self._logs.append({
+            log_entry = {
                 "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
                 "type": "aw_call",
                 "aw_name": aw_name,
@@ -61,7 +62,11 @@ class ReportLogger:
                 "success": success,
                 "result": result,
                 "duration_ms": duration_ms
-            })
+            }
+            self._logs.append(log_entry)
+            # 追踪失败的 AW 调用
+            if not success:
+                self._last_failed_aw = log_entry
 
     def log_worker_call(
         self,
@@ -110,3 +115,23 @@ class ReportLogger:
     def get_duration(self) -> int:
         """获取执行时长（毫秒）。"""
         return int((datetime.now() - self._start_time).total_seconds() * 1000)
+
+    def get_last_failed_aw(self) -> Optional[Dict[str, Any]]:
+        """获取最后失败的 AW 调用信息。"""
+        with self._lock:
+            return self._last_failed_aw
+
+    def is_api_failure(self) -> bool:
+        """判断失败是否来自 API AW。
+
+        通过检查失败 AW 调用的 user_id 是否以 _api 结尾来判断。
+
+        Returns:
+            True 表示 API AW 失败，False 表示普通 AW 失败或无失败。
+        """
+        with self._lock:
+            if not self._last_failed_aw:
+                return False
+            args = self._last_failed_aw.get("args", {})
+            user_id = args.get("user_id", "")
+            return user_id.endswith("_api")

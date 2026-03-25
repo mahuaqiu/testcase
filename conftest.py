@@ -154,13 +154,31 @@ def pytest_runtest_makereport(item, call):
         # 失败时截图
         if report.failed and "users" in item.funcargs:
             users = item.funcargs["users"]
-            for user_id, user in users.items():
-                try:
-                    base64_data = user.screenshot()
-                    if base64_data:
-                        logger.log_screenshot(user_id, base64_data)
-                except Exception:
-                    pass
+
+            if logger.is_api_failure():
+                # API AW 失败：截所有非 API 用户，放在底部
+                for user_id, user in users.items():
+                    if user_id.endswith("_api"):
+                        continue
+                    try:
+                        base64_data = user.screenshot()
+                        if base64_data:
+                            logger.log_screenshot(user_id, base64_data)
+                    except Exception:
+                        pass
+            else:
+                # 非 API AW 失败：截所有用户
+                # 失败用户的截图会在步骤内显示（通过 error_screenshot）
+                # 其它用户截图放在底部
+                for user_id, user in users.items():
+                    if user_id.endswith("_api"):
+                        continue
+                    try:
+                        base64_data = user.screenshot()
+                        if base64_data:
+                            logger.log_screenshot(user_id, base64_data)
+                    except Exception:
+                        pass
 
             # 记录错误
             logger.log_error(str(report.longrepr))
@@ -179,7 +197,8 @@ def pytest_runtest_makereport(item, call):
             logs=logger.get_logs(),
             duration_ms=logger.get_duration(),
             status="passed" if report.passed else "failed",
-            error_msg=str(report.longrepr) if report.failed else ""
+            error_msg=str(report.longrepr) if report.failed else "",
+            is_api_failure=logger.is_api_failure()
         )
 
 

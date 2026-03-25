@@ -178,7 +178,7 @@ class BaseApiAW(BaseAW):
             final_headers["x-access-token"] = token
 
         # 记录请求参数（用于日志）
-        log_args = {"url": url, "method": method}
+        log_args = {"url": url, "method": method, "user_id": self.user.user_id if self.user else ""}
         if params:
             log_args["params"] = params
         if json_data:

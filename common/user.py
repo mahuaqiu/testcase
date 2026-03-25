@@ -115,5 +115,7 @@ class User:
         result = self.client.screenshot(self.platform)
         # 从结果中提取 base64 数据
         if result.get("status") == "success" and result.get("actions"):
-            return result["actions"][0].get("output", "")
+            action = result["actions"][0]
+            # 优先取 screenshot 字段，其次取 output 字段
+            return action.get("screenshot") or action.get("output", "")
         return ""
