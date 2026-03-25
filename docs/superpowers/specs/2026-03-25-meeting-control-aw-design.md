@@ -243,43 +243,35 @@ def _parse_region_info(self, data: Dict[str, Any]) -> RegionInfo:
 
 ## BaseApiAW 修改
 
-### 新增 _put 方法
+### 修改 _request_with_log 方法签名
+
+为支持会议控制 API 的特殊认证需求，`_request_with_log` 需要支持 `params` 参数透传：
 
 ```python
-def _put(
+def _request_with_log(
     self,
+    method: str,
     url: str,
-    data: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, str]] = None
-) -> Dict[str, Any]:
-    """PUT 请求。
-
-    Args:
-        url: 请求 URL。
-        data: JSON 请求体。
-        headers: 额外的请求头（可选）。
-
-    Returns:
-        响应 JSON 数据。
-
-    Raises:
-        ApiError: 请求失败时抛出。
-    """
-    params = {"ts": int(time.time())}
-    response = self._request_with_log("PUT", url, params=params, json_data=data, headers=headers)
-    return response.json()
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    json_data: Optional[Dict[str, Any]] = None,
+    need_token: bool = True,
+    timeout: int = 30
+) -> requests.Response:
 ```
 
-### 新增 _post_with_headers 方法
+> 现有实现已支持 `params` 参数，无需修改。
 
-由于 `do_get_control_token` 需要自定义 headers，新增支持自定义 headers 的 POST 方法：
+### 新增 _post_with_headers 方法
 
 ```python
 def _post_with_headers(
     self,
     url: str,
     data: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, str]] = None
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    need_token: bool = True
 ) -> Dict[str, Any]:
     """带自定义 headers 的 POST 请求。
 
@@ -287,6 +279,8 @@ def _post_with_headers(
         url: 请求 URL。
         data: JSON 请求体。
         headers: 额外的请求头（可选）。
+        params: 额外的查询参数（可选）。
+        need_token: 是否需要登录 token，默认 True。
 
     Returns:
         响应 JSON 数据。
@@ -294,12 +288,63 @@ def _post_with_headers(
     Raises:
         ApiError: 请求失败时抛出。
     """
-    params = {"ts": int(time.time())}
-    response = self._request_with_log("POST", url, params=params, json_data=data, headers=headers)
+    # 合并时间戳和额外参数
+    final_params = {"ts": int(time.time())}
+    if params:
+        final_params.update(params)
+
+    response = self._request_with_log(
+        "POST", url,
+        params=final_params,
+        json_data=data,
+        headers=headers,
+        need_token=need_token
+    )
     return response.json()
 ```
 
-> **设计决策**：新增 `_post_with_headers` 而非修改 `_post` 签名，避免影响现有调用方。`_put` 是新方法，直接支持 headers 参数。
+### 新增 _put 方法
+
+```python
+def _put(
+    self,
+    url: str,
+    data: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    need_token: bool = True
+) -> Dict[str, Any]:
+    """PUT 请求。
+
+    Args:
+        url: 请求 URL。
+        data: JSON 请求体。
+        headers: 额外的请求头（可选）。
+        params: 额外的查询参数（可选）。
+        need_token: 是否需要登录 token，默认 True。
+
+    Returns:
+        响应 JSON 数据。
+
+    Raises:
+        ApiError: 请求失败时抛出。
+    """
+    # 合并时间戳和额外参数
+    final_params = {"ts": int(time.time())}
+    if params:
+        final_params.update(params)
+
+    response = self._request_with_log(
+        "PUT", url,
+        params=final_params,
+        json_data=data,
+        headers=headers,
+        need_token=need_token
+    )
+    return response.json()
+```
+
+> **设计决策**：新增 `_post_with_headers` 而非修改 `_post` 签名，避免影响现有调用方。`_put` 是新方法，直接支持完整参数。
 
 ## 完整类结构
 
@@ -312,6 +357,7 @@ def _post_with_headers(
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from aw.api.base_api_aw import ApiError
 from aw.api.meeting_manage_aw import MeetingManageAW
 from variable.manage_var import ManageVar
 
@@ -399,13 +445,13 @@ class MeetingControlAW(MeetingManageAW):
         region_info = self.do_get_region_info(conference_id)
         url = f"{self._get_region_base_url(region_info.region_ip)}/v1/mmc/control/conferences/token"
 
-        # 调用 API
+        # 调用 API（使用主持人密码认证，不需要登录 token）
         headers = {
             "x-login-type": "1",
             "X-Password": chair_password
         }
         params = {"conferenceID": conference_id}
-        result = self._post_with_headers(url, data=None, headers=headers)
+        result = self._post_with_headers(url, data=None, headers=headers, params=params, need_token=False)
 
         # 解析响应
         token = result.get("data", {}).get("token", "")
@@ -441,14 +487,8 @@ class MeetingControlAW(MeetingManageAW):
         params = {"conferenceID": conference_id}
         body = {"enableWaitingRoom": 1 if enable else 0}
 
-        # 调用 API（使用 _request_with_log 直接调用，需要传递 params）
-        self._request_with_log(
-            "PUT",
-            url,
-            params=params,
-            json_data=body,
-            headers=headers
-        )
+        # 调用 API（使用控制 token 认证，不需要登录 token）
+        self._put(url, data=body, headers=headers, params=params, need_token=False)
 
     # ── 内部方法 ─────────────────────────────────────────
 
