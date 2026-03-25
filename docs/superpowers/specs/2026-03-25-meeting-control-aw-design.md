@@ -37,16 +37,16 @@ class ManageVar:
     """会议管理 API 常量。"""
 
     # 基础 URL
-    BASE_URL = "https://meeting.huaweicloud.com"
+    BASE_URL = "https://meeting.huaweicloud.com"  # 已存在
 
     # 登录接口
-    LOGIN_URL = f"{BASE_URL}/v2/usg/acs/auth/account"
+    LOGIN_URL = f"{BASE_URL}/v2/usg/acs/auth/account"  # 已存在
 
     # 会议管理接口
-    CONFERENCE_URL = f"{BASE_URL}/v1/mmc/management/conferences"
+    CONFERENCE_URL = f"{BASE_URL}/v1/mmc/management/conferences"  # 已存在
 
     # 会议站点信息接口
-    REGION_INFO_URL = f"{BASE_URL}/v1/mmc/management/conferences/region/random"
+    REGION_INFO_URL = f"{BASE_URL}/v1/mmc/management/conferences/region/random"  # 新增
 ```
 
 **会议控制接口 URL**（动态拼接）：
@@ -234,11 +234,20 @@ def _parse_region_info(self, data: Dict[str, Any]) -> RegionInfo:
 
     Returns:
         RegionInfo 实例。
+
+    Raises:
+        ApiError: 关键字段为空时抛出。
     """
-    return RegionInfo(
-        region_ip=data.get("regionIP", ""),
-        uuid=data.get("uuid", "")
-    )
+    region_ip = data.get("regionIP", "")
+    uuid = data.get("uuid", "")
+
+    # 校验关键字段
+    if not region_ip:
+        raise ApiError("parse_region_info", 0, "响应中缺少 regionIP 字段")
+    if not uuid:
+        raise ApiError("parse_region_info", 0, "响应中缺少 uuid 字段")
+
+    return RegionInfo(region_ip=region_ip, uuid=uuid)
 ```
 
 ## BaseApiAW 修改
@@ -344,7 +353,10 @@ def _put(
     return response.json()
 ```
 
-> **设计决策**：新增 `_post_with_headers` 而非修改 `_post` 签名，避免影响现有调用方。`_put` 是新方法，直接支持完整参数。
+> **设计决策**：
+> 1. 新增 `_post_with_headers` 而非修改 `_post` 签名，避免影响现有调用方（如 `MeetingManageAW`）
+> 2. 方法命名采用 `_post_with_headers` 而非 `_post_with_options`，因为主要差异是支持自定义 headers
+> 3. `_put` 是新方法，直接支持完整参数
 
 ## 完整类结构
 
@@ -511,11 +523,19 @@ class MeetingControlAW(MeetingManageAW):
 
         Returns:
             RegionInfo 实例。
+
+        Raises:
+            ApiError: 关键字段为空时抛出。
         """
-        return RegionInfo(
-            region_ip=data.get("regionIP", ""),
-            uuid=data.get("uuid", "")
-        )
+        region_ip = data.get("regionIP", "")
+        uuid = data.get("uuid", "")
+
+        if not region_ip:
+            raise ApiError("parse_region_info", 0, "响应中缺少 regionIP 字段")
+        if not uuid:
+            raise ApiError("parse_region_info", 0, "响应中缺少 uuid 字段")
+
+        return RegionInfo(region_ip=region_ip, uuid=uuid)
 ```
 
 ## 使用示例
@@ -528,15 +548,24 @@ from aw.api.meeting_control_aw import MeetingControlAW
 @pytest.mark.users({"userA": "web"})
 class TestWaitingRoom:
     def test_execute(self, users):
+        # userA_api 是自动创建的 API 平台用户（与 userA 同账号，独立 token）
         user_api = users["userA_api"]
 
+        # 创建会议控制 AW 实例
+        # client 参数传 None（API AW 不需要 TestagentClient）
         control_aw = MeetingControlAW(None, user=user_api)
+
+        # 设置等候室开关
         control_aw.do_set_waiting_room(
             conference_id="960537505",
             chair_password="123456",
             enable=True
         )
 ```
+
+> **说明**：根据 AGENTS.md 规范，声明 `@pytest.mark.users({"userA": "web"})` 时，fixture 会自动创建两个 User 实例：
+> - `users["userA"]`：Web 平台用户，用于 UI 操作
+> - `users["userA_api"]`：API 平台用户，用于 API 操作（同一账号，独立 token）
 
 ## 实现范围
 
