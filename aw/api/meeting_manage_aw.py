@@ -128,12 +128,13 @@ class MeetingManageAW(BaseApiAW):
             "searchKey": "",
             "queryConfMode": "ALL"
         }
-
         result = self._get(ManageVar.CONFERENCE_URL, params=params)
 
         meetings = []
-        if isinstance(result, list):
-            for meeting_data in result:
+        # API 返回 {"data": [...], "count": N} 结构
+        meeting_list = result.get("data", []) if isinstance(result, dict) else result
+        if isinstance(meeting_list, list):
+            for meeting_data in meeting_list:
                 meetings.append(self._parse_meeting_info(meeting_data))
 
         return meetings
