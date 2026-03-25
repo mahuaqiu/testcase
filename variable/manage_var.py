@@ -12,3 +12,6 @@ class ManageVar:
 
     # 会议管理接口
     CONFERENCE_URL = f"{BASE_URL}/v1/mmc/management/conferences"
+
+    # 会议站点信息接口
+    REGION_INFO_URL = f"{BASE_URL}/v1/mmc/management/conferences/region/random"
