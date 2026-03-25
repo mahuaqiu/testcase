@@ -16,6 +16,9 @@ class TestLoginSuccess:
     def test_execute(self, users):
         """执行测试：正确账号密码登录，应登录成功。"""
         user = users["userA"]
+        user_api = users["userA_api"]
+
+        user_api.do_create_meeting("haha")
 
         user.do_navigate_to_login(LoginVar.WEB_LOGIN_URL)
         user.do_login()
