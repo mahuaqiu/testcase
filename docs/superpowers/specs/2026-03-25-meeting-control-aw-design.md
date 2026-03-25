@@ -79,10 +79,8 @@ class RegionInfo:
 ```python
 def _parse_region_info(self, data: Dict[str, Any]) -> RegionInfo:
     """解析站点信息响应。"""
-    return RegionInfo(
-        region_ip=data.get("regionIP", ""),
-        uuid=data.get("uuid", "")
-    )
+    # 详见"内部方法"章节
+    ...
 ```
 
 ## 方法设计
@@ -322,7 +320,7 @@ def _put(
     headers: Optional[Dict[str, str]] = None,
     params: Optional[Dict[str, Any]] = None,
     need_token: bool = True
-) -> Dict[str, Any]:
+) -> None:
     """PUT 请求。
 
     Args:
@@ -332,9 +330,6 @@ def _put(
         params: 额外的查询参数（可选）。
         need_token: 是否需要登录 token，默认 True。
 
-    Returns:
-        响应 JSON 数据。
-
     Raises:
         ApiError: 请求失败时抛出。
     """
@@ -343,15 +338,16 @@ def _put(
     if params:
         final_params.update(params)
 
-    response = self._request_with_log(
+    self._request_with_log(
         "PUT", url,
         params=final_params,
         json_data=data,
         headers=headers,
         need_token=need_token
     )
-    return response.json()
 ```
+
+> **设计说明**：`_put` 方法返回 `None`，与现有 `_delete` 方法保持一致。`updateStartedConfConfig` 接口成功时返回空响应，无需处理返回值。
 
 > **设计决策**：
 > 1. 新增 `_post_with_headers` 而非修改 `_post` 签名，避免影响现有调用方（如 `MeetingManageAW`）
