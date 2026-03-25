@@ -313,3 +313,36 @@ class BaseApiAW(BaseAW):
         params["ts"] = int(time.time())
 
         self._request_with_log("DELETE", url, params=params)
+
+    def _put(
+        self,
+        url: str,
+        data: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        need_token: bool = True
+    ) -> None:
+        """PUT 请求。
+
+        Args:
+            url: 请求 URL。
+            data: JSON 请求体。
+            headers: 额外的请求头（可选）。
+            params: 额外的查询参数（可选）。
+            need_token: 是否需要登录 token，默认 True。
+
+        Raises:
+            ApiError: 请求失败时抛出。
+        """
+        # 合并时间戳和额外参数
+        final_params = {"ts": int(time.time())}
+        if params:
+            final_params.update(params)
+
+        self._request_with_log(
+            "PUT", url,
+            params=final_params,
+            json_data=data,
+            headers=headers,
+            need_token=need_token
+        )
