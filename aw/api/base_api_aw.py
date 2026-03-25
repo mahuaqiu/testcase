@@ -191,7 +191,8 @@ class BaseApiAW(BaseAW):
                 headers=final_headers,
                 params=params,
                 json=json_data,
-                timeout=timeout
+                timeout=timeout,
+                verify=False
             )
 
             duration_ms = int((time.time() - start_time) * 1000)
