@@ -35,6 +35,10 @@ hooks:
   mac:
     setup: ["start_app"]
     teardown: ["stop_app"]
+  # API 平台 hooks
+  api:
+    setup: []
+    teardown: ["cancel_all_meetings"]
 
 # testagent 服务配置
 testagent:
