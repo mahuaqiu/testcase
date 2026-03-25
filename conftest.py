@@ -23,6 +23,7 @@ from common.report_generator import HTMLReportGenerator
 
 _config = None
 _keepalive_managers: Dict[str, KeepAliveManager] = {}
+_test_results: Dict[str, Dict[str, Any]] = {}  # 存储测试结果
 
 
 def get_config() -> Dict[str, Any]:
@@ -118,8 +119,6 @@ def users(request) -> Dict[str, User]:
         case_hooks = _get_case_hooks(request.node)
 
         for user_id, user in user_instances.items():
-            if user.platform == "api":
-                continue  # API 用户不需要执行 hooks
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
             _execute_hooks(user, final_hooks.get("setup", []))
 
@@ -127,8 +126,6 @@ def users(request) -> Dict[str, User]:
 
         # 执行 teardown hooks
         for user_id, user in user_instances.items():
-            if user.platform == "api":
-                continue  # API 用户不需要执行 hooks
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
             _execute_hooks(user, final_hooks.get("teardown", []))
 
@@ -139,17 +136,27 @@ def users(request) -> Dict[str, User]:
 
         logger.log_step("用例结束")
 
+        # 生成报告（移到 fixture teardown 阶段，确保 teardown hooks 日志被记录）
+        _generate_report(request, logger, user_instances)
+
 
 # ── 报告生成 Hook ─────────────────────────────────
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """测试结束后生成报告。"""
+    """测试结束后记录结果，用于后续报告生成。"""
     outcome = yield
     report = outcome.get_result()
 
     if report.when == "call":
         logger = ReportLogger.get_current()
+
+        # 保存测试结果供 fixture teardown 使用
+        _test_results[item.nodeid] = {
+            "passed": report.passed,
+            "failed": report.failed,
+            "error_msg": str(report.longrepr) if report.failed else "",
+        }
 
         # 失败时截图
         if report.failed and "users" in item.funcargs:
@@ -168,8 +175,6 @@ def pytest_runtest_makereport(item, call):
                         pass
             else:
                 # 非 API AW 失败：截所有用户
-                # 失败用户的截图会在步骤内显示（通过 error_screenshot）
-                # 其它用户截图放在底部
                 for user_id, user in users.items():
                     if user_id.endswith("_api"):
                         continue
@@ -183,24 +188,6 @@ def pytest_runtest_makereport(item, call):
             # 记录错误
             logger.log_error(str(report.longrepr))
 
-        # 生成报告（始终在项目根目录下）
-        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        project_root = Path(__file__).parent  # conftest.py 所在目录即项目根目录
-        report_dir = project_root / "report" / timestamp
-        report_dir.mkdir(parents=True, exist_ok=True)
-        report_path = report_dir / f"{item.name}.html"
-
-        HTMLReportGenerator.generate(
-            report_path=report_path,
-            case_name=item.name,
-            case_title=item.instance.__doc__ or "" if item.instance else "",
-            logs=logger.get_logs(),
-            duration_ms=logger.get_duration(),
-            status="passed" if report.passed else "failed",
-            error_msg=str(report.longrepr) if report.failed else "",
-            is_api_failure=logger.is_api_failure()
-        )
-
 
 # ── 辅助函数 ─────────────────────────────────────────
 
@@ -210,6 +197,41 @@ def _get_case_hooks(node) -> Dict[str, Any]:
     if not marker:
         return {}
     return marker.args[0] if marker.args else marker.kwargs
+
+
+def _generate_report(request, logger: ReportLogger, user_instances: Dict[str, User]) -> None:
+    """生成测试报告。
+
+    在 fixture teardown 阶段调用，确保 teardown hooks 日志被记录。
+
+    Args:
+        request: pytest request 对象。
+        logger: 日志收集器。
+        user_instances: 用户资源字典。
+    """
+    # 获取测试结果
+    result = _test_results.get(request.node.nodeid, {"passed": True, "failed": False, "error_msg": ""})
+
+    # 生成报告（始终在项目根目录下）
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    project_root = Path(__file__).parent  # conftest.py 所在目录即项目根目录
+    report_dir = project_root / "report" / timestamp
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"{request.node.name}.html"
+
+    HTMLReportGenerator.generate(
+        report_path=report_path,
+        case_name=request.node.name,
+        case_title=request.instance.__doc__ or "" if hasattr(request, "instance") and request.instance else "",
+        logs=logger.get_logs(),
+        duration_ms=logger.get_duration(),
+        status="passed" if result["passed"] else "failed",
+        error_msg=result["error_msg"],
+        is_api_failure=logger.is_api_failure()
+    )
+
+    # 清理测试结果
+    _test_results.pop(request.node.nodeid, None)
 
 
 def _execute_hooks(user: User, hooks: list) -> None:

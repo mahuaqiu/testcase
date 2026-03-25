@@ -19,6 +19,9 @@ aw/                          # AW 业务封装层
 ├── base_aw.py               # AW 基类
 ├── common/                  # 公共 AW（各平台通用）
 │   └── check_aw.py
+├── api/                     # API 平台 AW（HTTP 接口封装）
+│   ├── base_api_aw.py       # API AW 基类
+│   └── meeting_manage_aw.py # 会议管理 API
 ├── windows/                 # Windows 端 AW
 ├── web/                     # Web 端 AW
 │   └── login_aw.py
@@ -57,6 +60,7 @@ config.yaml                  # 配置文件
 - **测试人员只关注 testcases 层**，通过 User 实例调用 AW 方法完成测试
 - **User 实例自动加载 AW**，测试代码直接调用 `user.do_xxx()`
 - **AW 层继承 BaseAW**，提供便捷方法封装 testagent 调用
+- **API 平台独立**：`users["userA_api"]` 提供 HTTP API 能力，无需 UI 操作
 
 ### 1.3 与 testagent 工程的关系
 
@@ -720,7 +724,28 @@ hooks:
   ios:
     setup: ["start_app"]
     teardown: ["stop_app"]
+  android:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  mac:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  # API 平台 hooks（用于数据准备和清理）
+  api:
+    setup: []
+    teardown: ["cancel_all_meetings"]
 ```
+
+**API 平台 hooks 说明**：
+
+| Hook 方法 | 说明 | 典型用途 |
+|-----------|------|----------|
+| `login` | 登录获取 token | setup 阶段预登录 |
+| `cancel_all_meetings` | 取消所有会议 | teardown 阶段清理数据 |
+
+**UI 平台与 API 平台 hooks 独立执行**：
+- `users["userA"]`（Web）执行 `start_app` → `stop_app`
+- `users["userA_api"]`（API）执行 `login` → `cancel_all_meetings`
 
 ### 11.3 用例级别覆盖
 
@@ -798,3 +823,110 @@ class InitAW(BaseAW):
 5. 执行测试用例
 6. 执行 teardown hooks
 ```
+
+---
+
+## 十二、API AW 模块
+
+### 12.1 概述
+
+API AW 模块通过直接调用 HTTP API 完成数据准备和清理操作，避免不必要的 UI 操作，提升测试执行效率。
+
+**典型场景**：
+- 用例前置条件：API 预约会议，无需打开页面
+- 用例后置清理：API 取消会议，快速清理数据
+- 数据验证：API 查询会议状态
+
+### 12.2 用户资源映射
+
+声明 `@pytest.mark.users({"userA": "web"})` 时，自动创建两个 User 实例：
+
+| 用户 ID | 平台 | 用途 |
+|---------|------|------|
+| `userA` | web | UI 操作 |
+| `userA_api` | api | API 操作（同一账号，独立 token） |
+
+**使用示例**：
+
+```python
+@pytest.mark.users({"userA": "web"})
+class TestMeetingCreate:
+    def test_execute(self, users):
+        # UI 操作
+        user_ui = users["userA"]
+        login_aw = LoginAW(client, user=user_ui)
+        login_aw.do_login()
+
+        # API 操作（同一账号，独立 token）
+        user_api = users["userA_api"]
+        # 可直接调用 API AW 方法
+```
+
+### 12.3 API AW 基类
+
+`aw/api/base_api_aw.py` 提供 HTTP 请求封装和 Token 自动管理：
+
+```python
+from aw.api.base_api_aw import BaseApiAW
+
+class MeetingManageAW(BaseApiAW):
+    _LOGIN_URL = "https://meeting.huaweicloud.com/v2/usg/acs/auth/account"
+
+    def do_create_meeting(self, subject: str) -> MeetingInfo:
+        """创建会议。"""
+        # Token 自动管理，无需手动登录
+        result = self._post(CONFERENCE_URL, data={...})
+        return self._parse_meeting_info(result)
+```
+
+**关键方法**：
+
+| 方法 | 说明 |
+|------|------|
+| `_get(url, params)` | GET 请求 |
+| `_post(url, data)` | POST 请求 |
+| `_delete(url, params)` | DELETE 请求 |
+| `_ensure_token()` | 确保 token 有效，过期自动重新登录 |
+
+### 12.4 日志集成
+
+API 调用自动记录到报告，与 UI AW 保持一致：
+
+```
+报告日志示例：
+├── 执行 hook: start_app (Web UI)
+├── LoginAW.do_login() - 成功
+├── 执行 hook: cancel_all_meetings (API)
+│   └── MeetingManageAW.do_query_meetings() - 成功
+│   └── MeetingManageAW.do_cancel_meeting() - 成功
+└── 用例结束
+```
+
+### 12.5 Hooks 集成
+
+API 平台 hooks 在 fixture teardown 阶段执行，日志会记录到报告中：
+
+```yaml
+# config.yaml
+hooks:
+  api:
+    setup: []                           # 可选：["login"] 预登录
+    teardown: ["cancel_all_meetings"]   # 自动清理会议
+```
+
+**执行顺序**：
+1. Web 用户执行 `start_app`（setup）
+2. 测试用例执行
+3. Web 用户执行 `stop_app`（teardown）
+4. API 用户执行 `cancel_all_meetings`（teardown）
+5. 生成报告（包含所有 hooks 日志）
+
+### 12.6 与 UI AW 的区别
+
+| 特性 | UI AW | API AW |
+|------|-------|--------|
+| 依赖 | TestagentClient | requests.Session |
+| 操作方式 | OCR/图像/坐标 | HTTP 请求 |
+| 保活 | 需要 | 不需要 |
+| 截图 | 支持 | 不支持 |
+| Token | 无 | 自动管理 |

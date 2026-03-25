@@ -108,8 +108,12 @@ class BaseApiAW(BaseAW):
         # 计算过期时间（提前 60 秒过期，避免临界情况）
         expire_time = time.time() + valid_period - 60
 
-        # 从登录响应中获取 user_uuid
+        # 从登录响应中获取 user_uuid（兼容两种响应格式）
         user_uuid = data.get("userUUID", "")
+        if not user_uuid:
+            # 尝试从 user.userId 获取
+            user_info = data.get("user", {})
+            user_uuid = user_info.get("userId", "")
 
         self._token_info = TokenInfo(
             access_token=access_token,
