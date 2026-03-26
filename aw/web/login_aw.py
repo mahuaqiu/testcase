@@ -7,7 +7,7 @@ import time
 from typing import Optional
 
 from aw.base_aw import BaseAW
-
+from variable import LoginVar
 
 class LoginAW(BaseAW):
     """登录业务操作封装。
@@ -51,13 +51,14 @@ class LoginAW(BaseAW):
         Raises:
             ValueError: 未提供账号密码且无用户资源时抛出。
         """
+        self.do_navigate_to_login(LoginVar.WEB_LOGIN_URL)
         # 优先使用传入参数，其次使用 user 资源
         account = username or (self.user.account if self.user else None)
         pwd = password or (self.user.password if self.user else None)
 
         if not account or not pwd:
             raise ValueError("未提供账号密码，且无用户资源")
-
+        self.ocr_wait("邮箱/帐号",timeout=5000)
         # 使用 OCR 识别并输入账号
         self.ocr_input("邮箱/帐号", account)
         # 使用 OCR 识别并输入密码
@@ -66,6 +67,7 @@ class LoginAW(BaseAW):
         self.ocr_click("登录")
         time.sleep(0.5)
         self.do_accept_privacy()
+        time.sleep(1)
 
     def do_accept_privacy(self) -> None:
         """接受隐私政策。

@@ -34,6 +34,7 @@ class MeetingJoinAW(BaseAW):
         Args:
             meeting: 会议信息实例，包含主持人入会链接。
         """
+        meeting.chair_join_uri = meeting.chair_join_uri.replace("#","webrtc/?lang=zh-CN#")
         # 导航到主持人入会链接
         self.navigate(meeting.chair_join_uri)
         # 等待入会页面加载
@@ -49,6 +50,7 @@ class MeetingJoinAW(BaseAW):
         Args:
             meeting: 会议信息实例，包含来宾入会链接。
         """
+        meeting.guest_join_uri = meeting.guest_join_uri.replace("#","webrtc/?lang=zh-CN#")
         # 导航到来宾入会链接
         self.navigate(meeting.guest_join_uri)
         # 等待入会页面加载
@@ -84,7 +86,7 @@ class MeetingJoinAW(BaseAW):
         验证入会后页面显示会议相关文字。
         """
         # 等待会议界面出现
-        self.ocr_wait("离开", timeout=5000)
+        self.ocr_wait("reg_会议中\(\d\)", timeout=5000)
 
     def should_in_waitingroom(self) -> None:
         """断言用户在等候室中。
