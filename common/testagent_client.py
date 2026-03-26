@@ -219,6 +219,7 @@ class TestagentClient:
         text: str,
         offset: Optional[Dict[str, int]] = None,
         timeout: int = 5000,
+        index: int = 0,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """OCR 文字识别点击。
@@ -228,6 +229,7 @@ class TestagentClient:
             text: 要识别并点击的文字。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
 
         Returns:
@@ -237,6 +239,7 @@ class TestagentClient:
             "action_type": "ocr_click",
             "value": text,
             "timeout": timeout,
+            "index": index,
         }
         if offset:
             action["offset"] = offset
@@ -250,6 +253,7 @@ class TestagentClient:
         text: str,
         offset: Optional[Dict[str, int]] = None,
         timeout: int = 5000,
+        index: int = 0,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """OCR 文字识别后输入。
@@ -262,6 +266,7 @@ class TestagentClient:
             text: 要输入的内容。
             offset: 输入框相对文字的偏移量。
             timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
 
         Returns:
@@ -272,6 +277,7 @@ class TestagentClient:
             "value": label,
             "text": text,
             "timeout": timeout,
+            "index": index,
         }
         if offset:
             action["offset"] = offset
@@ -355,12 +361,51 @@ class TestagentClient:
             return result["actions"][0].get("output", "")
         return ""
 
+    def ocr_paste(
+        self,
+        platform: str,
+        text: str,
+        content: str,
+        offset: Optional[Dict[str, int]] = None,
+        timeout: int = 5000,
+        index: int = 0,
+        device_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """OCR 定位后粘贴剪贴板内容。
+
+        Args:
+            platform: 平台类型。
+            text: 要定位的文字标签。
+            content: 要粘贴的内容。
+            offset: 点击偏移量。
+            timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
+            device_id: 设备 ID。
+
+        Returns:
+            执行结果。
+        """
+        action = {
+            "action_type": "ocr_paste",
+            "value": text,
+            "text": content,
+            "timeout": timeout,
+            "index": index,
+        }
+        if offset:
+            action["offset"] = offset
+
+        return self.execute(platform, [action], device_id)
+
+    # ── 图像识别动作 ─────────────────────────────────────────────
+
     def image_click(
         self,
         platform: str,
         image_path: str,
         threshold: float = 0.8,
         timeout: int = 5000,
+        index: int = 0,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像识别点击。
@@ -370,6 +415,7 @@ class TestagentClient:
             image_path: 图像模板路径。
             threshold: 匹配阈值（0-1）。
             timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
 
         Returns:
@@ -377,9 +423,10 @@ class TestagentClient:
         """
         action = {
             "action_type": "image_click",
-            "value": image_path,
+            "image_path": image_path,
             "threshold": threshold,
             "timeout": timeout,
+            "index": index,
         }
         return self.execute(platform, [action], device_id)
 
@@ -389,6 +436,7 @@ class TestagentClient:
         image_path: str,
         threshold: float = 0.8,
         timeout: int = 5000,
+        index: int = 0,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """等待图像出现。
@@ -398,6 +446,7 @@ class TestagentClient:
             image_path: 图像模板路径。
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
 
         Returns:
@@ -405,9 +454,10 @@ class TestagentClient:
         """
         action = {
             "action_type": "image_wait",
-            "value": image_path,
+            "image_path": image_path,
             "threshold": threshold,
             "timeout": timeout,
+            "index": index,
         }
         return self.execute(platform, [action], device_id)
 
@@ -417,6 +467,7 @@ class TestagentClient:
         image_path: str,
         threshold: float = 0.8,
         timeout: int = 5000,
+        index: int = 0,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像断言。
@@ -426,6 +477,7 @@ class TestagentClient:
             image_path: 图像模板路径。
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
 
         Returns:
@@ -433,7 +485,42 @@ class TestagentClient:
         """
         action = {
             "action_type": "image_assert",
-            "value": image_path,
+            "image_path": image_path,
+            "threshold": threshold,
+            "timeout": timeout,
+            "index": index,
+        }
+        return self.execute(platform, [action], device_id)
+
+    def image_click_near_text(
+        self,
+        platform: str,
+        image_path: str,
+        text: str,
+        max_distance: int = 500,
+        threshold: float = 0.8,
+        timeout: int = 5000,
+        device_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """点击文本附近最近的图像。
+
+        Args:
+            platform: 平台类型。
+            image_path: 图像模板路径。
+            text: 要查找的目标文字。
+            max_distance: 最大搜索距离（像素），默认 500。
+            threshold: 匹配阈值。
+            timeout: 超时时间（毫秒）。
+            device_id: 设备 ID。
+
+        Returns:
+            执行结果。
+        """
+        action = {
+            "action_type": "image_click_near_text",
+            "image_path": image_path,
+            "value": text,
+            "end_x": max_distance,
             "threshold": threshold,
             "timeout": timeout,
         }

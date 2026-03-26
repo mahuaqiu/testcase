@@ -145,6 +145,96 @@ class BaseAW:
             **kwargs
         )
 
+    def ocr_assert(self, text: str, **kwargs) -> dict:
+        """断言文字存在。"""
+        return self._execute_with_log(
+            "ocr_assert",
+            self.client.ocr_assert,
+            {"text": text, **kwargs},
+            self.PLATFORM,
+            text,
+            **kwargs
+        )
+
+    def ocr_get_text(self, **kwargs) -> str:
+        """获取屏幕所有文字。
+
+        Returns:
+            识别到的文字内容。
+        """
+        result = self._execute_with_log(
+            "ocr_get_text",
+            self.client.ocr_get_text,
+            {**kwargs},
+            self.PLATFORM,
+            **kwargs
+        )
+        # 从结果中提取文字
+        if result.get("status") == "success" and result.get("actions"):
+            return result["actions"][0].get("output", "")
+        return ""
+
+    def ocr_paste(self, text: str, content: str, **kwargs) -> dict:
+        """OCR 定位后粘贴剪贴板内容。"""
+        return self._execute_with_log(
+            "ocr_paste",
+            self.client.ocr_paste,
+            {"text": text, "content": content, **kwargs},
+            self.PLATFORM,
+            text,
+            content,
+            **kwargs
+        )
+
+    # ── 图像识别动作 ─────────────────────────────────────────
+
+    def image_click(self, image_path: str, **kwargs) -> dict:
+        """图像识别点击。"""
+        return self._execute_with_log(
+            "image_click",
+            self.client.image_click,
+            {"image_path": image_path, **kwargs},
+            self.PLATFORM,
+            image_path,
+            **kwargs
+        )
+
+    def image_wait(self, image_path: str, **kwargs) -> dict:
+        """等待图像出现。"""
+        return self._execute_with_log(
+            "image_wait",
+            self.client.image_wait,
+            {"image_path": image_path, **kwargs},
+            self.PLATFORM,
+            image_path,
+            **kwargs
+        )
+
+    def image_assert(self, image_path: str, **kwargs) -> dict:
+        """断言图像存在。"""
+        return self._execute_with_log(
+            "image_assert",
+            self.client.image_assert,
+            {"image_path": image_path, **kwargs},
+            self.PLATFORM,
+            image_path,
+            **kwargs
+        )
+
+    def image_click_near_text(self, image_path: str, text: str, **kwargs) -> dict:
+        """点击文本附近最近的图像。"""
+        return self._execute_with_log(
+            "image_click_near_text",
+            self.client.image_click_near_text,
+            {"image_path": image_path, "text": text, **kwargs},
+            self.PLATFORM,
+            image_path,
+            text,
+            **kwargs
+        )
+
+    # ── 坐标动作 ─────────────────────────────────────────
+
     def click(self, x: int, y: int) -> dict:
         """坐标点击。"""
         return self._execute_with_log(
@@ -168,6 +258,40 @@ class BaseAW:
             to_x,
             to_y,
             **kwargs
+        )
+
+    def input_text(self, x: int, y: int, text: str) -> dict:
+        """在指定坐标输入文本。"""
+        return self._execute_with_log(
+            "input_text",
+            self.client.input_text,
+            {"x": x, "y": y, "text": text},
+            self.PLATFORM,
+            x,
+            y,
+            text
+        )
+
+    # ── 其他动作 ─────────────────────────────────────────
+
+    def press(self, key: str) -> dict:
+        """按键操作。"""
+        return self._execute_with_log(
+            "press",
+            self.client.press,
+            {"key": key},
+            self.PLATFORM,
+            key
+        )
+
+    def wait(self, duration_ms: int) -> dict:
+        """固定等待。"""
+        return self._execute_with_log(
+            "wait",
+            self.client.wait,
+            {"duration_ms": duration_ms},
+            self.PLATFORM,
+            duration_ms
         )
 
     def start_app(self, app_id: str) -> dict:

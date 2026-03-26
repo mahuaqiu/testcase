@@ -20,6 +20,5 @@ class TestLoginSuccess:
 
         user_api.do_create_meeting("haha")
 
-        user.do_navigate_to_login(LoginVar.WEB_LOGIN_URL)
         user.do_login()
         user.should_login_success()
