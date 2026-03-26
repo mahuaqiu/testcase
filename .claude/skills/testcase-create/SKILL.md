@@ -1,694 +1,91 @@
 ---
 name: testcase-create
-description: "自动化测试用例生成。接收用户输入的测试用例描述，交互确认细节，分析现有AW资源，生成代码并进行复查。"
+description: "自动化测试用例生成。接收用户输入的测试用例描述，通过四阶段流水线生成测试代码。"
 ---
 
-# 自动化测试用例生成 Skill
+# 自动化测试用例生成（入口 Skill）
 
-你是一个资深自动化测试工程师。你的任务是将用户输入的测试用例描述，通过交互确认、代码库分析、计划审核、代码生成、代码复查五个阶段，转化为落地的自动化测试代码。
+这是用例生成的统一入口。收到用户请求后，依次调用四个子 Skill 完成生成流水线。
 
-## 核心原则
+## 流水线概览
 
-1. **一次只生成一条用例**：用户输入一条用例，只生成一个测试脚本
-2. **API 操作调用 API AW**：用例中写 "api预约会议" 等操作，应调用 `aw/api/` 下的方法
-3. **交互确认优先**：不确定的地方一定要问用户，不要猜测
-4. **代码复查**：生成代码后必须进行复查
+```
+用户输入（零散描述/手工用例/接口文档）
+    │
+    ▼
+┌─────────────────────────┐
+│  Skill 1: testcase-refiner  │  需求结构化 → 输出标准测试步骤
+└────────────┬────────────┘
+             │ 结构化测试步骤
+             ▼
+┌─────────────────────────┐
+│  Skill 2: testcase-planner  │  扫描 INDEX.md → 输出代码生成计划
+└────────────┬────────────┘
+             │ 代码生成计划
+             ▼
+┌─────────────────────────┐
+│  Skill 3: testcase-reviewer │  审查计划 → 用户确认
+└────────────┬────────────┘
+             │ 审查通过的计划
+             ▼
+┌─────────────────────────┐
+│  Skill 4: testcase-coder    │  执行计划 → 生成代码 + 更新 INDEX.md
+└─────────────────────────┘
+```
+
+## 架构说明
+
+本工程采用 **AW 层 + testcases 层** 两层架构：
+
+| 层级 | 目录 | 职责 |
+|------|------|------|
+| AW 层 | `aw/{平台}/` | 封装多步骤业务流程，继承 BaseAW |
+| testcases 层 | `testcases/{平台}/` | 测试用例业务代码，通过 User 调用 AW 方法 |
+
+支持的测试端：**Windows / Web / Mac / iOS / Android**
 
 ## 执行流程
 
-### 阶段 1：解析用户输入，交互确认细节
+收到用户的测试需求后，依次执行以下 Skill：
 
-#### 1.1 检查输入完整性
+### 1. testcase-refiner（需求结构化）
 
-用户输入应包含以下信息：
+与用户交互确认测试细节，输出结构化测试步骤。
 
-| 检查项 | 必要性 | 示例 |
-|--------|--------|------|
-| 测试端 | 必要 | web / windows / mac / ios / android |
-| 测试步骤 | 必要 | 3 步以上的操作序列 |
-| 期望结果 | 必要 | 每步或最终的验证点 |
-| 前置条件 | 可选 | 如 "已登录"、"api预约会议" |
-| 角色/用户 | 可选 | 如 "主持人"、"与会者A" |
-| 清理步骤 | 可选 | 如 "关闭浏览器" |
+### 2. testcase-planner（代码库分析）
 
-#### 1.2 判断是否需要交互
+读取 `aw/INDEX.md` 和 `config.yaml`，分析 AW 资源，制定代码生成计划。
 
-**信息完整判断标准**：
-- 测试端明确
-- 测试步骤清晰（≥3 步）
-- 期望结果明确
+### 3. testcase-reviewer（计划审查）
 
-**需要交互的情况**：
-1. 测试端不明确
-2. 步骤描述跳跃，缺少关键中间步骤
-3. 业务术语不明（如 "准入" 是什么操作？）
-4. 期望结果完全缺失
-5. **操作类型不明确**（portal 是 API 还是 UI？）
+审查计划合理性，通过后与用户确认执行。
 
-#### 1.3 交互原则
+### 4. testcase-coder（代码生成）
 
-- **最小化交互**：信息足够就不问
-- **一次问清**：将所有问题合并成一次 AskUserQuestion 调用
-- **提供选项**：给出合理的默认选项
-- **格式引导**：展示期望的输入格式
-
-**示例用例格式**（可向用户展示）：
-
-```markdown
-# 测试用例：会议等候室功能
-
-## 前置条件
-1. api预约会议，并开启等候室
-2. 角色：webrtc端主持人，webrtc端与会者A
-
-## 测试步骤与预期
-- STEP 1: WEBRTC主持人、与会者A入会
-    - EXPECT : 主持人入会成功，与会者A加入到等候室
-- STEP 2: 主持人准入与会者A
-    - EXPECT : 主持人准入成功，与会者A加入会议成功
-- STEP 3: portal设置关闭等候室，与会者A离会后再重新入会
-    - EXPECT : 与会者A再次入会成功，没有进入等候室
-
-## 清理步骤
-1. api取消会议
-2. 关掉浏览器
-
-## 用例归属
-1. web端
-2. 目录：testcases\web\waitingroom
-```
-
-#### 1.4 操作类型确认规则
-
-**自动识别，无需确认**：
-| 操作描述 | 自动识别类型 | 说明 |
-|----------|-------------|------|
-| "api预约会议" | API | 明确带 "api" 前缀，无需确认 |
-| "api取消会议" | API | 明确带 "api" 前缀，无需确认 |
-| "主持人入会" | UI | 默认 UI 操作，无需确认 |
-| "与会者点击xxx" | UI | 默认 UI 操作，无需确认 |
-| 其他未明确说明的操作 | UI | 默认 UI 操作，无需确认 |
-
-**必须与用户确认**：
-| 操作描述 | 需确认原因 | 确认内容 |
-|----------|-----------|----------|
-| "portal设置等候室" | portal 可能是 API 或 Web UI | 是 API 调用还是 Web 页面操作？ |
-| "会控准入与会者" | 会控可能是 API 或会议界面按钮 | 是会议控制 API 还是 UI 点击？ |
-| "portal操作xxx" | portal 操作类型不明确 | 确认是 API 还是 UI |
-
-**确认原则**：
-- 只对 **portal操作** 和 **会控操作** 确认是否为 API
-- 其他操作默认为 UI，不再一一确认
-
-#### 1.5 输出结构化用例
-
-交互确认后，输出结构化的测试步骤：
-
-```
-## 结构化测试步骤
-
-### 基本信息
-- 功能模块: 会议等候室
-- 测试端: web
-- 前置条件: api预约会议并开启等候室
-
-### 角色
-- 主持人: webrtc端
-- 与会者A: webrtc端
-
-### 测试步骤
-| 步骤 | 操作 | 期望结果 | 操作类型 | 备注 |
-|------|------|----------|----------|------|
-| 1 | 主持人入会 | 入会成功 | UI | |
-| 2 | 与会者A入会 | 加入等候室 | UI | |
-| 3 | 主持人准入与会者A | 加入会议成功 | API | MeetingControlAW.do_admit_user() |
-| 4 | portal关闭等候室 | 设置成功 | API | MeetingControlAW.do_set_waitingroom(False) |
-| 5 | 与会者A离会后重新入会 | 直接入会 | UI | |
-
-### 清理步骤
-| 步骤 | 操作 | 操作类型 |
-|------|------|----------|
-| 1 | api取消会议 | API |
-| 2 | 关闭浏览器 | UI（hooks 自动处理） |
-
-### 用例归属
-- 平台: web
-- 目录: testcases/web/waitingroom
-- 文件名: test_waitingroom_join_001.py
-```
+按计划生成 AW 和测试用例代码，更新 INDEX.md。
 
 ---
 
-### 阶段 2：检查 hooks 配置，扫描现有 AW
+## 核心改进
 
-#### 2.0 读取 hooks 配置（新增）
+相比旧版，新版流水线有以下改进：
 
-**在分析 AW 之前，先读取 config.yaml 中的 hooks 配置**：
-
-```yaml
-# 示例 config.yaml
-hooks:
-  web:
-    setup: ["start_app"]
-    teardown: ["stop_app"]
-  api:
-    setup: []
-    teardown: ["cancel_all_meetings"]
-```
-
-**分析要点**：
-
-1. **setup hooks**：测试执行前自动执行的操作
-   - 如 `start_app` 会自动启动浏览器，测试用例无需手动写
-2. **teardown hooks**：测试执行后自动执行的操作
-   - 如 `stop_app` 会自动关闭浏览器，清理步骤中无需手动写
-   - 如 `cancel_all_meetings` 会自动取消会议，清理步骤中可能无需写 `api取消会议`
-
-**与用户确认**：
-
-```
-"检测到 config.yaml 中已配置 hooks：
-- setup: start_app（自动启动浏览器）
-- teardown: stop_app（自动关闭浏览器）、cancel_all_meetings（自动取消会议）
-
-是否使用 hooks 自动处理这些操作？测试用例中无需手动编写。"
-```
-
-#### 2.1 扫描代码库
-
-**必须扫描的目录**：
-
-| 目录 | 内容 | 方法 |
-|------|------|------|
-| `aw/{平台}/` | 平台特定 AW | Glob + Read |
-| `aw/api/` | API AW | Glob + Read |
-| `aw/common/` | 公共 AW | Glob + Read |
-| `testcases/{平台}/` | 已有测试用例 | Glob |
-| `config.yaml` | hooks 配置 | Read |
-
-#### 2.2 匹配分析
-
-对每个测试步骤进行 AW 匹配：
-
-**匹配优先级**：
-1. **完全匹配**：已有 AW 方法完全覆盖该步骤
-2. **部分匹配**：已有 AW 类，但缺少该方法
-3. **无匹配**：需要新建 AW 类
-
-**输出格式**：
-
-```
-## AW 分析结果
-
-### hooks 配置（已读取 config.yaml）
-| 平台 | setup | teardown |
-|------|-------|----------|
-| web | start_app | stop_app |
-| api | - | cancel_all_meetings |
-
-### 可复用的 AW
-| 步骤 | AW 类 | 方法 | 文件路径 | 操作类型 |
-|------|-------|------|----------|----------|
-| 主持人入会 | MeetingJoinAW | do_join() | aw/web/meeting_join_aw.py | UI |
-| 与会者A入会 | MeetingJoinAW | do_join() | aw/web/meeting_join_aw.py | UI |
-| portal关闭等候室 | MeetingControlAW | do_set_waitingroom() | aw/api/meeting_control_aw.py | API |
-
-### hooks 自动处理
-| 步骤 | 处理方式 |
-|------|----------|
-| 启动浏览器 | web setup: start_app |
-| 关闭浏览器 | web teardown: stop_app |
-| api取消会议 | api teardown: cancel_all_meetings |
-
-### 需要扩展的 AW
-| 步骤 | AW 类 | 需新增方法 | 文件路径 |
-|------|-------|-----------|----------|
-| 主持人准入与会者 | MeetingControlAW | do_admit_user() | aw/api/meeting_control_aw.py |
-
-### 需要新建的 AW
-| 步骤 | 建议AW类 | 建议方法 | 建议文件路径 |
-|------|----------|----------|--------------|
-| （无） | - | - | - |
-
-### 用户资源需求
-- userA: web（主持人）
-- userB: web（与会者A）
-- userA_api: api（主持人 API 操作，自动创建）
-
-**用户命名规范**：
-- 单用户：userA
-- 多用户：userA, userB, userC, ... （按顺序递增）
-- API 用户：userA_api, userB_api, ... （自动创建，无需声明）
-```
-
-#### 2.3 优先参考同目录下类似用例
-
-**在决定 AW 之前**，先检查同目录下是否有类似步骤的用例可复用：
-
-1. 扫描 `testcases/{平台}/{模块}/` 目录下的现有用例
-2. 查找是否有相同或相似的测试步骤
-3. 如果找到，复用该用例使用的 AW 和步骤
-
-**输出示例**：
-```
-## 同目录用例参考
-
-扫描目录: testcases/web/waitingroom/
-找到相似用例: test_waitingroom_host_join_001.py
-相似步骤:
-- 主持人入会 → 复用 MeetingJoinAW.do_join()
-- 与会者入会 → 复用 MeetingJoinAW.do_join()
-可复用 AW: MeetingJoinAW
-```
-
-#### 2.4 与用户确认 AW 决策
-
-**必须确认的情况**：
-
-1. **需要新建 AW 类**：
-   - **必须与用户明确每一步的实现步骤**
-   - 不能凭空想象，逐个步骤确认
-   - 示例交互：
-     ```
-     问题: "需要新建 WaitingroomAW，请确认以下方法的实现步骤："
-
-     方法: do_admit_user(user)
-     请确认具体操作步骤（如：OCR点击哪个按钮？输入什么内容？）
-     ```
-
-2. **需要扩展已有 AW（新增方法）**：
-   - **必须与用户明确扩展内容**
-   - 展示计划新增的方法签名和作用
-   - 让用户审核是否正确
-   - 示例交互：
-     ```
-     问题: "需要扩展 MeetingControlAW，计划新增以下方法，请确认："
-
-     1. do_admit_user(user_id) — 准入指定用户
-        实现步骤: 调用 POST /api/meeting/{meeting_id}/admit 接口
-
-     2. should_user_joined(user_id) — 断言用户已入会
-        实现步骤: 调用 GET /api/meeting/{meeting_id}/users 检查用户状态
-
-     以上扩展是否正确？
-     ```
-
-3. AW 匹配有歧义（多个 AW 都可能适用）
-4. hooks 配置是否使用
-
-**使用 AskUserQuestion 确认**：
-
-```
-问题: "以下步骤需要新建/扩展 AW，请确认："
-选项:
-1. 确认按建议执行
-2. 我有其他建议（请在 Other 中说明）
-```
+1. **AW 持久记忆区**：`aw/INDEX.md` 快速索引，避免遗漏
+2. **计划审查**：代码生成前审查 AW 重复、命名规范
+3. **用户确认**：审查通过后必须用户确认才执行
+4. **自动更新索引**：新增/扩展 AW 后自动更新 INDEX.md
 
 ---
 
-### 阶段 3：制定代码生成计划，用户审核
+## 使用示例
 
-#### 3.1 生成计划
-
+用户输入：
 ```
-## 代码生成计划
-
-### 0. hooks 自动处理（config.yaml 配置）
-- setup: start_app（启动浏览器）
-- teardown: stop_app（关闭浏览器）、cancel_all_meetings（取消所有会议）
-
-### 1. 扩展 AW 文件
-
-#### 1.1 扩展 aw/api/meeting_control_aw.py
-- 新增方法:
-  - do_admit_user(user_id) — 主持人准入与会者
-  - should_user_joined(user_id) — 断言用户已入会
-
-### 2. 新建测试用例文件
-
-#### 2.1 用例文件命名规范
-
-**命名格式**：`test_{功能}_{场景}_{编号}.py`
-
-**命名规则**：
-1. **按用例描述自动生成文件名前缀**：`test_{功能}_{场景}`
-2. **编号递增**：扫描同目录下现有用例，获取最大编号 +1
-3. **全局唯一**：文件名必须在整个工程中唯一
-
-**示例**：
-```
-用例描述: 等候室入会测试
-目录: testcases/web/waitingroom/
-现有用例: test_waitingroom_host_join_001.py, test_waitingroom_host_join_002.py
-生成文件名: test_waitingroom_join_001.py
-
-检查唯一性: 全工程搜索确认 test_waitingroom_join_001.py 不存在
+/testcase-create 帮我生成会议等候室功能的测试用例，Web 端
 ```
 
-#### 2.2 新建 testcases/web/waitingroom/test_waitingroom_join_001.py
-- 测试类: **TestClass**（统一名称）
-- 测试方法: **test_waitingroom_join_001**（与文件名相同）
-- pytest 标记: @pytest.mark.users({"userA": "web", "userB": "web"})
-- 依赖的 AW:
-  - MeetingManageAW (api) — 前置预约会议（hooks 或手动）
-  - MeetingJoinAW (web) — 入会
-  - MeetingControlAW (api) — 准入、等候室设置
-- hooks 处理:
-  - setup: start_app（自动）
-  - teardown: stop_app + cancel_all_meetings（自动）
-
-### 3. 执行顺序
-1. 扩展 MeetingControlAW
-2. 新建测试用例文件
-```
-
-#### 3.2 用户审核
-
-展示计划后，询问用户：
-
-```
-"以上是代码生成计划，请确认是否执行？"
-```
-
-用户可以选择：
-1. 确认执行
-2. 修改计划（在 Other 中说明修改内容）
-3. 取消
-
----
-
-### 阶段 4：执行计划，生成代码
-
-#### 4.1 生成 AW 代码
-
-**AW 类模板**：
-
-```python
-"""
-{业务名} 业务操作封装。
-
-{简述封装的业务流程}
-"""
-
-from typing import Optional
-
-from aw.base_aw import BaseAW
-
-
-class XxxAW(BaseAW):
-    """{业务中文名}业务操作封装。
-
-    Args:
-        client: TestagentClient 实例。
-        user: 用户资源实例（可选），用于动态获取账号密码。
-    """
-
-    PLATFORM = "{端}"  # windows / web / mac / ios / android
-
-    # ── 业务流程方法 ─────────────────────────────────────────
-
-    def do_xxx(self, param: Optional[str] = None) -> None:
-        """{业务动作描述}。
-
-        步骤: 步骤1 → 步骤2 → 步骤3。
-
-        优先使用传入参数，其次使用 user 资源。
-
-        Args:
-            param: 参数说明（可选）。
-
-        Raises:
-            ValueError: 未提供参数且无用户资源时抛出。
-        """
-        # 优先使用传入参数，其次使用 user 资源
-        value = param or (self.user.account if self.user else None)
-        if not value:
-            raise ValueError("未提供参数，且无用户资源")
-
-        # 使用基类提供的便捷方法（无需传 PLATFORM）
-        self.ocr_input("标签", value, offset={"x": 100, "y": 0})
-        self.ocr_click("提交")
-
-    # ── 断言方法 ─────────────────────────────────────────────
-
-    def should_xxx_success(self) -> None:
-        """断言{期望结果}。"""
-        result = self.ocr_wait("成功", timeout=5000)
-        assert self.client.is_success(result), "操作未成功"
-```
-
-**API AW 类模板**：
-
-```python
-"""
-{业务名} API 操作封装。
-
-{简述封装的 API 操作}
-"""
-
-from typing import Optional, Dict, Any
-
-from aw.api.base_api_aw import BaseApiAW
-
-
-class XxxApiAW(BaseApiAW):
-    """{业务中文名} API 操作封装。"""
-
-    # ── API 调用方法 ─────────────────────────────────────────
-
-    def do_xxx(self, param: str) -> Dict[str, Any]:
-        """{API 操作描述}。
-
-        Args:
-            param: 参数说明。
-
-        Returns:
-            API 响应数据。
-        """
-        url = f"{self.BASE_URL}/api/xxx"
-        data = {"param": param}
-        return self._post(url, data=data)
-
-    # ── 断言方法 ─────────────────────────────────────────────
-
-    def should_xxx_success(self, response: Dict[str, Any]) -> None:
-        """断言 API 调用成功。
-
-        Args:
-            response: API 响应数据。
-        """
-        assert response.get("code") == 0, f"API 调用失败: {response}"
-```
-
-#### 4.2 生成测试用例代码
-
-**测试用例模板**：
-
-```python
-"""
-{用例标题}测试用例。
-
-测试场景: {场景描述}
-"""
-
-import pytest
-
-
-@pytest.mark.users({"userA": "{平台}"})
-class TestClass:
-    """{用例标题}测试。"""
-
-    def test_{文件名}(self, users):
-        """执行测试：{操作}，应{结果}。"""
-        # 获取用户资源
-        userA = users["userA"]
-
-        # 前置条件（如有）
-        # 注意：start_app 由 hooks 自动执行
-
-        # 测试步骤
-        # ...
-
-        # 清理步骤
-        # 注意：stop_app、cancel_all_meetings 由 hooks 自动执行
-```
-
-**多用户示例（含 API 操作）**：
-
-```python
-@pytest.mark.users({"userA": "web", "userB": "web"})
-class TestClass:
-    """会议等候室入会测试。"""
-
-    def test_waitingroom_join_001(self, users):
-        """执行测试：等候室场景入会测试。"""
-        # 获取用户资源
-        userA = users["userA"]           # 主持人（UI）
-        userB = users["userB"]           # 与会者（UI）
-        userA_api = users["userA_api"]   # 主持人（API，自动创建）
-
-        # 前置：API 预约会议并开启等候室
-        # 注意：start_app 由 hooks 自动执行
-        meeting = userA_api.do_create_meeting(waiting_room=True)
-
-        # 测试步骤
-        userA.do_join_meeting(meeting["id"])
-        userA.should_join_success()
-
-        userB.do_join_meeting(meeting["id"])
-        userB.should_in_waitingroom()
-
-        # API 操作：准入与会者
-        userA_api.do_admit_user(userB.account)
-        userB.should_join_success()
-
-        # API 操作：关闭等候室
-        userA_api.do_set_waitingroom(False)
-
-        # 与会者离会再入会
-        userB.do_leave_meeting()
-        userB.do_join_meeting(meeting["id"])
-        userB.should_join_success()  # 直接入会，不进等候室
-
-        # 清理：hooks 自动执行 stop_app 和 cancel_all_meetings
-```
-
-**用例格式规范**：
-- **class 名称**：统一使用 `TestClass`
-- **方法名称**：与文件名相同，如 `test_waitingroom_join_001`
-- **用户命名**：userA, userB, userC, ...（按顺序递增）
-- **API 用户**：userA_api, userB_api, ...（自动创建，无需在 mark 中声明）
-
-#### 4.3 代码生成规则
-
-1. **一个文件一条用例**：测试文件只包含一条测试用例
-2. **AW 继承 BaseAW**：UI 操作 AW 继承 `aw.base_aw.BaseAW`
-3. **API AW 继承 BaseApiAW**：API 操作 AW 继承 `aw.api.base_api_aw.BaseApiAW`
-4. **用户资源声明**：使用 `@pytest.mark.users()` 标记
-5. **API 用户自动创建**：声明 `userA: web` 时，`userA_api` 自动可用
-6. **hooks 自动处理**：setup/teardown 由 hooks 自动执行，测试用例中无需手动编写
-
----
-
-### 阶段 5：代码复查
-
-#### 5.1 自检清单
-
-生成代码后，逐项检查：
-
-| 检查项 | 说明 |
-|--------|------|
-| AW 文件命名 | `{业务名}_aw.py` 格式 |
-| AW 类命名 | `{业务名}AW` 格式 |
-| AW 方法命名 | `do_*` 或 `should_*` 开头 |
-| AW 继承 | UI AW 继承 BaseAW，API AW 继承 BaseApiAW |
-| 测试文件命名 | `test_{功能}_{场景}_{编号}.py` 格式，全局唯一 |
-| 测试类命名 | `TestClass`（统一名称） |
-| 测试方法命名 | 与文件名相同，如 `test_waitingroom_join_001` |
-| pytest 标记 | `@pytest.mark.users()` 正确声明（userA, userB, ...） |
-| Docstring | 所有类和 public 方法有中文 docstring |
-| Import 路径 | 所有 import 的模块存在 |
-| API 操作 | 使用 `users["userA_api"]` 调用 API AW |
-| hooks 使用 | setup/teardown 不重复编写 |
-| 文件名唯一性 | 全工程搜索确认文件名唯一 |
-
-#### 5.2 输出复查报告
-
-```
-## 代码复查报告
-
-### 文件清单
-| 文件 | 操作 | 状态 |
-|------|------|------|
-| aw/api/meeting_control_aw.py | 扩展 | ✓ |
-| testcases/web/waitingroom/test_waitingroom_join_001.py | 新建 | ✓ |
-
-### hooks 配置
-| 阶段 | 操作 | 来源 |
-|------|------|------|
-| setup | start_app | config.yaml |
-| teardown | stop_app, cancel_all_meetings | config.yaml |
-
-### 检查结果
-- [x] AW 命名规范
-- [x] 测试文件命名规范
-- [x] 测试类命名规范（TestClass）
-- [x] 测试方法命名规范（与文件名相同）
-- [x] 用户命名规范（userA, userB, ...）
-- [x] pytest 标记正确
-- [x] Import 路径正确
-- [x] API 操作使用正确
-- [x] hooks 不重复编写
-- [x] 文件名全局唯一
-
-### 用例统计
-- 生成用例: 1 条
-- 扩展 AW: 1 个（MeetingControlAW）
-- 复用 AW: 2 个（MeetingJoinAW, MeetingManageAW）
-- hooks 自动处理: 3 项（start_app, stop_app, cancel_all_meetings）
-```
-
-#### 5.3 询问用户是否满意
-
-```
-"代码已生成完毕，请查看。是否需要修改？"
-```
-
-用户可以选择：
-1. 满意，无需修改
-2. 需要修改（在 Other 中说明修改内容）
-
----
-
-## 工具使用
-
-本 Skill 可使用以下工具：
-
-| 工具 | 用途 |
-|------|------|
-| Glob | 搜索文件 |
-| Grep | 搜索代码内容 |
-| Read | 读取文件 |
-| Write | 创建新文件 |
-| Edit | 修改已有文件 |
-| AskUserQuestion | 交互确认 |
-
----
-
-## 编码规范
-
-详细编码规范见 `AGENTS.md`，核心要点：
-
-1. **两层架构**：AW 层 + testcases 层
-2. **命名规范**：
-   - AW 文件：`{业务名}_aw.py`
-   - AW 类：`{业务名}AW`
-   - AW 方法：`do_*` 或 `should_*`
-   - 测试文件：`test_{功能}_{场景}_{编号}.py`（全局唯一，编号递增）
-   - 测试类：`TestClass`（统一名称）
-   - 测试方法：`test_{文件名}`（与文件名相同）
-   - 用户命名：`userA`, `userB`, `userC`, ...（单用户用 userA）
-   - API 用户：`userA_api`, `userB_api`, ...（自动创建）
-3. **BaseAW 便捷方法**：
-   - `self.ocr_click(text)` — OCR 识别点击
-   - `self.ocr_input(label, content)` — OCR 定位输入
-   - `self.ocr_wait(text)` — 等待文字出现
-   - `self.click(x, y)` — 坐标点击
-   - `self.start_app(app_id)` — 启动应用
-   - `self.stop_app(app_id)` — 关闭应用
-   - `self.navigate(url)` — 导航 URL（Web）
-4. **API AW 方法**：
-   - `self._get(url, params)` — GET 请求
-   - `self._post(url, data)` — POST 请求
-   - `self._delete(url, params)` — DELETE 请求
-   - `self._put(url, data)` — PUT 请求
-5. **hooks 配置**（config.yaml）：
-   - setup：测试前自动执行
-   - teardown：测试后自动执行
-   - 测试用例中无需重复编写 hooks 已处理的操作
-6. **新建/扩展 AW 必须与用户确认**：
-   - 新建 AW：必须明确每一步的实现步骤
-   - 扩展 AW：必须明确扩展内容，让用户审核
-7. **优先参考同目录下类似用例**：
-   - 扫描目录下现有用例，复用相似步骤的 AW
+执行流水线：
+1. **testcase-refiner** 与用户交互，确认具体场景
+2. **testcase-planner** 读取 INDEX.md，发现可复用的 AW
+3. **testcase-reviewer** 审查计划，用户确认执行
+4. **testcase-coder** 生成代码，更新 INDEX.md
