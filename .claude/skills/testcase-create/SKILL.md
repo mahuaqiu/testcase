@@ -78,25 +78,27 @@ description: "自动化测试用例生成。接收用户输入的测试用例描
 2. 目录：testcases\web\waitingroom
 ```
 
-#### 1.4 操作类型确认（重要）
+#### 1.4 操作类型确认规则
 
-对于每个步骤，必须明确操作类型：
+**自动识别，无需确认**：
+| 操作描述 | 自动识别类型 | 说明 |
+|----------|-------------|------|
+| "api预约会议" | API | 明确带 "api" 前缀，无需确认 |
+| "api取消会议" | API | 明确带 "api" 前缀，无需确认 |
+| "主持人入会" | UI | 默认 UI 操作，无需确认 |
+| "与会者点击xxx" | UI | 默认 UI 操作，无需确认 |
+| 其他未明确说明的操作 | UI | 默认 UI 操作，无需确认 |
 
-| 操作描述 | 可能的类型 | 需确认事项 |
-|----------|-----------|-----------|
-| "api预约会议" | API | 明确，无需确认 |
-| "主持人入会" | UI | 明确，无需确认 |
-| "portal设置等候室" | API 或 UI | **必须确认**：portal 是独立管理界面，可能是 API 调用或 Web 点击 |
-| "准入与会者" | API 或 UI | **需确认**：是通过会议控制 API 还是点击 UI 按钮 |
+**必须与用户确认**：
+| 操作描述 | 需确认原因 | 确认内容 |
+|----------|-----------|----------|
+| "portal设置等候室" | portal 可能是 API 或 Web UI | 是 API 调用还是 Web 页面操作？ |
+| "会控准入与会者" | 会控可能是 API 或会议界面按钮 | 是会议控制 API 还是 UI 点击？ |
+| "portal操作xxx" | portal 操作类型不明确 | 确认是 API 还是 UI |
 
-**确认操作类型的交互示例**：
-
-```
-问题: "步骤 'portal设置关闭等候室' 的操作方式？"
-选项:
-1. API 调用 — 通过 MeetingControlAW API 操作
-2. Web UI 点击 — 通过 PortalAW 在 portal 页面点击操作
-```
+**确认原则**：
+- 只对 **portal操作** 和 **会控操作** 确认是否为 API
+- 其他操作默认为 UI，不再一一确认
 
 #### 1.5 输出结构化用例
 
@@ -132,7 +134,7 @@ description: "自动化测试用例生成。接收用户输入的测试用例描
 ### 用例归属
 - 平台: web
 - 目录: testcases/web/waitingroom
-- 文件名: test_waitingroom_join.py
+- 文件名: test_waitingroom_join_001.py
 ```
 
 ---
@@ -229,16 +231,68 @@ hooks:
 | （无） | - | - | - |
 
 ### 用户资源需求
-- host: web（主持人）
-- participant: web（与会者A）
-- host_api: api（主持人 API 操作，自动创建）
+- userA: web（主持人）
+- userB: web（与会者A）
+- userA_api: api（主持人 API 操作，自动创建）
+
+**用户命名规范**：
+- 单用户：userA
+- 多用户：userA, userB, userC, ... （按顺序递增）
+- API 用户：userA_api, userB_api, ... （自动创建，无需声明）
 ```
 
-#### 2.3 与用户确认 AW 决策
+#### 2.3 优先参考同目录下类似用例
+
+**在决定 AW 之前**，先检查同目录下是否有类似步骤的用例可复用：
+
+1. 扫描 `testcases/{平台}/{模块}/` 目录下的现有用例
+2. 查找是否有相同或相似的测试步骤
+3. 如果找到，复用该用例使用的 AW 和步骤
+
+**输出示例**：
+```
+## 同目录用例参考
+
+扫描目录: testcases/web/waitingroom/
+找到相似用例: test_waitingroom_host_join_001.py
+相似步骤:
+- 主持人入会 → 复用 MeetingJoinAW.do_join()
+- 与会者入会 → 复用 MeetingJoinAW.do_join()
+可复用 AW: MeetingJoinAW
+```
+
+#### 2.4 与用户确认 AW 决策
 
 **必须确认的情况**：
-1. 需要新建 AW 类
-2. 需要扩展已有 AW（新增方法）
+
+1. **需要新建 AW 类**：
+   - **必须与用户明确每一步的实现步骤**
+   - 不能凭空想象，逐个步骤确认
+   - 示例交互：
+     ```
+     问题: "需要新建 WaitingroomAW，请确认以下方法的实现步骤："
+
+     方法: do_admit_user(user)
+     请确认具体操作步骤（如：OCR点击哪个按钮？输入什么内容？）
+     ```
+
+2. **需要扩展已有 AW（新增方法）**：
+   - **必须与用户明确扩展内容**
+   - 展示计划新增的方法签名和作用
+   - 让用户审核是否正确
+   - 示例交互：
+     ```
+     问题: "需要扩展 MeetingControlAW，计划新增以下方法，请确认："
+
+     1. do_admit_user(user_id) — 准入指定用户
+        实现步骤: 调用 POST /api/meeting/{meeting_id}/admit 接口
+
+     2. should_user_joined(user_id) — 断言用户已入会
+        实现步骤: 调用 GET /api/meeting/{meeting_id}/users 检查用户状态
+
+     以上扩展是否正确？
+     ```
+
 3. AW 匹配有歧义（多个 AW 都可能适用）
 4. hooks 配置是否使用
 
@@ -273,9 +327,29 @@ hooks:
 
 ### 2. 新建测试用例文件
 
-#### 2.1 新建 testcases/web/waitingroom/test_waitingroom_join.py
-- 测试类: TestWaitingroomJoin
-- pytest 标记: @pytest.mark.users({"host": "web", "participant": "web"})
+#### 2.1 用例文件命名规范
+
+**命名格式**：`test_{功能}_{场景}_{编号}.py`
+
+**命名规则**：
+1. **按用例描述自动生成文件名前缀**：`test_{功能}_{场景}`
+2. **编号递增**：扫描同目录下现有用例，获取最大编号 +1
+3. **全局唯一**：文件名必须在整个工程中唯一
+
+**示例**：
+```
+用例描述: 等候室入会测试
+目录: testcases/web/waitingroom/
+现有用例: test_waitingroom_host_join_001.py, test_waitingroom_host_join_002.py
+生成文件名: test_waitingroom_join_001.py
+
+检查唯一性: 全工程搜索确认 test_waitingroom_join_001.py 不存在
+```
+
+#### 2.2 新建 testcases/web/waitingroom/test_waitingroom_join_001.py
+- 测试类: **TestClass**（统一名称）
+- 测试方法: **test_waitingroom_join_001**（与文件名相同）
+- pytest 标记: @pytest.mark.users({"userA": "web", "userB": "web"})
 - 依赖的 AW:
   - MeetingManageAW (api) — 前置预约会议（hooks 或手动）
   - MeetingJoinAW (web) — 入会
@@ -421,14 +495,14 @@ class XxxApiAW(BaseApiAW):
 import pytest
 
 
-@pytest.mark.users({"{userId}": "{平台}"})
-class Test{功能}{场景}:
+@pytest.mark.users({"userA": "{平台}"})
+class TestClass:
     """{用例标题}测试。"""
 
-    def test_execute(self, users):
+    def test_{文件名}(self, users):
         """执行测试：{操作}，应{结果}。"""
         # 获取用户资源
-        user = users["{userId}"]
+        userA = users["userA"]
 
         # 前置条件（如有）
         # 注意：start_app 由 hooks 自动执行
@@ -443,42 +517,48 @@ class Test{功能}{场景}:
 **多用户示例（含 API 操作）**：
 
 ```python
-@pytest.mark.users({"host": "web", "participant": "web"})
-class TestWaitingroomJoin:
+@pytest.mark.users({"userA": "web", "userB": "web"})
+class TestClass:
     """会议等候室入会测试。"""
 
-    def test_execute(self, users):
+    def test_waitingroom_join_001(self, users):
         """执行测试：等候室场景入会测试。"""
         # 获取用户资源
-        host = users["host"]              # 主持人（UI）
-        participant = users["participant"]  # 与会者（UI）
-        host_api = users["host_api"]      # 主持人（API，自动创建）
+        userA = users["userA"]           # 主持人（UI）
+        userB = users["userB"]           # 与会者（UI）
+        userA_api = users["userA_api"]   # 主持人（API，自动创建）
 
         # 前置：API 预约会议并开启等候室
         # 注意：start_app 由 hooks 自动执行
-        meeting = host_api.do_create_meeting(waiting_room=True)
+        meeting = userA_api.do_create_meeting(waiting_room=True)
 
         # 测试步骤
-        host.do_join_meeting(meeting["id"])
-        host.should_join_success()
+        userA.do_join_meeting(meeting["id"])
+        userA.should_join_success()
 
-        participant.do_join_meeting(meeting["id"])
-        participant.should_in_waitingroom()
+        userB.do_join_meeting(meeting["id"])
+        userB.should_in_waitingroom()
 
         # API 操作：准入与会者
-        host_api.do_admit_user(participant.account)
-        participant.should_join_success()
+        userA_api.do_admit_user(userB.account)
+        userB.should_join_success()
 
         # API 操作：关闭等候室
-        host_api.do_set_waitingroom(False)
+        userA_api.do_set_waitingroom(False)
 
         # 与会者离会再入会
-        participant.do_leave_meeting()
-        participant.do_join_meeting(meeting["id"])
-        participant.should_join_success()  # 直接入会，不进等候室
+        userB.do_leave_meeting()
+        userB.do_join_meeting(meeting["id"])
+        userB.should_join_success()  # 直接入会，不进等候室
 
         # 清理：hooks 自动执行 stop_app 和 cancel_all_meetings
 ```
+
+**用例格式规范**：
+- **class 名称**：统一使用 `TestClass`
+- **方法名称**：与文件名相同，如 `test_waitingroom_join_001`
+- **用户命名**：userA, userB, userC, ...（按顺序递增）
+- **API 用户**：userA_api, userB_api, ...（自动创建，无需在 mark 中声明）
 
 #### 4.3 代码生成规则
 
@@ -503,14 +583,15 @@ class TestWaitingroomJoin:
 | AW 类命名 | `{业务名}AW` 格式 |
 | AW 方法命名 | `do_*` 或 `should_*` 开头 |
 | AW 继承 | UI AW 继承 BaseAW，API AW 继承 BaseApiAW |
-| 测试文件命名 | `test_{功能}_{场景}.py` 格式 |
-| 测试类命名 | `Test{功能}{场景}` 格式 |
-| 测试方法命名 | `test_execute` |
-| pytest 标记 | `@pytest.mark.users()` 正确声明 |
+| 测试文件命名 | `test_{功能}_{场景}_{编号}.py` 格式，全局唯一 |
+| 测试类命名 | `TestClass`（统一名称） |
+| 测试方法命名 | 与文件名相同，如 `test_waitingroom_join_001` |
+| pytest 标记 | `@pytest.mark.users()` 正确声明（userA, userB, ...） |
 | Docstring | 所有类和 public 方法有中文 docstring |
 | Import 路径 | 所有 import 的模块存在 |
-| API 操作 | 使用 `users["xxx_api"]` 调用 API AW |
+| API 操作 | 使用 `users["userA_api"]` 调用 API AW |
 | hooks 使用 | setup/teardown 不重复编写 |
+| 文件名唯一性 | 全工程搜索确认文件名唯一 |
 
 #### 5.2 输出复查报告
 
@@ -521,7 +602,7 @@ class TestWaitingroomJoin:
 | 文件 | 操作 | 状态 |
 |------|------|------|
 | aw/api/meeting_control_aw.py | 扩展 | ✓ |
-| testcases/web/waitingroom/test_waitingroom_join.py | 新建 | ✓ |
+| testcases/web/waitingroom/test_waitingroom_join_001.py | 新建 | ✓ |
 
 ### hooks 配置
 | 阶段 | 操作 | 来源 |
@@ -532,10 +613,14 @@ class TestWaitingroomJoin:
 ### 检查结果
 - [x] AW 命名规范
 - [x] 测试文件命名规范
+- [x] 测试类命名规范（TestClass）
+- [x] 测试方法命名规范（与文件名相同）
+- [x] 用户命名规范（userA, userB, ...）
 - [x] pytest 标记正确
 - [x] Import 路径正确
 - [x] API 操作使用正确
 - [x] hooks 不重复编写
+- [x] 文件名全局唯一
 
 ### 用例统计
 - 生成用例: 1 条
@@ -580,9 +665,11 @@ class TestWaitingroomJoin:
    - AW 文件：`{业务名}_aw.py`
    - AW 类：`{业务名}AW`
    - AW 方法：`do_*` 或 `should_*`
-   - 测试文件：`test_{功能}_{场景}.py`
-   - 测试类：`Test{功能}{场景}`
-   - 测试方法：`test_execute`
+   - 测试文件：`test_{功能}_{场景}_{编号}.py`（全局唯一，编号递增）
+   - 测试类：`TestClass`（统一名称）
+   - 测试方法：`test_{文件名}`（与文件名相同）
+   - 用户命名：`userA`, `userB`, `userC`, ...（单用户用 userA）
+   - API 用户：`userA_api`, `userB_api`, ...（自动创建）
 3. **BaseAW 便捷方法**：
    - `self.ocr_click(text)` — OCR 识别点击
    - `self.ocr_input(label, content)` — OCR 定位输入
@@ -600,3 +687,8 @@ class TestWaitingroomJoin:
    - setup：测试前自动执行
    - teardown：测试后自动执行
    - 测试用例中无需重复编写 hooks 已处理的操作
+6. **新建/扩展 AW 必须与用户确认**：
+   - 新建 AW：必须明确每一步的实现步骤
+   - 扩展 AW：必须明确扩展内容，让用户审核
+7. **优先参考同目录下类似用例**：
+   - 扫描目录下现有用例，复用相似步骤的 AW
