@@ -37,7 +37,7 @@ class MeetingJoinAW(BaseAW):
         # 导航到主持人入会链接
         self.navigate(meeting.chair_join_uri)
         # 等待入会页面加载
-        self.ocr_wait("加入会议", timeout=10000)
+        self.ocr_wait("加入会议", timeout=5000)
         # 点击加入会议按钮
         self.ocr_click("加入会议")
 
@@ -52,7 +52,7 @@ class MeetingJoinAW(BaseAW):
         # 导航到来宾入会链接
         self.navigate(meeting.guest_join_uri)
         # 等待入会页面加载
-        self.ocr_wait("加入会议", timeout=10000)
+        self.ocr_wait("加入会议", timeout=5000)
         # 点击加入会议按钮
         self.ocr_click("加入会议")
 
@@ -84,7 +84,7 @@ class MeetingJoinAW(BaseAW):
         验证入会后页面显示会议相关文字。
         """
         # 等待会议界面出现
-        self.ocr_wait("离开", timeout=15000)
+        self.ocr_wait("离开", timeout=5000)
 
     def should_in_waitingroom(self) -> None:
         """断言用户在等候室中。
@@ -92,7 +92,7 @@ class MeetingJoinAW(BaseAW):
         验证等候室界面显示等待相关文字。
         """
         # 等待等候室界面出现
-        self.ocr_wait("等待主持人准入", timeout=10000)
+        self.ocr_wait("等待主持人准入", timeout=5000)
 
     def should_leave_success(self) -> None:
         """断言离会成功。
@@ -100,4 +100,4 @@ class MeetingJoinAW(BaseAW):
         验证离会后页面不再显示会议相关文字。
         """
         # 等待离开会议后的界面
-        self.ocr_wait("我的会议", timeout=10000)
+        self.ocr_wait("我的会议", timeout=5000)

@@ -360,7 +360,7 @@ class XxxAW(BaseAW):
 
     def should_xxx_success(self) -> None:
         """断言{期望结果}。"""
-        result = self.ocr_wait("成功", timeout=10000)
+        result = self.ocr_wait("成功", timeout=5000)
         assert self.client.is_success(result), "操作未成功"
 ```
 

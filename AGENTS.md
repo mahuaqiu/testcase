@@ -254,7 +254,7 @@ AW 层应提供 `should_*` 断言方法，使用 OCR 断言：
 ```python
 def should_login_success(self) -> None:
     """断言登录成功。"""
-    result = self.client.ocr_wait(self.PLATFORM, "欢迎", timeout=10000)
+    result = self.client.ocr_wait(self.PLATFORM, "欢迎", timeout=5000)
     assert self.client.is_success(result), f"登录未成功"
 ```
 
@@ -456,7 +456,7 @@ class LoginAW:
 
     def should_login_success(self) -> None:
         """断言登录成功。"""
-        result = self.client.ocr_wait(self.PLATFORM, "会议", timeout=10000)
+        result = self.client.ocr_wait(self.PLATFORM, "会议", timeout=5000)
         assert self.client.is_success(result), "登录失败"
 
     def should_show_error(self, error_msg: str) -> None:
