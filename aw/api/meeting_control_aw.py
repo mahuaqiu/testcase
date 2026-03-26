@@ -42,13 +42,14 @@ class MeetingControlAW(MeetingManageAW):
 
     # ── 业务方法 ─────────────────────────────────────────
 
-    def do_get_region_info(self, conference_id: str) -> RegionInfo:
+    def do_get_region_info(self, conference_id: str, chair_password: str) -> RegionInfo:
         """获取会议站点信息。
 
-        步骤: 使用登录 token 调用站点信息接口 → 返回区域服务器地址。
+        步骤: 使用主持人密码调用站点信息接口 → 返回区域服务器地址。
 
         Args:
             conference_id: 会议 ID。
+            chair_password: 主持人密码。
 
         Returns:
             RegionInfo 实例，包含区域服务器地址和 UUID。
@@ -60,9 +61,13 @@ class MeetingControlAW(MeetingManageAW):
         if conference_id in self._region_info_cache:
             return self._region_info_cache[conference_id]
 
-        # 调用 API
+        # 调用 API（使用主持人密码认证）
+        headers = {
+            "x-login-type": "1",
+            "X-Password": chair_password
+        }
         params = {"conferenceID": conference_id}
-        result = self._get(ManageVar.REGION_INFO_URL, params=params)
+        result = self._get(ManageVar.REGION_INFO_URL, params=params, headers=headers, need_token=False)
 
         # 解析响应
         region_info = self._parse_region_info(result)
@@ -91,7 +96,7 @@ class MeetingControlAW(MeetingManageAW):
             return self._control_token_cache[conference_id]
 
         # 获取站点信息
-        region_info = self.do_get_region_info(conference_id)
+        region_info = self.do_get_region_info(conference_id, chair_password)
         url = f"{self._get_region_base_url(region_info.region_ip)}/v1/mmc/control/conferences/token"
 
         # 调用 API（使用主持人密码认证，不需要登录 token）
@@ -125,7 +130,7 @@ class MeetingControlAW(MeetingManageAW):
             ApiError: 请求失败时抛出。
         """
         # 获取站点信息和控制 token
-        region_info = self.do_get_region_info(conference_id)
+        region_info = self.do_get_region_info(conference_id, chair_password)
         token = self.do_get_control_token(conference_id, chair_password)
 
         # 构造请求

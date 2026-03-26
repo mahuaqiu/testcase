@@ -199,6 +199,41 @@ class BaseApiAW(BaseAW):
                 verify=False
             )
 
+            # 401 时自动重新登录重试
+            if response.status_code == 401 and need_token:
+                # 清除缓存的 token
+                self._token_info = None
+                # 重新登录并重试
+                token = self._ensure_token()
+                final_headers["x-auth-token"] = token
+                final_headers["x-access-token"] = token
+                response = self._session.request(
+                    method=method,
+                    url=url,
+                    headers=final_headers,
+                    params=params,
+                    json=json_data,
+                    timeout=timeout,
+                    verify=False
+                )
+                duration_ms = int((time.time() - start_time) * 1000)
+                success = response.ok
+
+                # 记录重试日志
+                logger.log_aw_call(
+                    aw_name=self._aw_name,
+                    method=f"{method}_retry_after_401",
+                    args=log_args,
+                    success=success,
+                    result={"status_code": response.status_code, "body": response.text[:500]},
+                    duration_ms=duration_ms
+                )
+
+                if not success:
+                    raise ApiError(method, response.status_code, response.text[:200])
+
+                return response
+
             duration_ms = int((time.time() - start_time) * 1000)
             success = response.ok
 
@@ -229,12 +264,20 @@ class BaseApiAW(BaseAW):
             )
             raise ApiError(method, 0, str(e)) from e
 
-    def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get(
+        self,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        need_token: bool = True
+    ) -> Dict[str, Any]:
         """GET 请求。
 
         Args:
             url: 请求 URL。
             params: URL 参数。
+            headers: 额外的请求头（可选）。
+            need_token: 是否需要 token，默认 True（登录接口除外）。
 
         Returns:
             响应 JSON 数据。
@@ -244,7 +287,7 @@ class BaseApiAW(BaseAW):
             params = {}
         params["ts"] = int(time.time())
 
-        response = self._request_with_log("GET", url, params=params)
+        response = self._request_with_log("GET", url, params=params, headers=headers, need_token=need_token)
         return response.json()
 
     def _post(self, url: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

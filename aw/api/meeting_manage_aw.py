@@ -100,7 +100,7 @@ class MeetingManageAW(BaseApiAW):
         Raises:
             ApiError: 取消失败时抛出。
         """
-        params = {"conferenceID": conference_id}
+        params = {"conferenceID": conference_id, "type": 1}
         self._delete(ManageVar.CONFERENCE_URL, params=params)
 
     def do_query_meetings(self, limit: int = 10) -> List[MeetingInfo]:
