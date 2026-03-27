@@ -213,56 +213,62 @@ class BaseAW:
 
     def image_click(self, image_path: str, **kwargs) -> dict:
         """图像识别点击。"""
-        # 尝试将本地图片转为 base64
         image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
         return self._execute_with_log(
             "image_click",
             self.client.image_click,
             {"image_path": image_path, **kwargs},
             self.PLATFORM,
-            image_path,
-            image_base64=image_base64,
+            image_base64,
             **kwargs
         )
 
     def image_wait(self, image_path: str, **kwargs) -> dict:
         """等待图像出现。"""
         image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
         return self._execute_with_log(
             "image_wait",
             self.client.image_wait,
             {"image_path": image_path, **kwargs},
             self.PLATFORM,
-            image_path,
-            image_base64=image_base64,
+            image_base64,
             **kwargs
         )
 
     def image_assert(self, image_path: str, **kwargs) -> dict:
         """断言图像存在。"""
         image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
         return self._execute_with_log(
             "image_assert",
             self.client.image_assert,
             {"image_path": image_path, **kwargs},
             self.PLATFORM,
-            image_path,
-            image_base64=image_base64,
+            image_base64,
             **kwargs
         )
 
     def image_click_near_text(self, image_path: str, text: str, **kwargs) -> dict:
         """点击文本附近最近的图像。"""
         image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
         return self._execute_with_log(
             "image_click_near_text",
             self.client.image_click_near_text,
             {"image_path": image_path, "text": text, **kwargs},
             self.PLATFORM,
-            image_path,
+            image_base64,
             text,
-            image_base64=image_base64,
             **kwargs
         )
 

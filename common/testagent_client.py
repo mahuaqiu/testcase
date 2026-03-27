@@ -402,144 +402,128 @@ class TestagentClient:
     def image_click(
         self,
         platform: str,
-        image_path: str,
+        image_base64: str,
         threshold: float = 0.8,
         timeout: int = 5000,
         index: int = 0,
         device_id: Optional[str] = None,
-        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像识别点击。
 
         Args:
             platform: 平台类型。
-            image_path: 图像模板路径。
+            image_base64: 图像的 base64 编码。
             threshold: 匹配阈值（0-1）。
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
-            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_click",
-            "image_path": image_path,
+            "image_base64": image_base64,
             "threshold": threshold,
             "timeout": timeout,
             "index": index,
         }
-        if image_base64:
-            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def image_wait(
         self,
         platform: str,
-        image_path: str,
+        image_base64: str,
         threshold: float = 0.8,
         timeout: int = 5000,
         index: int = 0,
         device_id: Optional[str] = None,
-        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """等待图像出现。
 
         Args:
             platform: 平台类型。
-            image_path: 图像模板路径。
+            image_base64: 图像的 base64 编码。
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
-            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_wait",
-            "image_path": image_path,
+            "image_base64": image_base64,
             "threshold": threshold,
             "timeout": timeout,
             "index": index,
         }
-        if image_base64:
-            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def image_assert(
         self,
         platform: str,
-        image_path: str,
+        image_base64: str,
         threshold: float = 0.8,
         timeout: int = 5000,
         index: int = 0,
         device_id: Optional[str] = None,
-        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像断言。
 
         Args:
             platform: 平台类型。
-            image_path: 图像模板路径。
+            image_base64: 图像的 base64 编码。
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
-            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_assert",
-            "image_path": image_path,
+            "image_base64": image_base64,
             "threshold": threshold,
             "timeout": timeout,
             "index": index,
         }
-        if image_base64:
-            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def image_click_near_text(
         self,
         platform: str,
-        image_path: str,
+        image_base64: str,
         text: str,
         max_distance: int = 500,
         threshold: float = 0.8,
         timeout: int = 5000,
         device_id: Optional[str] = None,
-        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """点击文本附近最近的图像。
 
         Args:
             platform: 平台类型。
-            image_path: 图像模板路径。
+            image_base64: 图像的 base64 编码。
             text: 要查找的目标文字。
             max_distance: 最大搜索距离（像素），默认 500。
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
-            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
         """
         action = {
             "action_type": "image_click_near_text",
-            "image_path": image_path,
+            "image_base64": image_base64,
             "value": text,
             "end_x": max_distance,
             "threshold": threshold,
             "timeout": timeout,
         }
-        if image_base64:
-            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def click(
