@@ -29,7 +29,7 @@ class MeetingJoinAW(BaseAW):
     def do_join_as_host(self, meeting: MeetingInfo) -> None:
         """主持人入会。
 
-        步骤: 导航到主持人入会链接 → 等待入会页面加载 → 点击入会按钮。
+        步骤: 导航到主持人入会链接 → 等待入会页面加载 → 点击同意协议勾选框 → 点击入会按钮。
 
         Args:
             meeting: 会议信息实例，包含主持人入会链接。
@@ -39,13 +39,15 @@ class MeetingJoinAW(BaseAW):
         self.navigate(meeting.chair_join_uri)
         # 等待入会页面加载
         self.ocr_wait("加入会议", timeout=5000)
+        # 点击同意协议勾选框
+        self.image_click("images/登录同意-勾选框.png")
         # 点击加入会议按钮
         self.ocr_click("加入会议")
 
     def do_join_as_guest(self, meeting: MeetingInfo) -> None:
         """与会者入会。
 
-        步骤: 导航到来宾入会链接 → 等待入会页面加载 → 点击入会按钮。
+        步骤: 导航到来宾入会链接 → 等待入会页面加载 → 点击同意协议勾选框 → 点击入会按钮。
 
         Args:
             meeting: 会议信息实例，包含来宾入会链接。
@@ -55,6 +57,8 @@ class MeetingJoinAW(BaseAW):
         self.navigate(meeting.guest_join_uri)
         # 等待入会页面加载
         self.ocr_wait("加入会议", timeout=5000)
+        # 点击同意协议勾选框
+        self.image_click("images/登录同意-勾选框.png")
         # 点击加入会议按钮
         self.ocr_click("加入会议")
 

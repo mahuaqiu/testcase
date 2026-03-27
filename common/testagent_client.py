@@ -407,6 +407,7 @@ class TestagentClient:
         timeout: int = 5000,
         index: int = 0,
         device_id: Optional[str] = None,
+        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像识别点击。
 
@@ -417,6 +418,7 @@ class TestagentClient:
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
+            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
@@ -428,6 +430,8 @@ class TestagentClient:
             "timeout": timeout,
             "index": index,
         }
+        if image_base64:
+            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def image_wait(
@@ -438,6 +442,7 @@ class TestagentClient:
         timeout: int = 5000,
         index: int = 0,
         device_id: Optional[str] = None,
+        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """等待图像出现。
 
@@ -448,6 +453,7 @@ class TestagentClient:
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
+            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
@@ -459,6 +465,8 @@ class TestagentClient:
             "timeout": timeout,
             "index": index,
         }
+        if image_base64:
+            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def image_assert(
@@ -469,6 +477,7 @@ class TestagentClient:
         timeout: int = 5000,
         index: int = 0,
         device_id: Optional[str] = None,
+        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像断言。
 
@@ -479,6 +488,7 @@ class TestagentClient:
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
+            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
@@ -490,6 +500,8 @@ class TestagentClient:
             "timeout": timeout,
             "index": index,
         }
+        if image_base64:
+            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def image_click_near_text(
@@ -501,6 +513,7 @@ class TestagentClient:
         threshold: float = 0.8,
         timeout: int = 5000,
         device_id: Optional[str] = None,
+        image_base64: Optional[str] = None,
     ) -> Dict[str, Any]:
         """点击文本附近最近的图像。
 
@@ -512,6 +525,7 @@ class TestagentClient:
             threshold: 匹配阈值。
             timeout: 超时时间（毫秒）。
             device_id: 设备 ID。
+            image_base64: 图像的 base64 编码（可选，用于远程 Worker）。
 
         Returns:
             执行结果。
@@ -524,6 +538,8 @@ class TestagentClient:
             "threshold": threshold,
             "timeout": timeout,
         }
+        if image_base64:
+            action["image_base64"] = image_base64
         return self.execute(platform, [action], device_id)
 
     def click(
