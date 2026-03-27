@@ -26,13 +26,15 @@ class MeetingJoinAW(BaseAW):
 
     # ── 业务流程方法 ─────────────────────────────────────────
 
-    def do_join_as_host(self, meeting: MeetingInfo) -> None:
+    def do_join_as_host(self, meeting: MeetingInfo, name: str | None = None) -> None:
         """主持人入会。
 
-        步骤: 导航到主持人入会链接 → 等待入会页面加载 → 点击同意协议勾选框 → 点击入会按钮。
+        步骤: 导航到主持人入会链接 → 等待入会页面加载 → 点击同意协议勾选框 →
+              (可选)输入与会者姓名 → 点击入会按钮。
 
         Args:
             meeting: 会议信息实例，包含主持人入会链接。
+            name: 与会者名称（可选）。未登录入会时需要提供，会先点击"您的姓名"输入框再输入。
         """
         meeting.chair_join_uri = meeting.chair_join_uri.replace("#","webrtc/?lang=zh-CN#")
         # 导航到主持人入会链接
@@ -41,16 +43,21 @@ class MeetingJoinAW(BaseAW):
         self.ocr_wait("加入会议", timeout=5000)
         # 点击同意协议勾选框
         self.image_click("images/登录同意-勾选框.png")
+        # 输入与会者名称（未登录时需要）
+        if name:
+            self.ocr_input("您的姓名", name)
         # 点击加入会议按钮
         self.ocr_click("加入会议")
 
-    def do_join_as_guest(self, meeting: MeetingInfo) -> None:
+    def do_join_as_guest(self, meeting: MeetingInfo, name: str | None = None) -> None:
         """与会者入会。
 
-        步骤: 导航到来宾入会链接 → 等待入会页面加载 → 点击同意协议勾选框 → 点击入会按钮。
+        步骤: 导航到来宾入会链接 → 等待入会页面加载 → 点击同意协议勾选框 →
+              (可选)输入与会者姓名 → 点击入会按钮。
 
         Args:
             meeting: 会议信息实例，包含来宾入会链接。
+            name: 与会者名称（可选）。未登录入会时需要提供，会先点击"您的姓名"输入框再输入。
         """
         meeting.guest_join_uri = meeting.guest_join_uri.replace("#","webrtc/?lang=zh-CN#")
         # 导航到来宾入会链接
@@ -59,6 +66,9 @@ class MeetingJoinAW(BaseAW):
         self.ocr_wait("加入会议", timeout=5000)
         # 点击同意协议勾选框
         self.image_click("images/登录同意-勾选框.png")
+        # 输入与会者名称（未登录时需要）
+        if name:
+            self.ocr_input("您的姓名", name)
         # 点击加入会议按钮
         self.ocr_click("加入会议")
 
