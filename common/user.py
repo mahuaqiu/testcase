@@ -1,7 +1,8 @@
 """User 用户资源类。"""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
+from common.config_loader import ConfigLoader
 from common.testagent_client import TestagentClient
 
 
@@ -54,9 +55,11 @@ class User:
         if platform == "api":
             self.client = None
         else:
-            # 初始化 TestagentClient
+            # 初始化 TestagentClient，从配置读取超时设置
             base_url = f"http://{ip}:{port}"
-            self.client = TestagentClient(base_url)
+            config = ConfigLoader().load()
+            timeout = config.get("testagent", {}).get("timeout", 60)
+            self.client = TestagentClient(base_url, timeout)
 
         # 加载 AW 实例
         self._aw_instances: Dict[str, Any] = {}

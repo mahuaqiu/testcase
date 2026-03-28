@@ -19,7 +19,7 @@ class TestagentClient:
 
     Args:
         base_url: Worker 服务地址，默认 http://localhost:8080。
-        timeout: 请求超时时间（秒），默认 300（5分钟）。
+        timeout: 请求超时时间（秒），默认 60。
 
     Example:
         client = TestagentClient("http://localhost:8080")
@@ -35,7 +35,7 @@ class TestagentClient:
         result = client.get_task(task["task_id"])
     """
 
-    def __init__(self, base_url: str = "http://localhost:8080", timeout: int = 300):
+    def __init__(self, base_url: str = "http://localhost:8080", timeout: int = 60):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
@@ -74,7 +74,7 @@ class TestagentClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.Timeout:
-            raise TestagentError(f"请求超时: {url}")
+            raise TestagentError(f"请求超时: {url}（{self.timeout}秒）")
         except requests.exceptions.RequestException as e:
             raise TestagentError(f"请求失败: {e}") from e
 

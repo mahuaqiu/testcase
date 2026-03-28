@@ -42,7 +42,7 @@ hooks:
 
 # testagent 服务配置
 testagent:
-  timeout: 300
+  timeout: 60  # 连接/请求超时（秒）
 
 # 测试配置
 test:
