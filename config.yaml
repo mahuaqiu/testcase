@@ -10,8 +10,8 @@ resource_manager:
     userA:
       ip: "192.168.0.102"
       port: 8088
-      account: "15158009950"
-      password: "majiayang123"
+      account: ""
+      password: ""
     userB:
       ip: "192.168.0.103"
       port: 8080
