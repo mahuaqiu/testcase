@@ -133,6 +133,8 @@ class XxxApiAW(BaseApiAW):
 
 ## 测试用例模板
 
+### 单用户模板
+
 ```python
 """
 {用例标题}测试用例。
@@ -158,6 +160,40 @@ class TestClass:
         # 清理步骤（hooks 自动处理）
 ```
 
+### 多用户并行模板
+
+当多用户同时执行相同操作时，使用 `parallel()` 上下文：
+
+```python
+"""
+{用例标题}测试用例 - 多用户并行。
+
+测试场景: {场景描述}
+"""
+
+import pytest
+from common.parallel import parallel
+
+
+@pytest.mark.users({"userA": "{平台}", "userB": "{平台}"})
+class TestClass:
+    """多用户并行测试。"""
+
+    def test_{文件名}(self, users):
+        """执行测试：多用户并行{操作}。"""
+        userA = users["userA"]
+        userB = users["userB"]
+
+        # 并行执行
+        with parallel():
+            userA.do_xxx()
+            userB.do_xxx()
+
+        # 顺序验证（验证不在并行块内）
+        userA.should_xxx_success()
+        userB.should_xxx_success()
+```
+
 ---
 
 ## 更新 INDEX.md
@@ -181,6 +217,7 @@ class TestClass:
 1. **严格按计划执行**：不超出计划范围
 2. **遵循命名规范**：详见 AGENTS.md
 3. **更新 INDEX.md**：新增/扩展 AW 后同步更新索引
+4. **支持并行执行**：AW 方法默认支持 `parallel()` 上下文
 
 ---
 

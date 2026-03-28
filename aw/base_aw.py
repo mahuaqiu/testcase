@@ -3,10 +3,11 @@
 import base64
 import os
 import time
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient
 from common.report_logger import ReportLogger
+from common.parallel import is_collecting, get_action_queue, Action
 
 if TYPE_CHECKING:
     from common.user import User
@@ -45,12 +46,14 @@ class BaseAW:
     def _execute_with_log(
         self,
         method: str,
-        action: Callable[..., Dict[str, Any]],
+        action: Callable[..., Any],
         log_args: Dict[str, Any],
         *args: Any,
         **kwargs: Any
     ) -> Dict[str, Any]:
         """执行操作并记录日志，失败时抛出异常。
+
+        在 parallel() 上下文中收集动作，否则立即执行。
 
         Args:
             method: 方法名。
@@ -59,11 +62,31 @@ class BaseAW:
             *args, **kwargs: 传递给 action 的参数。
 
         Returns:
-            执行结果。
+            执行结果（收集模式下返回空字典）。
 
         Raises:
             AWError: 执行失败时抛出。
         """
+        # 检查是否处于收集模式（parallel 上下文）
+        if is_collecting():
+            queue = get_action_queue()
+            if queue is not None:
+                # 构建动作并添加到队列
+                # 注意：args 已包含 PLATFORM，executor 需要直接调用
+                user_id = self.user.user_id if self.user else ""
+                action_obj = Action(
+                    aw_name=self._aw_name,
+                    method=method,
+                    executor=action,
+                    args=args,  # args 已包含 PLATFORM
+                    kwargs=kwargs,
+                    user_id=user_id,
+                    log_args=log_args
+                )
+                queue.append(action_obj)
+                return {}  # 收集模式返回空字典
+
+        # 同步执行模式（原有逻辑）
         logger = ReportLogger.get_current()
         start_time = time.time()
 

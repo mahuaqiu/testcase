@@ -94,6 +94,21 @@ class MeetingManageAW(BaseApiAW):
 
 声明 `@pytest.mark.users({"userA": "web"})` 时，自动创建 `userA`（UI）和 `userA_api`（API）两个 User 实例。
 
+## 并行执行
+
+多用户并行执行使用 `parallel()` 上下文：
+
+```python
+from common.parallel import parallel
+
+with parallel():
+    userA.do_login()
+    userB.do_login()
+    userC.do_login()
+```
+
+详细规范见 [AGENTS.md](AGENTS.md) 第六章。
+
 ## 详细规范
 
 - 编码规范见 [AGENTS.md](AGENTS.md)

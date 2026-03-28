@@ -232,7 +232,94 @@ class TestClass:
 
 ---
 
-## 六、Hooks 配置
+## 六、并行执行模式
+
+### 6.1 概述
+
+通过 `parallel()` 上下文管理器实现多用户并行执行：
+
+```python
+from common.parallel import parallel
+
+with parallel():
+    userA.do_login()
+    userB.do_login()
+    userC.do_login()
+```
+
+**适用场景**：
+- 多用户同时登录
+- 多用户同时入会
+- 多用户同时呼叫
+
+### 6.2 工作原理
+
+1. **收集模式**：进入 `with parallel()` 时，所有 AW 方法调用不立即执行
+2. **动作队列**：方法调用构建 Action 对象并加入队列
+3. **并行执行**：退出上下文时，使用 ThreadPoolExecutor 并行执行
+4. **结果汇总**：所有执行完成后，汇总结果和错误
+
+### 6.3 使用规范
+
+```python
+# 正确用法：并行操作后顺序验证
+with parallel():
+    userA.do_login()
+    userB.do_login()
+
+userA.should_login_success()  # 顺序验证
+userB.should_login_success()
+
+# 错误用法：验证不应在并行块内
+with parallel():
+    userA.do_login()
+    userA.should_login_success()  # ❌ 验证依赖登录结果
+```
+
+**规范要点**：
+- 并行操作后必须使用顺序验证
+- 并行操作不应有数据依赖
+- 合理设置并发数（默认 max_workers=10）
+
+### 6.4 API 说明
+
+```python
+from common.parallel import parallel, is_collecting
+
+# 创建并行上下文
+with parallel(max_workers=5, timeout=60):
+    ...
+
+# 检查是否在收集模式
+if is_collecting():
+    # 当前在 parallel() 上下文中
+    pass
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| max_workers | int | 10 | 最大并发线程数 |
+| timeout | float | 300 | 总超时时间（秒） |
+
+### 6.5 异常处理
+
+并行执行失败时抛出 `ParallelExecutionError`，包含所有失败的动作：
+
+```python
+from common.parallel import ParallelExecutionError
+
+try:
+    with parallel():
+        userA.do_login()
+        userB.do_login()  # 可能失败
+except ParallelExecutionError as e:
+    for error in e.errors:
+        print(f"{error.action.user_id} 执行失败: {error.original_error}")
+```
+
+---
+
+## 七、Hooks 配置
 
 ### 6.1 概述
 
@@ -299,7 +386,7 @@ class InitAW(BaseAW):
 
 ---
 
-## 七、API AW 模块
+## 八、API AW 模块
 
 ### 7.1 概述
 
@@ -378,7 +465,7 @@ class TestClass:
 
 ---
 
-## 八、Skill 生成代码检查清单
+## 九、Skill 生成代码检查清单
 
 当 testcase-coder Skill 生成代码时，必须确保：
 
@@ -395,7 +482,7 @@ class TestClass:
 
 ---
 
-## 九、完整示例
+## 十、完整示例
 
 ### 9.1 AW 示例
 
