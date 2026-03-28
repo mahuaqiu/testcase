@@ -1,13 +1,12 @@
 """AW 基类。"""
 
-import base64
-import os
 import time
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient
 from common.report_logger import ReportLogger
 from common.parallel import is_collecting, get_action_queue, Action
+from common.utils import load_image_as_base64
 
 if TYPE_CHECKING:
     from common.user import User
@@ -222,17 +221,7 @@ class BaseAW:
         Returns:
             base64 编码的图片内容，如果文件不存在则返回 None。
         """
-        # 支持相对路径，基于项目根目录
-        if not os.path.isabs(image_path):
-            # 尝试相对于当前工作目录
-            full_path = os.path.join(os.getcwd(), image_path)
-        else:
-            full_path = image_path
-
-        if os.path.exists(full_path):
-            with open(full_path, "rb") as f:
-                return base64.b64encode(f.read()).decode("utf-8")
-        return None
+        return load_image_as_base64(image_path)
 
     def image_click(self, image_path: str, **kwargs) -> dict:
         """图像识别点击。"""
