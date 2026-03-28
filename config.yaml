@@ -42,7 +42,8 @@ hooks:
 
 # testagent 服务配置
 testagent:
-  timeout: 60  # 连接/请求超时（秒）
+  connect_timeout: 15  # TCP 连接超时（秒）
+  read_timeout: 60     # 读取响应超时（秒）
 
 # 测试配置
 test:

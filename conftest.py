@@ -145,13 +145,24 @@ def users(request) -> Dict[str, User]:
                 break  # setup 失障，停止继续执行其他用户的 setup
 
         if setup_failed:
-            # setup 失障时，立即调用 teardown 清理资源
-            for user_id, user in user_instances.items():
-                final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
-                try:
-                    _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
-                except HookFailureError:
-                    pass  # teardown 失障也记录，但不影响流程
+            # 判断是否是连接类错误（连不上 worker）
+            # 连接失败时没必要执行 teardown，只会再等超时
+            is_connection_error = False
+            if setup_error and setup_error.original_error:
+                error_msg = str(setup_error.original_error)
+                is_connection_error = any(
+                    keyword in error_msg
+                    for keyword in ["连接超时", "请求失败", "Connection refused", "无法连接"]
+                )
+
+            if not is_connection_error:
+                # 非连接错误时，执行 teardown 清理资源
+                for user_id, user in user_instances.items():
+                    final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
+                    try:
+                        _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
+                    except HookFailureError:
+                        pass  # teardown 失障也记录，但不影响流程
 
             # 停止保活
             for user_id, keepalive in _keepalive_managers.items():

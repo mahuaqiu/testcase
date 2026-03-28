@@ -58,8 +58,10 @@ class User:
             # 初始化 TestagentClient，从配置读取超时设置
             base_url = f"http://{ip}:{port}"
             config = ConfigLoader().load()
-            timeout = config.get("testagent", {}).get("timeout", 60)
-            self.client = TestagentClient(base_url, timeout)
+            testagent_config = config.get("testagent", {})
+            connect_timeout = testagent_config.get("connect_timeout", 30)
+            read_timeout = testagent_config.get("read_timeout", 60)
+            self.client = TestagentClient(base_url, connect_timeout, read_timeout)
 
         # 加载 AW 实例
         self._aw_instances: Dict[str, Any] = {}

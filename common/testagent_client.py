@@ -19,7 +19,8 @@ class TestagentClient:
 
     Args:
         base_url: Worker 服务地址，默认 http://localhost:8080。
-        timeout: 请求超时时间（秒），默认 60。
+        connect_timeout: TCP 连接超时（秒），默认 30。
+        read_timeout: 读取响应超时（秒），默认 60。
 
     Example:
         client = TestagentClient("http://localhost:8080")
@@ -29,15 +30,17 @@ class TestagentClient:
             {"action_type": "navigate", "value": "https://example.com"},
             {"action_type": "ocr_click", "value": "登录"},
         ])
-
-        # 异步执行任务
-        task = client.execute_async("web", actions)
-        result = client.get_task(task["task_id"])
     """
 
-    def __init__(self, base_url: str = "http://localhost:8080", timeout: int = 60):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8080",
+        connect_timeout: int = 30,
+        read_timeout: int = 60,
+    ):
         self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
 
@@ -63,18 +66,24 @@ class TestagentClient:
             TestagentError: 请求失败时抛出。
         """
         url = f"{self.base_url}{endpoint}"
+        # timeout 元组：(连接超时, 读取超时)
+        timeout = (self.connect_timeout, self.read_timeout)
         try:
             response = self.session.request(
                 method=method,
                 url=url,
                 json=data,
                 params=params,
-                timeout=self.timeout,
+                timeout=timeout,
             )
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.ConnectTimeout:
+            raise TestagentError(f"连接超时: {url}（{self.connect_timeout}秒）")
+        except requests.exceptions.ReadTimeout:
+            raise TestagentError(f"读取超时: {url}（{self.read_timeout}秒）")
         except requests.exceptions.Timeout:
-            raise TestagentError(f"请求超时: {url}（{self.timeout}秒）")
+            raise TestagentError(f"请求超时: {url}")
         except requests.exceptions.RequestException as e:
             raise TestagentError(f"请求失败: {e}") from e
 
