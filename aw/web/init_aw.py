@@ -1,4 +1,5 @@
 """Web 应用操作封装。"""
+import time
 
 from aw.base_aw import BaseAW
 
@@ -24,6 +25,7 @@ class InitAW(BaseAW):
             browser: 浏览器名称，默认 chrome。支持 chrome、edge、safari 等。
         """
         self.start_app(browser)
+        time.sleep(1)
 
     def do_stop_app(self, browser: str = "chrome") -> None:
         """关闭浏览器。
