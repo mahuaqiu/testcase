@@ -3,15 +3,15 @@
 # 资源管理服务配置
 resource_manager:
   # 资源管理服务地址，为空时使用 mock_users 本地调试
-  base_url: ""
+  base_url: "http://192.168.0.102:8000"
   timeout: 30
   # 本地调试模式：预设用户资源（当 base_url 为空时生效）
   mock_users:
     userA:
       ip: "192.168.0.102"
       port: 8088
-      account: ""
-      password: ""
+      account: "15158009950"
+      password: "majiayang123"
     userB:
       ip: "192.168.0.103"
       port: 8080
