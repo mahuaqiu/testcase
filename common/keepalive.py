@@ -57,8 +57,15 @@ class KeepAliveManager:
         """保活线程主循环。"""
         while not self._stop_event.is_set():
             try:
-                url = f"{self._base_url}/env/keepalive"
-                requests.post(url, json=self._resources, timeout=self._timeout)
+                # 构建 EnvMachineIdItem 列表
+                machine_ids = [
+                    {"id": user_data.get("id")}
+                    for user_data in self._resources.values()
+                    if user_data.get("id")
+                ]
+                if machine_ids:
+                    url = f"{self._base_url}/env/keepusing"
+                    requests.post(url, json=machine_ids, timeout=self._timeout)
             except Exception:
                 pass  # 保活失败不阻塞
 

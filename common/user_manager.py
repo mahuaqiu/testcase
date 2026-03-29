@@ -26,6 +26,7 @@ class UserResource:
         account: 登录账号。
         password: 登录密码。
         user_type: 用户类型，如 normal、admin。
+        machine_id: 执行机机器 ID（用于保活和释放）。
         extra: 扩展信息字典。
     """
 
@@ -36,6 +37,7 @@ class UserResource:
     account: str
     password: str
     user_type: str = "normal"
+    machine_id: Optional[str] = None
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -76,6 +78,7 @@ class UserManager:
 
         rm_config = self.config.get("resource_manager", {})
         self._base_url = rm_config.get("base_url", "").rstrip("/")
+        self._namespace = rm_config.get("namespace", "default")
         self._timeout = rm_config.get("timeout", 30)
         self._mock_users = rm_config.get("mock_users", {})
 
@@ -160,7 +163,7 @@ class UserManager:
         Raises:
             UserManagerError: API 调用失败时抛出。
         """
-        url = f"{self._base_url}/env/create"
+        url = f"{self._base_url}/env/{self._namespace}/application"
         try:
             response = self._session.post(url, json=users, timeout=self._timeout)
             response.raise_for_status()
@@ -170,19 +173,29 @@ class UserManager:
         except requests.RequestException as e:
             raise UserManagerError(f"申请用户资源失败: {e}") from e
 
-        # 保存原始响应（用于 keepalive 和 release）
-        self._raw_resources = data
+        # 检查响应状态
+        if data.get("status") != "success":
+            error_msg = data.get("result", "未知错误")
+            raise UserManagerError(f"申请用户资源失败: {error_msg}")
+
+        # 提取实际数据
+        resources_data = data.get("data", {})
+        # 保存原始响应中的机器 ID（用于 keepalive 和 release）
+        self._raw_resources = {
+            user_id: user_data for user_id, user_data in resources_data.items()
+        }
 
         # 解析响应
-        for user_id, user_data in data.items():
+        for user_id, user_data in resources_data.items():
             self._resources[user_id] = UserResource(
                 user_id=user_id,
-                platform=user_data.get("platform", users.get(user_id, "")),
+                platform=user_data.get("device_type", users.get(user_id, "")),
                 ip=user_data.get("ip", ""),
                 port=user_data.get("port", 8080),
                 account=user_data.get("account", ""),
                 password=user_data.get("password", ""),
                 user_type=user_data.get("type", "normal"),
+                machine_id=user_data.get("id"),
                 extra=user_data.get("extra", {}),
             )
 
@@ -198,14 +211,18 @@ class UserManager:
             self._keepalive.stop()
             self._keepalive = None
 
-        if not self._resources or not self._base_url:
+        if not self._raw_resources or not self._base_url:
             return
 
-        users = {uid: res.platform for uid, res in self._resources.items()}
+        # 构建 EnvMachineIdItem 列表
+        machine_ids = [{"id": user_data.get("id")} for user_data in self._raw_resources.values() if user_data.get("id")]
+        if not machine_ids:
+            return
+
         url = f"{self._base_url}/env/release"
 
         try:
-            self._session.post(url, json=users, timeout=self._timeout)
+            self._session.post(url, json=machine_ids, timeout=self._timeout)
         except requests.RequestException:
             # 释放失败不阻塞测试流程
             pass

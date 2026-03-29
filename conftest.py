@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pytest
+import json
 
 from common.config_loader import ConfigLoader
 from common.user_manager import UserManager
@@ -90,6 +91,9 @@ def users(request) -> Dict[str, User]:
     with UserManager(config) as manager:
         resources = manager.apply(users_requirement)
         raw_resources = manager.get_raw_resources()
+
+        # 记录申请到的机器资源信息
+        logger.log_step("申请用户资源", json.dumps(raw_resources, indent=2, ensure_ascii=False))
 
         # 创建 User 实例
         for user_id, resource in resources.items():

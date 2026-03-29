@@ -4,6 +4,8 @@
 resource_manager:
   # 资源管理服务地址，为空时使用 mock_users 本地调试
   base_url: "http://192.168.0.102:8000"
+  # namespace: 机器分类名称（用于申请执行机）
+  namespace: "meeting_public"
   timeout: 30
   # 本地调试模式：预设用户资源（当 base_url 为空时生效）
   mock_users:
