@@ -117,9 +117,15 @@ def users(request) -> Dict[str, User]:
                 port=resource.port,
                 account=resource.account,
                 password=resource.password,
+                _ui_user_id=user_id,  # 关联 UI User
                 **resource.extra
             )
             user_instances[api_user_id] = api_user
+
+        # 设置 API User 的 user_instances 引用
+        for user_id, user in user_instances.items():
+            if user_id.endswith("_api"):
+                user._user_instances_ref = user_instances
 
         # 启动保活（远程模式）
         rm_config = config.get("resource_manager", {})
