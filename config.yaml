@@ -7,6 +7,12 @@ resource_manager:
   # namespace: 机器分类名称（用于申请执行机）
   namespace: "meeting_public"
   timeout: 30
+  # 重试配置
+  retry:
+    max_wait_seconds: 900   # 最多等待15分钟
+    retry_interval: 15      # 重试间隔15秒
+    retryable_errors:       # 可重试的错误类型
+      - "env not enough"
   # 本地调试模式：预设用户资源（当 base_url 为空时生效）
   mock_users:
     userA:
