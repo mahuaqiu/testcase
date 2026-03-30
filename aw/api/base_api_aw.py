@@ -163,7 +163,10 @@ class BaseApiAW(BaseAW):
     def _ensure_token(self) -> str:
         """确保 token 有效，返回 access_token。
 
-        如果 token 不存在或已过期，自动重新登录。
+        如果 token 不存在或已过期：
+        1. 优先尝试从 worker get_token 获取 UI User 的 token
+        2. 如果获取成功则直接使用
+        3. 如果获取失败则执行原有 API 登录
 
         Returns:
             access_token 字符串。
@@ -171,7 +174,23 @@ class BaseApiAW(BaseAW):
         if self._token_info and time.time() < self._token_info.expire_time:
             return self._token_info.access_token
 
-        # 需要重新登录
+        # 优先尝试从 worker 获取 UI User 的 token
+        if self.user and self.user._ui_user_id:
+            token_dict = self._get_token_from_worker()
+            if token_dict:
+                # 使用从 worker 获取的 token
+                access_token = token_dict.get("X-Auth-Token")
+                if access_token:
+                    # 设置一个较短的过期时间（5分钟），因为 UI token 可能随时失效
+                    expire_time = time.time() + 300
+                    self._token_info = TokenInfo(
+                        access_token=access_token,
+                        expire_time=expire_time,
+                        user_uuid=""
+                    )
+                    return access_token
+
+        # fallback 到原有 API 登录
         token_info = self._login()
         return token_info.access_token
 
