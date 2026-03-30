@@ -129,20 +129,26 @@ class User:
             return action.get("screenshot") or action.get("output", "")
         return ""
 
+    def _get_ui_user(self) -> Optional["User"]:
+        """获取关联的 UI User 实例。
+
+        Returns:
+            UI User 实例，如果没有关联则返回 None。
+        """
+        if not self._ui_user_id:
+            return None
+        if not self._user_instances_ref:
+            return None
+        return self._user_instances_ref.get(self._ui_user_id)
+
     def _get_ui_client(self) -> Optional["TestagentClient"]:
         """获取关联 UI User 的 TestagentClient。
 
         Returns:
             UI User 的 TestagentClient，如果没有关联则返回 None。
         """
-        if not self._ui_user_id:
-            return None
-        if not self._user_instances_ref:
-            return None
-        ui_user = self._user_instances_ref.get(self._ui_user_id)
-        if not ui_user:
-            return None
-        return ui_user.client
+        ui_user = self._get_ui_user()
+        return ui_user.client if ui_user else None
 
     def _get_ui_platform(self) -> Optional[str]:
         """获取关联 UI User 的平台类型。
@@ -150,11 +156,5 @@ class User:
         Returns:
             UI User 的平台类型，如果没有关联则返回 None。
         """
-        if not self._ui_user_id:
-            return None
-        if not self._user_instances_ref:
-            return None
-        ui_user = self._user_instances_ref.get(self._ui_user_id)
-        if not ui_user:
-            return None
-        return ui_user.platform
+        ui_user = self._get_ui_user()
+        return ui_user.platform if ui_user else None
