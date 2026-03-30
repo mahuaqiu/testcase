@@ -14,6 +14,11 @@ description: "自动化测试用例生成。接收用户输入的测试用例描
     │
     ▼
 ┌─────────────────────────┐
+│  清理缓存目录             │  删除 .cache/*.md
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
 │  Agent: testcase-refiner  │  独立上下文 → 输出 .cache/refined.md
 └────────────┬────────────┘
              │
@@ -39,6 +44,7 @@ description: "自动化测试用例生成。接收用户输入的测试用例描
 
 | 阶段 | 输入文件 | 输出文件 |
 |------|----------|----------|
+| 清理 | - | 删除 `.cache/*.md` |
 | refiner | 用户原始输入 | `.cache/refined.md` |
 | planner | `.cache/refined.md` | `.cache/plan.md` |
 | reviewer | `.cache/plan.md` | `.cache/review.md` |
@@ -47,6 +53,19 @@ description: "自动化测试用例生成。接收用户输入的测试用例描
 ---
 
 ## 执行流程
+
+### 阶段 0：清理缓存（必须执行）
+
+**在执行任何 Agent 之前，必须清理上一次的缓存文件**：
+
+```bash
+rm -f .cache/refined.md .cache/plan.md .cache/review.md
+```
+
+清理原因：
+- 避免读取到上一次运行的旧数据
+- 确保每个阶段获取的是当前流水线的输出
+- 防止缓存污染导致逻辑错误
 
 ### 阶段 1：需求结构化（testcase-refiner）
 
@@ -214,6 +233,7 @@ Agent(
 ```
 
 执行流水线：
+0. **清理缓存** 删除 `.cache/refined.md`、`.cache/plan.md`、`.cache/review.md`
 1. **Agent(refiner)** 独立上下文，与用户交互，输出 `.cache/refined.md`
 2. **Agent(planner)** 独立上下文，读取 INDEX.md，输出 `.cache/plan.md`
 3. **Agent(reviewer)** 独立上下文，审查计划，与用户确认，输出 `.cache/review.md`
