@@ -240,6 +240,9 @@ class BaseApiAW(BaseAW):
         if headers:
             final_headers.update(headers)
 
+        # 添加 x-request-id header（随机 UUID）
+        final_headers["x-request-id"] = str(uuid.uuid4())
+
         # 添加 token
         if need_token:
             token = self._ensure_token()
@@ -264,30 +267,69 @@ class BaseApiAW(BaseAW):
                 verify=False
             )
 
-            # 401 时自动重新登录重试
+            # 401 时尝试从 worker 获取 token 或重新登录
             if response.status_code == 401 and need_token:
                 # 清除缓存的 token
                 self._token_info = None
-                # 重新登录并重试
-                token = self._ensure_token()
-                final_headers["x-auth-token"] = token
-                final_headers["x-access-token"] = token
-                response = self._session.request(
-                    method=method,
-                    url=url,
-                    headers=final_headers,
-                    params=params,
-                    json=json_data,
-                    timeout=timeout,
-                    verify=False
-                )
+
+                # 尝试从 worker 获取 UI User 的 token
+                worker_token = None
+                if self.user and self.user._ui_user_id:
+                    worker_token = self._get_token_from_worker()
+
+                if worker_token:
+                    # 使用 worker token 重试
+                    access_token = worker_token.get("X-Auth-Token")
+                    if access_token:
+                        final_headers["x-auth-token"] = access_token
+                        final_headers["x-access-token"] = access_token
+                        response = self._session.request(
+                            method=method,
+                            url=url,
+                            headers=final_headers,
+                            params=params,
+                            json=json_data,
+                            timeout=timeout,
+                            verify=False
+                        )
+
+                        # worker token 也 401，则执行 API login
+                        if response.status_code == 401:
+                            token = self._ensure_token()
+                            final_headers["x-auth-token"] = token
+                            final_headers["x-access-token"] = token
+                            response = self._session.request(
+                                method=method,
+                                url=url,
+                                headers=final_headers,
+                                params=params,
+                                json=json_data,
+                                timeout=timeout,
+                                verify=False
+                            )
+                else:
+                    # 没有 UI User 或 get_token 失败，执行 API login 重试
+                    token = self._ensure_token()
+                    final_headers["x-auth-token"] = token
+                    final_headers["x-access-token"] = token
+                    response = self._session.request(
+                        method=method,
+                        url=url,
+                        headers=final_headers,
+                        params=params,
+                        json=json_data,
+                        timeout=timeout,
+                        verify=False
+                    )
+
                 duration_ms = int((time.time() - start_time) * 1000)
                 success = response.ok
 
                 # 记录重试日志
+                retry_reason = "worker_token" if worker_token else "api_login"
                 logger.log_aw_call(
                     aw_name=self._aw_name,
-                    method=f"{method}_retry_after_401",
+                    method=f"{method}_retry_after_401_{retry_reason}",
                     args=log_args,
                     success=success,
                     result={"status_code": response.status_code, "body": response.text[:500]},
