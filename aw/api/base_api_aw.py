@@ -4,7 +4,9 @@
 """
 
 import base64
+import json
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -63,6 +65,41 @@ class BaseApiAW(BaseAW):
         self._token_info: Optional[TokenInfo] = None
 
     # ── Token 管理 ─────────────────────────────────────────
+
+    def _get_token_from_worker(self) -> Optional[Dict[str, str]]:
+        """从 worker 获取 UI User 端已有的 token。
+
+        通过 client.execute 调用 get_token action。
+
+        Returns:
+            Token dict 如 {"X-Auth-Token": "xxx"}，或 None。
+        """
+        client = self.user._get_ui_client()
+        if not client:
+            return None
+
+        ui_platform = self.user._get_ui_platform()
+        if not ui_platform:
+            return None
+
+        try:
+            result = client.execute(
+                platform=ui_platform,
+                actions=[{"action_type": "get_token"}]
+            )
+
+            if result.get("status") == "SUCCESS" and result.get("actions"):
+                output = result["actions"][0].get("output", "")
+                if output:
+                    try:
+                        return json.loads(output)
+                    except json.JSONDecodeError:
+                        return None
+        except Exception:
+            # worker 调用失败，返回 None
+            return None
+
+        return None
 
     def _login(self) -> TokenInfo:
         """登录获取 token。
