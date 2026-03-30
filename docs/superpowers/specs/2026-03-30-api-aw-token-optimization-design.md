@@ -16,9 +16,22 @@ API AW 和 Web AW 使用同一账号时，token 会互相挤掉，造成 Web 登
 
 ### 1. User 类修改
 
-**新增属性 `_ui_user_id`：**
-- API User 保存对应的 UI User 的 user_id（如 `userA_api` 保存 `"userA"`）
-- UI User 该属性为 `None`
+**修改 `__init__` 方法签名：**
+```python
+def __init__(
+    self,
+    user_id: str,
+    platform: str,
+    ip: str,
+    port: int,
+    account: str,
+    password: str,
+    _ui_user_id: Optional[str] = None,  # 新增：API User 关联的 UI User ID
+    **extra: Any
+):
+    self._ui_user_id = _ui_user_id  # 独立属性，不存入 extra
+    ...
+```
 
 **新增属性 `_user_instances_ref`：**
 - 保存 `user_instances` 字典的引用，用于查找对应的 UI User
@@ -28,6 +41,10 @@ API AW 和 Web AW 使用同一账号时，token 会互相挤掉，造成 Web 登
 - API User 通过此方法获取对应 UI User 的 TestagentClient
 - 用于调用 worker 的 `get_token` action
 - 返回 TestagentClient 或 None
+
+**新增方法 `_get_ui_platform`：**
+- 返回对应 UI User 的 platform（如 "web"）
+- 通过 `_user_instances_ref[_ui_user_id].platform` 获取
 
 ### 2. conftest.py 修改
 
@@ -69,15 +86,23 @@ def _get_token_from_worker(self) -> Optional[Dict[str, str]]:
     if not client:
         return None
 
+    ui_platform = self.user._get_ui_platform()
+    if not ui_platform:
+        return None
+
     result = client.execute(
-        platform=self.user._ui_user_id,  # 使用 UI User 的平台
+        platform=ui_platform,  # 使用 UI User 的平台类型（如 "web"）
         actions=[{"action_type": "get_token"}]
     )
 
     if result.get("status") == "SUCCESS" and result.get("actions"):
         output = result["actions"][0].get("output", "")
         if output:
-            return json.loads(output)
+            try:
+                return json.loads(output)
+            except json.JSONDecodeError:
+                # JSON 解析失败，返回 None，fallback 到 API login
+                return None
     return None
 ```
 
@@ -119,7 +144,7 @@ final_headers["x-request-id"] = str(uuid.uuid4())
 
 | 文件 | 修改内容 |
 |------|----------|
-| `common/user.py` | 新增 `_ui_user_id`、`_user_instances_ref` 属性，新增 `_get_ui_client` 方法 |
+| `common/user.py` | 修改 `__init__` 接收 `_ui_user_id` 参数，新增 `_user_instances_ref` 属性，新增 `_get_ui_client`、`_get_ui_platform` 方法 |
 | `conftest.py` | 创建 API User 时传入 `_ui_user_id`，设置 `_user_instances_ref` |
 | `aw/api/base_api_aw.py` | 新增 `_get_token_from_worker` 方法，修改 `_ensure_token` 和 `_request_with_log` |
 
