@@ -1,6 +1,6 @@
 """User 用户资源类。"""
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from common.config_loader import ConfigLoader
 from common.testagent_client import TestagentClient
@@ -30,6 +30,7 @@ class User:
         port: int,
         account: str,
         password: str,
+        _ui_user_id: Optional[str] = None,  # 新增：API User 关联的 UI User ID
         **extra: Any
     ):
         """初始化用户资源。
@@ -41,6 +42,7 @@ class User:
             port: Worker 端口。
             account: 登录账号。
             password: 登录密码。
+            _ui_user_id: API User 关联的 UI User ID。
             **extra: 扩展信息。
         """
         self.user_id = user_id
@@ -50,6 +52,8 @@ class User:
         self.account = account
         self.password = password
         self.extra = extra
+        self._ui_user_id = _ui_user_id  # 独立属性，不存入 extra
+        self._user_instances_ref: Optional[Dict[str, "User"]] = None  # 新增：user_instances 引用
 
         # API 平台不需要 TestagentClient
         if platform == "api":
@@ -124,3 +128,33 @@ class User:
             # 优先取 screenshot 字段，其次取 output 字段
             return action.get("screenshot") or action.get("output", "")
         return ""
+
+    def _get_ui_client(self) -> Optional["TestagentClient"]:
+        """获取关联 UI User 的 TestagentClient。
+
+        Returns:
+            UI User 的 TestagentClient，如果没有关联则返回 None。
+        """
+        if not self._ui_user_id:
+            return None
+        if not self._user_instances_ref:
+            return None
+        ui_user = self._user_instances_ref.get(self._ui_user_id)
+        if not ui_user:
+            return None
+        return ui_user.client
+
+    def _get_ui_platform(self) -> Optional[str]:
+        """获取关联 UI User 的平台类型。
+
+        Returns:
+            UI User 的平台类型，如果没有关联则返回 None。
+        """
+        if not self._ui_user_id:
+            return None
+        if not self._user_instances_ref:
+            return None
+        ui_user = self._user_instances_ref.get(self._ui_user_id)
+        if not ui_user:
+            return None
+        return ui_user.platform
