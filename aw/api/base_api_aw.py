@@ -307,6 +307,20 @@ class BaseApiAW(BaseAW):
                                 timeout=timeout,
                                 verify=False
                             )
+                    else:
+                        # worker_token 没有 X-Auth-Token，执行 API login 重试
+                        token = self._ensure_token()
+                        final_headers["x-auth-token"] = token
+                        final_headers["x-access-token"] = token
+                        response = self._session.request(
+                            method=method,
+                            url=url,
+                            headers=final_headers,
+                            params=params,
+                            json=json_data,
+                            timeout=timeout,
+                            verify=False
+                        )
                 else:
                     # 没有 UI User 或 get_token 失败，执行 API login 重试
                     token = self._ensure_token()
