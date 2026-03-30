@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 import requests
+import time
 
 from common.config_loader import ConfigLoader
 from common.keepalive import KeepAliveManager
@@ -152,7 +153,7 @@ class UserManager:
         return self._resources
 
     def _apply_remote(self, users: Dict[str, str]) -> Dict[str, UserResource]:
-        """远程模式：调用 API 申请资源。
+        """远程模式：调用 API 申请资源，支持重试。
 
         Args:
             users: 用户需求字典。
@@ -163,22 +164,60 @@ class UserManager:
         Raises:
             UserManagerError: API 调用失败时抛出。
         """
+        # 加载重试配置
+        retry_config = self.config.get("resource_manager", {}).get("retry", {})
+        max_wait_seconds = retry_config.get("max_wait_seconds", 900)
+        retry_interval = retry_config.get("retry_interval", 15)
+        retryable_errors = retry_config.get("retryable_errors", ["env not enough"])
+
+        max_retries = max_wait_seconds // retry_interval
+
         url = f"{self._base_url}/env/{self._namespace}/application"
-        try:
-            response = self._session.post(url, json=users, timeout=self._timeout)
-            response.raise_for_status()
-            data = response.json()
-        except requests.Timeout as e:
-            raise UserManagerError(f"申请用户资源超时: {e}") from e
-        except requests.RequestException as e:
-            raise UserManagerError(f"申请用户资源失败: {e}") from e
 
-        # 检查响应状态
-        if data.get("status") != "success":
+        for attempt in range(max_retries + 1):
+            # 发起申请请求
+            try:
+                response = self._session.post(url, json=users, timeout=self._timeout)
+                response.raise_for_status()
+                data = response.json()
+            except requests.Timeout as e:
+                raise UserManagerError(f"申请用户资源超时: {e}") from e
+            except requests.RequestException as e:
+                raise UserManagerError(f"申请用户资源失败: {e}") from e
+
+            # 检查响应状态
+            if data.get("status") == "success":
+                return self._parse_response(data, users)
+
             error_msg = data.get("result", "未知错误")
-            raise UserManagerError(f"申请用户资源失败: {error_msg}")
 
-        # 提取实际数据
+            # 判断是否可重试
+            if error_msg in retryable_errors:
+                if attempt < max_retries:
+                    import logging
+                    logging.info(
+                        f"机器资源不足，等待 {retry_interval} 秒后重试（第 {attempt+1}/{max_retries} 次）"
+                    )
+                    time.sleep(retry_interval)
+                    continue
+                else:
+                    raise UserManagerError(
+                        f"申请用户资源失败：机器资源不足，已等待 {max_wait_seconds} 秒"
+                    )
+            else:
+                # 其他错误直接失败
+                raise UserManagerError(f"申请用户资源失败: {error_msg}")
+
+    def _parse_response(self, data: dict, users: Dict[str, str]) -> Dict[str, UserResource]:
+        """解析成功响应，提取用户资源。
+
+        Args:
+            data: API 成功响应数据。
+            users: 用户需求字典。
+
+        Returns:
+            用户资源字典。
+        """
         resources_data = data.get("data", {})
         # 保存原始响应中的机器 ID（用于 keepalive 和 release）
         self._raw_resources = {
