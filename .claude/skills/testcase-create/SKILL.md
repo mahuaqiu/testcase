@@ -56,9 +56,16 @@ Agent(
     description="需求结构化",
     prompt="""
 执行 testcase-refiner Skill：
-1. 读取用户原始输入
-2. 与用户交互确认测试细节
-3. 输出结构化测试步骤到 .cache/refined.md
+1. 先读取 AGENTS.md 和 aw/INDEX.md 了解项目规范
+2. 读取记忆区了解历史信息
+3. 分析用户原始输入
+4. 只在真正不明确时与用户交互（提供选项）
+5. 输出结构化测试步骤到 .cache/refined.md
+
+关键原则：
+- API 用户自动创建，不询问
+- 角色命名自动转换（userA/userB/userC），不询问
+- portal 操作直接问"API 还是 Web UI"，提供选项
 
 用户原始输入：
 {用户输入}
