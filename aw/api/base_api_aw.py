@@ -95,8 +95,17 @@ class BaseApiAW(BaseAW):
                         return json.loads(output)
                     except json.JSONDecodeError:
                         return None
-        except Exception:
-            # worker 调用失败，返回 None
+        except Exception as e:
+            # worker 调用失败，记录日志并返回 None
+            logger = ReportLogger.get_current()
+            logger.log_aw_call(
+                aw_name=self._aw_name,
+                method="_get_token_from_worker",
+                args={"ui_user_id": self.user._ui_user_id if self.user else ""},
+                success=False,
+                result={"error": str(e)},
+                duration_ms=0
+            )
             return None
 
         return None
