@@ -30,6 +30,7 @@ class UserResource:
         port: Worker 端口。
         account: 登录账号。
         password: 登录密码。
+        name: 与会者姓名。
         user_type: 用户类型，如 normal、admin。
         machine_id: 执行机机器 ID（用于保活和释放）。
         extra: 扩展信息字典。
@@ -41,6 +42,7 @@ class UserResource:
     port: int
     account: str
     password: str
+    name: str = ""
     user_type: str = "normal"
     machine_id: Optional[str] = None
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -150,6 +152,7 @@ class UserManager:
                 port=mock_data.get("port", 8080),
                 account=mock_data.get("account", ""),
                 password=mock_data.get("password", ""),
+                name=mock_data.get("name", ""),
                 user_type=mock_data.get("type", "normal"),
                 extra=mock_data.get("extra", {}),
             )
@@ -228,7 +231,14 @@ class UserManager:
         }
 
         # 解析响应
+        # 已知字段列表，其余字段收集到 extra
+        known_fields = {
+            "id", "ip", "port", "device_type", "device_sn",
+            "account", "password", "name", "type", "extra"
+        }
         for user_id, user_data in resources_data.items():
+            # 收集未知字段到 extra（如 email、department 等）
+            extra = {k: v for k, v in user_data.items() if k not in known_fields}
             self._resources[user_id] = UserResource(
                 user_id=user_id,
                 platform=user_data.get("device_type", users.get(user_id, "")),
@@ -236,9 +246,10 @@ class UserManager:
                 port=user_data.get("port", 8080),
                 account=user_data.get("account", ""),
                 password=user_data.get("password", ""),
+                name=user_data.get("name", ""),
                 user_type=user_data.get("type", "normal"),
                 machine_id=user_data.get("id"),
-                extra=user_data.get("extra", {}),
+                extra=extra,
             )
 
         return self._resources

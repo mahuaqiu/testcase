@@ -19,6 +19,7 @@ class User:
         port: Worker 端口。
         account: 登录账号。
         password: 登录密码。
+        name: 与会者姓名。
         extra: 扩展信息。
     """
 
@@ -30,6 +31,7 @@ class User:
         port: int,
         account: str,
         password: str,
+        name: str = "",
         _ui_user_id: Optional[str] = None,  # 新增：API User 关联的 UI User ID
         **extra: Any
     ):
@@ -42,6 +44,7 @@ class User:
             port: Worker 端口。
             account: 登录账号。
             password: 登录密码。
+            name: 与会者姓名。
             _ui_user_id: API User 关联的 UI User ID。
             **extra: 扩展信息。
         """
@@ -51,6 +54,7 @@ class User:
         self.port = port
         self.account = account
         self.password = password
+        self.name = name
         self.extra = extra
         self._ui_user_id = _ui_user_id  # 独立属性，不存入 extra
         self._user_instances_ref: Optional[Dict[str, "User"]] = None  # 新增：user_instances 引用
@@ -93,20 +97,34 @@ class User:
                 self._aw_instances[aw_class.__name__] = instance
 
     def __getattr__(self, name: str) -> Any:
-        """代理转发 AW 方法调用。
+        """代理转发 AW 方法调用和 extra 字段访问。
+
+        查找优先级：
+        1. AW 方法
+        2. extra 字段（支持动态扩展）
 
         Args:
-            name: 方法名。
+            name: 方法名或属性名。
 
         Returns:
-            AW 方法。
+            AW 方法或 extra 字段值。
 
         Raises:
-            AttributeError: 方法不存在。
+            AttributeError: 方法或属性不存在。
         """
+        # 1. 查找 AW 方法
         for aw_instance in self._aw_instances.values():
             if hasattr(aw_instance, name):
                 return getattr(aw_instance, name)
+
+        # 2. 查找 extra 字段（支持动态扩展）
+        # 使用 object.__getattribute__ 安全访问 extra
+        try:
+            extra = object.__getattribute__(self, "extra")
+            if name in extra:
+                return extra[name]
+        except AttributeError:
+            pass
 
         raise AttributeError(
             f"'{type(self).__name__}' 对象没有属性 '{name}'"
