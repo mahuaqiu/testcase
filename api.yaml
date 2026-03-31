@@ -287,11 +287,14 @@ components:
             - ocr_assert
             - ocr_get_text
             - ocr_paste
+            - ocr_move
             - image_click
             - image_wait
             - image_assert
             - image_click_near_text
+            - image_move
             - click
+            - move
             - swipe
             - input
             - press
@@ -300,6 +303,7 @@ components:
             - start_app
             - stop_app
             - navigate
+            - cmd_exec
           description: |
             动作类型，分为以下几类：
 
@@ -310,15 +314,18 @@ components:
             - ocr_assert: 断言指定文字存在
             - ocr_get_text: 获取屏幕上所有文字
             - ocr_paste: OCR 定位后粘贴剪贴板内容
+            - ocr_move: 移动鼠标到识别到的文字位置（仅桌面端）
 
             【图像识别动作】
             - image_click: 点击匹配到的图像位置
             - image_wait: 等待指定图像出现
             - image_assert: 断言指定图像存在
             - image_click_near_text: 点击文本附近最近的图像
+            - image_move: 移动鼠标到匹配的图像位置（仅桌面端）
 
             【坐标动作】
             - click: 点击指定坐标
+            - move: 移动鼠标到指定坐标（仅桌面端）
             - swipe: 滑动手势
             - input: 在指定坐标输入文本
 
@@ -329,6 +336,7 @@ components:
             - start_app: 启动应用/浏览器
             - stop_app: 关闭应用/浏览器
             - navigate: 跳转 URL（Web 专用）
+            - cmd_exec: 在宿主机执行 shell/cmd 命令
         value:
           type: string
           description: |
@@ -345,6 +353,7 @@ components:
               - iOS: Bundle ID，如 "com.example.app"
             - stop_app: 应用包名（可选，不填则关闭当前应用）
             - navigate: 要跳转的 URL
+            - cmd_exec: 要执行的命令字符串，如 "echo hello" 或 "dir C:\\Users"
         text:
           type: string
           description: "输入/粘贴的文本内容，仅 ocr_input、input、ocr_paste 动作必填"
@@ -359,8 +368,8 @@ components:
           default: 0
           description: |
             选择第几个匹配结果（从 0 开始），用于多个相同文字/图像的场景：
-            - ocr_click/ocr_input/ocr_paste: 点击第 N 个匹配的文字
-            - image_click/image_wait/image_assert: 点击第 N 个匹配的图像
+            - ocr_click/ocr_input/ocr_paste/ocr_move: 点击第 N 个匹配的文字
+            - image_click/image_wait/image_assert/image_move: 点击第 N 个匹配的图像
             示例：index=1 表示点击第二个匹配结果
         offset:
           type: object
@@ -386,10 +395,10 @@ components:
           description: "超时时间（毫秒），用于等待类动作。默认 5000ms"
         x:
           type: integer
-          description: "X 坐标（像素），仅 click 和 input 动作必填"
+          description: "X 坐标（像素），仅 click、move 和 input 动作必填"
         y:
           type: integer
-          description: "Y 坐标（像素），仅 click 和 input 动作必填"
+          description: "Y 坐标（像素），仅 click、move 和 input 动作必填"
         end_x:
           type: integer
           description: |
@@ -501,6 +510,15 @@ components:
         screenshot:
           type: string
           description: "截图（base64 或路径）"
+        exit_code:
+          type: integer
+          description: "命令退出码（仅 cmd_exec 动作返回），0 表示成功"
+        stdout:
+          type: string
+          description: "命令标准输出（仅 cmd_exec 动作返回）"
+        stderr:
+          type: string
+          description: "命令标准错误输出（仅 cmd_exec 动作返回）"
 
   # ==================== 动作类型详细示例 ====================
   # 以下为各动作类型的完整传参示例，供调用方参考
@@ -540,6 +558,14 @@ components:
   # 示例 2: 定位第二个"输入"标签并粘贴内容
   # {"action_type": "ocr_paste", "value": "输入", "text": "粘贴文本", "index": 1}
 
+  # ocr_move - 移动鼠标到识别到的文字位置（仅桌面端支持）
+  # 示例 1: 移动鼠标到"登录"文字位置
+  # {"action_type": "ocr_move", "value": "登录"}
+  # 示例 2: 移动鼠标到"设置"文字右侧
+  # {"action_type": "ocr_move", "value": "设置", "offset": {"x": 50, "y": 0}}
+  # 示例 3: 移动鼠标到第二个"确定"文字位置
+  # {"action_type": "ocr_move", "value": "确定", "index": 1}
+
   # ---------- 图像识别动作 ----------
   # image_click - 点击匹配的图像
   # 示例 1: 点击图像，匹配阈值 0.9
@@ -563,10 +589,24 @@ components:
   # 示例: 点击"密码"文字附近 500 像素范围内的输入框图标
   # {"action_type": "image_click_near_text", "image_base64": "<base64_encoded_image>", "value": "密码", "end_x": 500}
 
+  # image_move - 移动鼠标到匹配的图像位置（仅桌面端支持）
+  # 示例 1: 移动鼠标到图像位置，匹配阈值 0.9
+  # {"action_type": "image_move", "image_base64": "<base64_encoded_image>", "threshold": 0.9}
+  # 示例 2: 移动鼠标到图像位置并向右偏移 20 像素
+  # {"action_type": "image_move", "image_base64": "<base64_encoded_image>", "offset": {"x": 20, "y": 0}}
+  # 示例 3: 移动鼠标到第二个匹配的图像位置
+  # {"action_type": "image_move", "image_base64": "<base64_encoded_image>", "index": 1}
+
   # ---------- 坐标动作 ----------
   # click - 点击指定坐标
   # 示例: 点击屏幕坐标 (500, 300)
   # {"action_type": "click", "x": 500, "y": 300}
+
+  # move - 移动鼠标到指定坐标（仅桌面端支持）
+  # 示例 1: 移动鼠标到坐标 (500, 300)
+  # {"action_type": "move", "x": 500, "y": 300}
+  # 示例 2: 移动鼠标到坐标并偏移
+  # {"action_type": "move", "x": 500, "y": 300, "offset": {"x": 10, "y": 5}}
 
   # swipe - 滑动手势
   # 示例 1: 从 (500, 1000) 滑动到 (500, 500)，耗时 500ms
@@ -616,3 +656,13 @@ components:
   # navigate - 跳转 URL（仅 Web 平台）
   # 示例: 跳转到示例网站
   # {"action_type": "navigate", "value": "https://example.com"}
+
+  # cmd_exec - 在宿主机执行命令
+  # 示例 1: 执行简单命令
+  # {"action_type": "cmd_exec", "value": "echo hello"}
+  # 示例 2: 执行带超时的命令（60 秒）
+  # {"action_type": "cmd_exec", "value": "python script.py", "timeout": 60000}
+  # 示例 3: Windows 列出目录
+  # {"action_type": "cmd_exec", "value": "dir C:\\Users"}
+  # 示例 4: Mac/Linux 查看文件
+  # {"action_type": "cmd_exec", "value": "ls -la /tmp"}
