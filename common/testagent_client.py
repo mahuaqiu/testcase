@@ -406,6 +406,41 @@ class TestagentClient:
 
         return self.execute(platform, [action], device_id)
 
+    def ocr_move(
+        self,
+        platform: str,
+        text: str,
+        offset: Optional[Dict[str, int]] = None,
+        timeout: int = 5000,
+        index: int = 0,
+        device_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """OCR 定位后移动鼠标。
+
+        仅桌面端支持（Windows/Mac）。
+
+        Args:
+            platform: 平台类型。
+            text: 要定位的文字。
+            offset: 偏移量 {"x": 0, "y": 0}。
+            timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
+            device_id: 设备 ID。
+
+        Returns:
+            执行结果。
+        """
+        action = {
+            "action_type": "ocr_move",
+            "value": text,
+            "timeout": timeout,
+            "index": index,
+        }
+        if offset:
+            action["offset"] = offset
+
+        return self.execute(platform, [action], device_id)
+
     # ── 图像识别动作 ─────────────────────────────────────────────
 
     def image_click(
@@ -535,6 +570,44 @@ class TestagentClient:
         }
         return self.execute(platform, [action], device_id)
 
+    def image_move(
+        self,
+        platform: str,
+        image_base64: str,
+        threshold: float = 0.8,
+        timeout: int = 5000,
+        index: int = 0,
+        offset: Optional[Dict[str, int]] = None,
+        device_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """图像识别后移动鼠标。
+
+        仅桌面端支持（Windows/Mac）。
+
+        Args:
+            platform: 平台类型。
+            image_base64: 图像的 base64 编码。
+            threshold: 匹配阈值（0-1）。
+            timeout: 超时时间（毫秒）。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 偏移量。
+            device_id: 设备 ID。
+
+        Returns:
+            执行结果。
+        """
+        action = {
+            "action_type": "image_move",
+            "image_base64": image_base64,
+            "threshold": threshold,
+            "timeout": timeout,
+            "index": index,
+        }
+        if offset:
+            action["offset"] = offset
+
+        return self.execute(platform, [action], device_id)
+
     def click(
         self,
         platform: str,
@@ -558,6 +631,38 @@ class TestagentClient:
             "x": x,
             "y": y,
         }
+        return self.execute(platform, [action], device_id)
+
+    def move(
+        self,
+        platform: str,
+        x: int,
+        y: int,
+        offset: Optional[Dict[str, int]] = None,
+        device_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """移动鼠标到指定坐标。
+
+        仅桌面端支持（Windows/Mac）。
+
+        Args:
+            platform: 平台类型。
+            x: X 坐标。
+            y: Y 坐标。
+            offset: 偏移量。
+            device_id: 设备 ID。
+
+        Returns:
+            执行结果。
+        """
+        action = {
+            "action_type": "move",
+            "x": x,
+            "y": y,
+        }
+        if offset:
+            action["offset"] = offset
+
         return self.execute(platform, [action], device_id)
 
     def swipe(

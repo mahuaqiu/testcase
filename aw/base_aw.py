@@ -210,6 +210,17 @@ class BaseAW:
             **kwargs
         )
 
+    def ocr_move(self, text: str, **kwargs) -> dict:
+        """OCR 定位后移动鼠标（仅桌面端支持）。"""
+        return self._execute_with_log(
+            "ocr_move",
+            self.client.ocr_move,
+            {"text": text, **kwargs},
+            self.PLATFORM,
+            text,
+            **kwargs
+        )
+
     # ── 图像识别动作 ─────────────────────────────────────────
 
     def _load_image_as_base64(self, image_path: str) -> Optional[str]:
@@ -284,6 +295,21 @@ class BaseAW:
             **kwargs
         )
 
+    def image_move(self, image_path: str, **kwargs) -> dict:
+        """图像识别后移动鼠标（仅桌面端支持）。"""
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        return self._execute_with_log(
+            "image_move",
+            self.client.image_move,
+            {"image_path": image_path, **kwargs},
+            self.PLATFORM,
+            image_base64,
+            **kwargs
+        )
+
     # ── 坐标动作 ─────────────────────────────────────────
 
     def click(self, x: int, y: int) -> dict:
@@ -295,6 +321,18 @@ class BaseAW:
             self.PLATFORM,
             x,
             y
+        )
+
+    def move(self, x: int, y: int, **kwargs) -> dict:
+        """移动鼠标到指定坐标（仅桌面端支持）。"""
+        return self._execute_with_log(
+            "move",
+            self.client.move,
+            {"x": x, "y": y, **kwargs},
+            self.PLATFORM,
+            x,
+            y,
+            **kwargs
         )
 
     def swipe(self, from_x: int, from_y: int, to_x: int, to_y: int, **kwargs) -> dict:
