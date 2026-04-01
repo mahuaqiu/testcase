@@ -1,5 +1,6 @@
 """报告日志收集器。"""
 
+import sys
 import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -93,8 +94,9 @@ class ReportLogger:
                 "step": step,
                 "detail": detail
             })
-        # 控制台输出（强制刷新，确保实时显示）
-        print(f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]} 步骤: {step}", flush=True)
+        # 控制台输出（使用 stderr 绕过 pytest 输出捕获，实时显示）
+        sys.stderr.write(f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]} 步骤: {step}\n")
+        sys.stderr.flush()
 
     def log_aw_call(
         self,
@@ -137,15 +139,16 @@ class ReportLogger:
             if not success:
                 self._last_failed_aw = log_entry
 
-        # 控制台输出（过滤参数，不含 base64，强制刷新）
+        # 控制台输出（使用 stderr 绕过 pytest 输出捕获，实时显示）
         display_args = self._filter_display_args(args)
         args_str = self._format_args(display_args)
         status_icon = "✓" if success else "✗"
         time_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
         if args_str:
-            print(f"{time_str} {aw_name}.{method}({args_str}) {status_icon} {duration_ms}ms", flush=True)
+            sys.stderr.write(f"{time_str} {aw_name}.{method}({args_str}) {status_icon} {duration_ms}ms\n")
         else:
-            print(f"{time_str} {aw_name}.{method}() {status_icon} {duration_ms}ms", flush=True)
+            sys.stderr.write(f"{time_str} {aw_name}.{method}() {status_icon} {duration_ms}ms\n")
+        sys.stderr.flush()
 
     def log_worker_call(
         self,
