@@ -164,14 +164,22 @@ class HTMLReportGenerator:
         .type-worker_call {{ background: #e8f5e9; color: #2e7d32; }}
         .type-error {{ background: #ffebee; color: #c62828; }}
         .type-screenshot {{ background: #fff3e0; color: #e65100; }}
+        .log-type-wrapper {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 12px;
+            min-width: 80px;
+        }}
         .log-user-info {{
             background: #e8f5e9;
             color: #2e7d32;
-            padding: 3px 10px;
+            padding: 2px 8px;
             border-radius: 4px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 500;
-            margin: 0 6px;
+            margin-top: 4px;
+            white-space: nowrap;
         }}
         .log-content {{ flex: 1; }}
         .log-main {{ display: flex; align-items: center; gap: 12px; }}
@@ -392,8 +400,10 @@ class HTMLReportGenerator:
                 items.append(f"""
             <div class="log-item {item_class}">
                 <span class="log-time">{time_str}</span>
-                <span class="log-type type-aw_call">AW</span>
-                <span class="log-user-info">{user_display}</span>
+                <div class="log-type-wrapper">
+                    <span class="log-type type-aw_call">AW</span>
+                    <span class="log-user-info">{user_display}</span>
+                </div>
                 <div class="log-content">
                     <div class="log-main">
                         <span class="log-name">{log.get('aw_name', '')}.{log.get('method', '')}()</span>
