@@ -164,6 +164,15 @@ class HTMLReportGenerator:
         .type-worker_call {{ background: #e8f5e9; color: #2e7d32; }}
         .type-error {{ background: #ffebee; color: #c62828; }}
         .type-screenshot {{ background: #fff3e0; color: #e65100; }}
+        .log-user-info {{
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            margin: 0 6px;
+        }}
         .log-content {{ flex: 1; }}
         .log-main {{ display: flex; align-items: center; gap: 12px; }}
         .log-name {{ font-weight: 500; color: #343a40; }}
@@ -323,9 +332,24 @@ class HTMLReportGenerator:
                 status_class = "success" if success else "failed"
                 status_text = "成功" if success else "失败"
 
-                # 清理参数，移除 user_id 用于显示
+                # 格式化用户信息显示
                 args = log.get("args", {})
-                clean_args = {k: v for k, v in args.items() if k != "user_id"}
+                user_id = args.get("user_id", "")
+                user_account = args.get("user_account", "")
+                user_name = args.get("user_name", "")
+
+                if user_id:
+                    if user_name:
+                        user_display = f"[{user_id} - {user_name}({user_account})]"
+                    elif user_account:
+                        user_display = f"[{user_id} - ({user_account})]"
+                    else:
+                        user_display = f"[{user_id}]"
+                else:
+                    user_display = "[未知用户]"
+
+                # 清理参数，移除用户信息字段用于显示（已在标签旁展示）
+                clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
 
                 # 清理 result 中的 base64 数据
                 clean_result = HTMLReportGenerator._clean_response_for_display(
@@ -345,7 +369,6 @@ class HTMLReportGenerator:
                     result = log.get("result", {})
                     error_screenshot = result.get("error_screenshot", "")
                     target_image = log.get("target_image", "")
-                    target_image_path = log.get("target_image_path", "")
 
                     screenshot_imgs = []
                     # 截图（左侧）
@@ -370,6 +393,7 @@ class HTMLReportGenerator:
             <div class="log-item {item_class}">
                 <span class="log-time">{time_str}</span>
                 <span class="log-type type-aw_call">AW</span>
+                <span class="log-user-info">{user_display}</span>
                 <div class="log-content">
                     <div class="log-main">
                         <span class="log-name">{log.get('aw_name', '')}.{log.get('method', '')}()</span>
