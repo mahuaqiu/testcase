@@ -239,9 +239,8 @@ Skill(skill="testcase-aw", args="需要新建 {业务}AW，{平台}端")
 
 测试场景: {场景描述}
 """
-
+from common.parallel import parallel
 import pytest
-
 
 @pytest.mark.users({"userA": "{平台}", "userB": "{平台}"})
 class TestClass:
@@ -257,7 +256,6 @@ class TestClass:
         userA.should_xxx_success()
 
         # 多用户并行
-        from common.parallel import parallel
         with parallel():
             userA.do_yyy()
             userB.do_yyy()
