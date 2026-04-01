@@ -171,15 +171,21 @@ class HTMLReportGenerator:
             margin: 0 12px;
             min-width: 80px;
         }}
-        .log-user-info {{
-            background: #e8f5e9;
+        .log-user-id {{
             color: #2e7d32;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 600;
             margin-top: 4px;
-            white-space: nowrap;
+        }}
+        .log-user-name {{
+            color: #343a40;
+            font-size: 10px;
+            margin-top: 2px;
+        }}
+        .log-user-account {{
+            color: #6c757d;
+            font-size: 10px;
+            margin-top: 2px;
         }}
         .log-content {{ flex: 1; }}
         .log-main {{ display: flex; align-items: center; gap: 12px; }}
@@ -340,21 +346,20 @@ class HTMLReportGenerator:
                 status_class = "success" if success else "failed"
                 status_text = "成功" if success else "失败"
 
-                # 格式化用户信息显示
+                # 格式化用户信息显示（分四排：AW、user_id、name、account）
                 args = log.get("args", {})
                 user_id = args.get("user_id", "")
                 user_account = args.get("user_account", "")
                 user_name = args.get("user_name", "")
 
-                if user_id:
-                    if user_name:
-                        user_display = f"[{user_id} - {user_name}({user_account})]"
-                    elif user_account:
-                        user_display = f"[{user_id} - ({user_account})]"
-                    else:
-                        user_display = f"[{user_id}]"
-                else:
-                    user_display = "[未知用户]"
+                # 第二排：user_id
+                user_id_display = user_id if user_id else "未知"
+
+                # 第三排：name
+                user_name_display = user_name if user_name else ""
+
+                # 第四排：account
+                user_account_display = user_account if user_account else ""
 
                 # 清理参数，移除用户信息字段用于显示（已在标签旁展示）
                 clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
@@ -402,7 +407,9 @@ class HTMLReportGenerator:
                 <span class="log-time">{time_str}</span>
                 <div class="log-type-wrapper">
                     <span class="log-type type-aw_call">AW</span>
-                    <span class="log-user-info">{user_display}</span>
+                    <span class="log-user-id">{user_id_display}</span>
+                    <span class="log-user-name">{user_name_display}</span>
+                    <span class="log-user-account">{user_account_display}</span>
                 </div>
                 <div class="log-content">
                     <div class="log-main">
