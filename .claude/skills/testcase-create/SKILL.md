@@ -320,7 +320,11 @@ userB.should_join_success()
 
 **遗漏时自动补充**。
 
-#### 7.2 编码规范验证
+#### 7.2 hooks 冲突验证
+
+检查测试代码中的清理操作是否与 `config.yaml` 的 `hooks.teardown` 配置重复，重复则移除并标注 `# 已由 hooks.teardown 自动处理`。
+
+#### 7.3 编码规范验证
 
 | 检查项 | 规范要求 | 处理方式 |
 |--------|----------|----------|
@@ -342,6 +346,7 @@ userB.should_join_success()
 ```
 ✅ 复查通过
 - 步骤覆盖：{N}/{N} 用户STEP全部覆盖
+- hooks冲突：无重复清理操作
 - 编码规范：命名、格式符合AGENTS.md
 - INDEX.md：已同步更新
 ```
@@ -350,6 +355,7 @@ userB.should_join_success()
 ```
 ⚠️ 发现问题，已修正：
 - 遗漏STEP 3断言 → 已补充 should_xxx_success()
+- hooks冲突：user.stop_app() 与 teardown.stop_app 重复 → 已移除
 - 文件命名不规范 → 已修正为 test_xxx_001.py
 - INDEX.md未更新 → 已补充XxxAW记录
 ```
