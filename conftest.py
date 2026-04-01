@@ -104,6 +104,7 @@ def users(request) -> Dict[str, User]:
                 port=resource.port,
                 account=resource.account,
                 password=resource.password,
+                name=resource.name,
                 **resource.extra
             )
             user_instances[user_id] = user
@@ -117,6 +118,7 @@ def users(request) -> Dict[str, User]:
                 port=resource.port,
                 account=resource.account,
                 password=resource.password,
+                name=resource.name,
                 _ui_user_id=user_id,  # 关联 UI User
                 **resource.extra
             )
