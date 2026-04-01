@@ -123,10 +123,12 @@ class BaseAW:
 
         # 记录 AW 调用日志
         user_id = self.user.user_id if self.user else ""
+        user_account = self.user.account if self.user else ""
+        user_name = self.user.name if self.user else ""
         logger.log_aw_call(
             aw_name=self._aw_name,
             method=method,
-            args={"user_id": user_id, **log_args},
+            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
             success=success,
             result=result,
             duration_ms=duration_ms,
@@ -137,7 +139,7 @@ class BaseAW:
         # 记录 worker 调用日志（用于调试，报告中不显示）
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, **log_args},
+            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
             success=success,
             response=result,
             duration_ms=duration_ms
