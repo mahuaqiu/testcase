@@ -49,9 +49,22 @@ class ReportLogger:
         args: dict,
         success: bool,
         result: dict,
-        duration_ms: int
+        duration_ms: int,
+        target_image: str = "",
+        target_image_path: str = ""
     ) -> None:
-        """记录 AW 方法调用。"""
+        """记录 AW 方法调用。
+
+        Args:
+            aw_name: AW 类名。
+            method: 方法名。
+            args: 调用参数。
+            success: 是否成功。
+            result: 执行结果。
+            duration_ms: 执行耗时（毫秒）。
+            target_image: 目标图片的 base64 编码（仅 image_* 操作失败时有值）。
+            target_image_path: 目标图片路径（仅 image_* 操作失败时有值）。
+        """
         with self._lock:
             log_entry = {
                 "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
@@ -61,7 +74,9 @@ class ReportLogger:
                 "args": args,
                 "success": success,
                 "result": result,
-                "duration_ms": duration_ms
+                "duration_ms": duration_ms,
+                "target_image": target_image,
+                "target_image_path": target_image_path
             }
             self._logs.append(log_entry)
             # 追踪失败的 AW 调用

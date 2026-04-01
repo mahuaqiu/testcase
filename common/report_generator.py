@@ -186,7 +186,10 @@ class HTMLReportGenerator:
             margin-top: 10px;
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 12px;
+        }}
+        .step-screenshot-wrapper {{
+            text-align: center;
         }}
         .step-screenshot {{
             width: 200px;
@@ -198,6 +201,12 @@ class HTMLReportGenerator:
             transition: transform 0.2s;
         }}
         .step-screenshot:hover {{ transform: scale(1.05); }}
+        .step-screenshot-label {{
+            margin-top: 4px;
+            font-size: 12px;
+            color: #6c757d;
+            font-weight: 500;
+        }}
         .screenshots-card {{
             background: white;
             border-radius: 16px;
@@ -330,14 +339,32 @@ class HTMLReportGenerator:
                 detail_parts.append(f"结果: {clean_result}")
                 detail_html = "<br>".join(detail_parts)
 
-                # 提取错误截图用于显示
-                error_screenshot_html = ""
-                result = log.get("result", {})
-                error_screenshot = result.get("error_screenshot", "")
-                if error_screenshot and len(error_screenshot) > 100:
-                    error_screenshot_html = f'''<div class="step-screenshots">
-                        <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
-                    </div>'''
+                # 失败时展示截图和目标图片（并排，截图左、目标图片右）
+                screenshots_html = ""
+                if not success:
+                    result = log.get("result", {})
+                    error_screenshot = result.get("error_screenshot", "")
+                    target_image = log.get("target_image", "")
+                    target_image_path = log.get("target_image_path", "")
+
+                    screenshot_imgs = []
+                    # 截图（左侧）
+                    if error_screenshot and len(error_screenshot) > 100:
+                        screenshot_imgs.append(f'''
+                            <div class="step-screenshot-wrapper">
+                                <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
+                                <div class="step-screenshot-label">📸 当前屏幕</div>
+                            </div>''')
+                    # 目标图片（右侧）
+                    if target_image and len(target_image) > 100:
+                        screenshot_imgs.append(f'''
+                            <div class="step-screenshot-wrapper">
+                                <img src="data:image/png;base64,{target_image}" class="step-screenshot" onclick="showImage('{target_image}')">
+                                <div class="step-screenshot-label">🎯 目标图片</div>
+                            </div>''')
+
+                    if screenshot_imgs:
+                        screenshots_html = f'<div class="step-screenshots">{"".join(screenshot_imgs)}</div>'
 
                 items.append(f"""
             <div class="log-item {item_class}">
@@ -350,7 +377,7 @@ class HTMLReportGenerator:
                         <span class="log-duration">{log.get('duration_ms', 0)}ms</span>
                     </div>
                     <div class="log-detail">{detail_html}</div>
-                    {error_screenshot_html}
+                    {screenshots_html}
                 </div>
             </div>""")
 

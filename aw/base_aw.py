@@ -107,6 +107,20 @@ class BaseAW:
         duration_ms = int((time.time() - start_time) * 1000)
         success = result.get("status") == "success"
 
+        # 失败时立即截图，并读取目标图片（仅 image_* 操作）
+        target_image_base64 = ""
+        target_image_path = ""
+        if not success:
+            # 立即截图当前屏幕
+            error_screenshot = self.screenshot()
+            if error_screenshot:
+                result["error_screenshot"] = error_screenshot
+
+            # image_* 操作失败时，读取目标图片
+            if method.startswith("image_") and "image_path" in log_args:
+                target_image_path = log_args["image_path"]
+                target_image_base64 = self._load_image_as_base64(target_image_path) or ""
+
         # 记录 AW 调用日志
         user_id = self.user.user_id if self.user else ""
         logger.log_aw_call(
@@ -115,7 +129,9 @@ class BaseAW:
             args={"user_id": user_id, **log_args},
             success=success,
             result=result,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            target_image=target_image_base64,
+            target_image_path=target_image_path
         )
 
         # 记录 worker 调用日志（用于调试，报告中不显示）
