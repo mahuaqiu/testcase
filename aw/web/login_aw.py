@@ -31,6 +31,7 @@ class LoginAW(BaseAW):
             url: 登录页面 URL。
         """
         self.navigate(url)
+        self.wait(1)
 
     def do_login(
         self,
@@ -58,13 +59,14 @@ class LoginAW(BaseAW):
         if not account or not pwd:
             raise ValueError("未提供账号密码，且无用户资源")
         self.ocr_wait("邮箱/帐号",timeout=5000)
+        self.wait(1)
         # 使用 OCR 识别并输入账号
         self.ocr_input("邮箱/帐号", account)
         # 使用 OCR 识别并输入密码
         self.ocr_input("密码", pwd)
         # 点击登录按钮
         self.ocr_click("登录")
-        self.wait(0.5)
+        self.wait(1)
         self.do_accept_privacy()
         self.wait(1)
 

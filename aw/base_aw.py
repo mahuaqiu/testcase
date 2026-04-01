@@ -1,7 +1,7 @@
 """AW 基类。"""
 
 import time
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient
 from common.report_logger import ReportLogger
@@ -45,20 +45,17 @@ class BaseAW:
     def _execute_with_log(
         self,
         method: str,
-        action: Callable[..., Any],
+        action_data: Dict[str, Any],
         log_args: Dict[str, Any],
-        *args: Any,
-        **kwargs: Any
     ) -> Dict[str, Any]:
         """执行操作并记录日志，失败时抛出异常。
 
-        在 parallel() 上下文中收集动作，否则立即执行。
+        在 parallel() 上下文中收集 action_data，否则立即执行。
 
         Args:
             method: 方法名。
-            action: 实际执行的方法。
-            log_args: 用于日志记录的参数（不含 platform）。
-            *args, **kwargs: 传递给 action 的参数。
+            action_data: 原始 action 数据（发给服务端）。
+            log_args: 用于日志记录的参数。
 
         Returns:
             执行结果（收集模式下返回空字典）。
@@ -70,27 +67,27 @@ class BaseAW:
         if is_collecting():
             queue = get_action_queue()
             if queue is not None:
-                # 构建动作并添加到队列
-                # 注意：args 已包含 PLATFORM，executor 需要直接调用
+                # 构建 Action 对象并添加到队列
                 user_id = self.user.user_id if self.user else ""
                 action_obj = Action(
+                    action_data=action_data,
+                    platform=self.PLATFORM,
+                    user_id=user_id,
                     aw_name=self._aw_name,
                     method=method,
-                    executor=action,
-                    args=args,  # args 已包含 PLATFORM
-                    kwargs=kwargs,
-                    user_id=user_id,
-                    log_args=log_args
+                    log_args=log_args,
+                    client=self.client,
                 )
                 queue.append(action_obj)
                 return {}  # 收集模式返回空字典
 
-        # 同步执行模式（原有逻辑）
+        # 同步执行模式
         logger = ReportLogger.get_current()
         start_time = time.time()
 
         try:
-            result = action(*args, **kwargs)
+            # 调用 client.execute（批量接口，传入单个 action）
+            result = self.client.execute(self.PLATFORM, [action_data])
         except Exception as e:
             # 记录异常
             duration_ms = int((time.time() - start_time) * 1000)
@@ -100,12 +97,15 @@ class BaseAW:
                 args=log_args,
                 success=False,
                 result={"error": str(e)},
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
             raise
 
         duration_ms = int((time.time() - start_time) * 1000)
-        success = result.get("status") == "success"
+
+        # 从 actions 列表中取第一个结果
+        action_result = result.get("actions", [{}])[0] if result.get("actions") else {}
+        success = action_result.get("status") == "success"
 
         # 失败时立即截图，并读取目标图片（仅 image_* 操作）
         target_image_base64 = ""
@@ -114,7 +114,7 @@ class BaseAW:
             # 立即截图当前屏幕
             error_screenshot = self.screenshot()
             if error_screenshot:
-                result["error_screenshot"] = error_screenshot
+                action_result["error_screenshot"] = error_screenshot
 
             # image_* 操作失败时，读取目标图片
             if method.startswith("image_") and "image_path" in log_args:
@@ -125,15 +125,28 @@ class BaseAW:
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
         user_name = self.user.name if self.user else ""
+
+        # 构建完整的 result（包含 status/duration_ms/output/error）
+        full_result = {
+            "status": action_result.get("status", "failed"),
+            "platform": self.PLATFORM,
+            "duration_ms": action_result.get("duration_ms", 0),
+            "actions": [action_result],
+            "output": action_result.get("output", ""),
+            "error": action_result.get("error", ""),
+        }
+        if "error_screenshot" in action_result:
+            full_result["error_screenshot"] = action_result["error_screenshot"]
+
         logger.log_aw_call(
             aw_name=self._aw_name,
             method=method,
             args={"user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
             success=success,
-            result=result,
+            result=full_result,
             duration_ms=duration_ms,
             target_image=target_image_base64,
-            target_image_path=target_image_path
+            target_image_path=target_image_path,
         )
 
         # 记录 worker 调用日志（用于调试，报告中不显示）
@@ -141,62 +154,89 @@ class BaseAW:
             api="task/execute",
             params={"platform": self.PLATFORM, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
             success=success,
-            response=result,
-            duration_ms=duration_ms
+            response=full_result,
+            duration_ms=duration_ms,
         )
 
         # 失败时抛出异常
         if not success:
-            raise AWError(f"{self._aw_name}.{method}", result)
+            raise AWError(f"{self._aw_name}.{method}", full_result)
 
-        return result
+        return full_result
 
-    # ── 便捷方法 ─────────────────────────────────────────
+    # ── OCR 动作 ─────────────────────────────────────────
 
     def ocr_click(self, text: str, **kwargs) -> dict:
-        """OCR 识别并点击。"""
-        return self._execute_with_log(
-            "ocr_click",
-            self.client.ocr_click,
-            {"text": text, **kwargs},
-            self.PLATFORM,
-            text,
-            **kwargs
-        )
+        """OCR 识别并点击。
+
+        Args:
+            text: 要识别并点击的文字。
+            timeout: 超时时间（毫秒），默认 5000。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
+        """
+        action_data = {
+            "action_type": "ocr_click",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5000),
+            "index": kwargs.get("index", 0),
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log("ocr_click", action_data, {"text": text, **kwargs})
 
     def ocr_input(self, label: str, content: str, **kwargs) -> dict:
-        """OCR 定位后输入。"""
-        return self._execute_with_log(
-            "ocr_input",
-            self.client.ocr_input,
-            {"label": label, "content": content, **kwargs},
-            self.PLATFORM,
-            label,
-            content,
-            **kwargs
-        )
+        """OCR 定位后输入。
+
+        Args:
+            label: 要定位的文字标签。
+            content: 要输入的内容。
+            timeout: 超时时间（毫秒），默认 5000。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 输入偏移量 {"x": 0, "y": 0}。
+        """
+        action_data = {
+            "action_type": "ocr_input",
+            "value": label,
+            "text": content,
+            "timeout": kwargs.get("timeout", 5000),
+            "index": kwargs.get("index", 0),
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log("ocr_input", action_data, {"label": label, "content": content, **kwargs})
 
     def ocr_wait(self, text: str, **kwargs) -> dict:
-        """等待文字出现。"""
-        return self._execute_with_log(
-            "ocr_wait",
-            self.client.ocr_wait,
-            {"text": text, **kwargs},
-            self.PLATFORM,
-            text,
-            **kwargs
-        )
+        """等待文字出现。
+
+        Args:
+            text: 要等待的文字。
+            timeout: 超时时间（毫秒），默认 5000。
+        """
+        action_data = {
+            "action_type": "ocr_wait",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5000),
+        }
+
+        return self._execute_with_log("ocr_wait", action_data, {"text": text, **kwargs})
 
     def ocr_assert(self, text: str, **kwargs) -> dict:
-        """断言文字存在。"""
-        return self._execute_with_log(
-            "ocr_assert",
-            self.client.ocr_assert,
-            {"text": text, **kwargs},
-            self.PLATFORM,
-            text,
-            **kwargs
-        )
+        """断言文字存在。
+
+        Args:
+            text: 要断言的文字。
+            timeout: 超时时间（毫秒），默认 5000。
+        """
+        action_data = {
+            "action_type": "ocr_assert",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5000),
+        }
+
+        return self._execute_with_log("ocr_assert", action_data, {"text": text, **kwargs})
 
     def ocr_get_text(self, **kwargs) -> str:
         """获取屏幕所有文字。
@@ -204,40 +244,47 @@ class BaseAW:
         Returns:
             识别到的文字内容。
         """
-        result = self._execute_with_log(
-            "ocr_get_text",
-            self.client.ocr_get_text,
-            {**kwargs},
-            self.PLATFORM,
-            **kwargs
-        )
+        action_data = {
+            "action_type": "ocr_get_text",
+        }
+
+        result = self._execute_with_log("ocr_get_text", action_data, {**kwargs})
         # 从结果中提取文字
-        if result.get("status") == "success" and result.get("actions"):
+        if result.get("actions"):
             return result["actions"][0].get("output", "")
         return ""
 
     def ocr_paste(self, text: str, content: str, **kwargs) -> dict:
-        """OCR 定位后粘贴剪贴板内容。"""
-        return self._execute_with_log(
-            "ocr_paste",
-            self.client.ocr_paste,
-            {"text": text, "content": content, **kwargs},
-            self.PLATFORM,
-            text,
-            content,
-            **kwargs
-        )
+        """OCR 定位后粘贴剪贴板内容。
+
+        Args:
+            text: 要定位的文字。
+            content: 剪贴板内容。
+            timeout: 超时时间（毫秒），默认 5000。
+        """
+        action_data = {
+            "action_type": "ocr_paste",
+            "value": text,
+            "text": content,
+            "timeout": kwargs.get("timeout", 5000),
+        }
+
+        return self._execute_with_log("ocr_paste", action_data, {"text": text, "content": content, **kwargs})
 
     def ocr_move(self, text: str, **kwargs) -> dict:
-        """OCR 定位后移动鼠标（仅桌面端支持）。"""
-        return self._execute_with_log(
-            "ocr_move",
-            self.client.ocr_move,
-            {"text": text, **kwargs},
-            self.PLATFORM,
-            text,
-            **kwargs
-        )
+        """OCR 定位后移动鼠标（仅桌面端支持）。
+
+        Args:
+            text: 要定位的文字。
+            timeout: 超时时间（毫秒），默认 5000。
+        """
+        action_data = {
+            "action_type": "ocr_move",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5000),
+        }
+
+        return self._execute_with_log("ocr_move", action_data, {"text": text, **kwargs})
 
     # ── 图像识别动作 ─────────────────────────────────────────
 
@@ -253,143 +300,197 @@ class BaseAW:
         return load_image_as_base64(image_path)
 
     def image_click(self, image_path: str, **kwargs) -> dict:
-        """图像识别点击。"""
+        """图像识别点击。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（毫秒），默认 5000。
+            confidence: 匹置信度（0-1），默认 0.8。
+        """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        return self._execute_with_log(
-            "image_click",
-            self.client.image_click,
-            {"image_path": image_path, **kwargs},
-            self.PLATFORM,
-            image_base64,
-            **kwargs
-        )
+        action_data = {
+            "action_type": "image_click",
+            "value": image_base64,
+            "timeout": kwargs.get("timeout", 5000),
+            "confidence": kwargs.get("confidence", 0.8),
+        }
+
+        return self._execute_with_log("image_click", action_data, {"image_path": image_path, **kwargs})
 
     def image_wait(self, image_path: str, **kwargs) -> dict:
-        """等待图像出现。"""
+        """等待图像出现。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（毫秒），默认 5000。
+            confidence: 匹置信度（0-1），默认 0.8。
+        """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        return self._execute_with_log(
-            "image_wait",
-            self.client.image_wait,
-            {"image_path": image_path, **kwargs},
-            self.PLATFORM,
-            image_base64,
-            **kwargs
-        )
+        action_data = {
+            "action_type": "image_wait",
+            "value": image_base64,
+            "timeout": kwargs.get("timeout", 5000),
+            "confidence": kwargs.get("confidence", 0.8),
+        }
+
+        return self._execute_with_log("image_wait", action_data, {"image_path": image_path, **kwargs})
 
     def image_assert(self, image_path: str, **kwargs) -> dict:
-        """断言图像存在。"""
+        """断言图像存在。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（毫秒），默认 5000。
+            confidence: 匹置信度（0-1），默认 0.8。
+        """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        return self._execute_with_log(
-            "image_assert",
-            self.client.image_assert,
-            {"image_path": image_path, **kwargs},
-            self.PLATFORM,
-            image_base64,
-            **kwargs
-        )
+        action_data = {
+            "action_type": "image_assert",
+            "value": image_base64,
+            "timeout": kwargs.get("timeout", 5000),
+            "confidence": kwargs.get("confidence", 0.8),
+        }
+
+        return self._execute_with_log("image_assert", action_data, {"image_path": image_path, **kwargs})
 
     def image_click_near_text(self, image_path: str, text: str, **kwargs) -> dict:
-        """点击文本附近最近的图像。"""
+        """点击文本附近最近的图像。
+
+        Args:
+            image_path: 图片路径。
+            text: 文本内容。
+            timeout: 超时时间（毫秒），默认 5000。
+            confidence: 匹置信度（0-1），默认 0.8。
+        """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        return self._execute_with_log(
-            "image_click_near_text",
-            self.client.image_click_near_text,
-            {"image_path": image_path, "text": text, **kwargs},
-            self.PLATFORM,
-            image_base64,
-            text,
-            **kwargs
-        )
+        action_data = {
+            "action_type": "image_click_near_text",
+            "value": image_base64,
+            "text": text,
+            "timeout": kwargs.get("timeout", 5000),
+            "confidence": kwargs.get("confidence", 0.8),
+        }
+
+        return self._execute_with_log("image_click_near_text", action_data, {"image_path": image_path, "text": text, **kwargs})
 
     def image_move(self, image_path: str, **kwargs) -> dict:
-        """图像识别后移动鼠标（仅桌面端支持）。"""
+        """图像识别后移动鼠标（仅桌面端支持）。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（毫秒），默认 5000。
+            confidence: 匹置信度（0-1），默认 0.8。
+        """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        return self._execute_with_log(
-            "image_move",
-            self.client.image_move,
-            {"image_path": image_path, **kwargs},
-            self.PLATFORM,
-            image_base64,
-            **kwargs
-        )
+        action_data = {
+            "action_type": "image_move",
+            "value": image_base64,
+            "timeout": kwargs.get("timeout", 5000),
+            "confidence": kwargs.get("confidence", 0.8),
+        }
+
+        return self._execute_with_log("image_move", action_data, {"image_path": image_path, **kwargs})
 
     # ── 坐标动作 ─────────────────────────────────────────
 
     def click(self, x: int, y: int) -> dict:
-        """坐标点击。"""
-        return self._execute_with_log(
-            "click",
-            self.client.click,
-            {"x": x, "y": y},
-            self.PLATFORM,
-            x,
-            y
-        )
+        """坐标点击。
+
+        Args:
+            x: X 坐标。
+            y: Y 坐标。
+        """
+        action_data = {
+            "action_type": "click",
+            "x": x,
+            "y": y,
+        }
+
+        return self._execute_with_log("click", action_data, {"x": x, "y": y})
 
     def move(self, x: int, y: int, **kwargs) -> dict:
-        """移动鼠标到指定坐标（仅桌面端支持）。"""
-        return self._execute_with_log(
-            "move",
-            self.client.move,
-            {"x": x, "y": y, **kwargs},
-            self.PLATFORM,
-            x,
-            y,
-            **kwargs
-        )
+        """移动鼠标到指定坐标（仅桌面端支持）。
+
+        Args:
+            x: X 坐标。
+            y: Y 坐标。
+        """
+        action_data = {
+            "action_type": "move",
+            "x": x,
+            "y": y,
+        }
+
+        return self._execute_with_log("move", action_data, {"x": x, "y": y, **kwargs})
 
     def swipe(self, from_x: int, from_y: int, to_x: int, to_y: int, **kwargs) -> dict:
-        """滑动操作。"""
-        return self._execute_with_log(
-            "swipe",
-            self.client.swipe,
-            {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs},
-            self.PLATFORM,
-            from_x,
-            from_y,
-            to_x,
-            to_y,
-            **kwargs
-        )
+        """滑动操作。
+
+        Args:
+            from_x: 起点 X 坐标。
+            from_y: 起点 Y 坐标。
+            to_x: 终点 X 坐标。
+            to_y: 终点 Y 坐标。
+            duration: 滑动持续时间（毫秒）。
+        """
+        action_data = {
+            "action_type": "swipe",
+            "from_x": from_x,
+            "from_y": from_y,
+            "to_x": to_x,
+            "to_y": to_y,
+        }
+        if "duration" in kwargs:
+            action_data["duration"] = kwargs["duration"]
+
+        return self._execute_with_log("swipe", action_data, {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs})
 
     def input_text(self, x: int, y: int, text: str) -> dict:
-        """在指定坐标输入文本。"""
-        return self._execute_with_log(
-            "input_text",
-            self.client.input_text,
-            {"x": x, "y": y, "text": text},
-            self.PLATFORM,
-            x,
-            y,
-            text
-        )
+        """在指定坐标输入文本。
+
+        Args:
+            x: X 坐标。
+            y: Y 坐标。
+            text: 要输入的文本。
+        """
+        action_data = {
+            "action_type": "input_text",
+            "x": x,
+            "y": y,
+            "text": text,
+        }
+
+        return self._execute_with_log("input_text", action_data, {"x": x, "y": y, "text": text})
 
     # ── 其他动作 ─────────────────────────────────────────
 
     def press(self, key: str) -> dict:
-        """按键操作。"""
-        return self._execute_with_log(
-            "press",
-            self.client.press,
-            {"key": key},
-            self.PLATFORM,
-            key
-        )
+        """按键操作。
+
+        Args:
+            key: 按键名称（如 "Enter", "Tab", "Escape"）。
+        """
+        action_data = {
+            "action_type": "press",
+            "value": key,
+        }
+
+        return self._execute_with_log("press", action_data, {"key": key})
 
     def wait(self, duration: float) -> dict:
         """固定等待。
@@ -398,43 +499,51 @@ class BaseAW:
             duration: 等待时间（秒），与 time.sleep() 单位一致。
         """
         duration_ms = int(duration * 1000)
-        return self._execute_with_log(
-            "wait",
-            self.client.wait,
-            {"duration_ms": duration_ms},
-            self.PLATFORM,
-            duration_ms
-        )
+        action_data = {
+            "action_type": "wait",
+            "value": duration_ms,
+        }
+
+        return self._execute_with_log("wait", action_data, {"duration_ms": duration_ms})
 
     def start_app(self, app_id: str) -> dict:
-        """启动应用。"""
-        return self._execute_with_log(
-            "start_app",
-            self.client.start_app,
-            {"app_id": app_id},
-            self.PLATFORM,
-            app_id
-        )
+        """启动应用。
+
+        Args:
+            app_id: 应用 ID 或名称。
+        """
+        action_data = {
+            "action_type": "start_app",
+            "value": app_id,
+        }
+
+        return self._execute_with_log("start_app", action_data, {"app_id": app_id})
 
     def stop_app(self, app_id: str) -> dict:
-        """关闭应用。"""
-        return self._execute_with_log(
-            "stop_app",
-            self.client.stop_app,
-            {"app_id": app_id},
-            self.PLATFORM,
-            app_id
-        )
+        """关闭应用。
+
+        Args:
+            app_id: 应用 ID 或名称。
+        """
+        action_data = {
+            "action_type": "stop_app",
+            "value": app_id,
+        }
+
+        return self._execute_with_log("stop_app", action_data, {"app_id": app_id})
 
     def navigate(self, url: str) -> dict:
-        """导航到 URL（Web 端专用）。"""
-        return self._execute_with_log(
-            "navigate",
-            self.client.navigate,
-            {"url": url},
-            self.PLATFORM,
-            url
-        )
+        """导航到 URL（Web 端专用）。
+
+        Args:
+            url: 目标 URL。
+        """
+        action_data = {
+            "action_type": "navigate",
+            "value": url,
+        }
+
+        return self._execute_with_log("navigate", action_data, {"url": url})
 
     def screenshot(self) -> str:
         """截图并返回 base64。
