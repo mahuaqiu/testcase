@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from aw.api.base_api_aw import ApiError
 from aw.api.meeting_manage_aw import MeetingManageAW
 from variable.manage_var import ManageVar
+import base64
 
 
 @dataclass
@@ -67,7 +68,7 @@ class MeetingControlAW(MeetingManageAW):
             "X-Password": chair_password
         }
         params = {"conferenceID": conference_id}
-        result = self._get(ManageVar.REGION_INFO_URL, params=params, headers=headers, need_token=False)
+        result = self._get(ManageVar.REGION_INFO_URL, params=params, headers=headers, need_token=True)
 
         # 解析响应
         region_info = self._parse_region_info(result)
@@ -113,7 +114,7 @@ class MeetingControlAW(MeetingManageAW):
             raise ApiError("get_control_token", 0, "未获取到控制 token")
 
         # 缓存结果
-        self._control_token_cache[conference_id] = token
+        self._control_token_cache[conference_id] = base64.b64encode(token.encode()).decode()
         return token
 
     def do_set_waiting_room(self, conference_id: str, chair_password: str, enable: bool) -> None:
