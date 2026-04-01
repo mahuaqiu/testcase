@@ -222,25 +222,37 @@ class ParallelContext:
             执行结果。
 
         Raises:
-            执行中的异常。
+            AWError: 执行失败时抛出。
         """
+        from aw.base_aw import AWError  # 导入 AWError
+
         start_time = time.time()
 
         try:
             result = action.executor(*action.args, **action.kwargs)
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # 记录成功日志
+            # 检查执行结果（与 base_aw._execute_with_log 保持一致）
+            success = result.get("status") == "success" if isinstance(result, dict) else True
+
+            # 记录日志
             logger.log_aw_call(
                 aw_name=action.aw_name,
                 method=action.method,
                 args={"user_id": action.user_id, **action.log_args},
-                success=True,
+                success=success,
                 result=result if isinstance(result, dict) else {"result": result},
                 duration_ms=duration_ms,
             )
 
+            # 失败时抛出异常
+            if not success:
+                raise AWError(f"{action.aw_name}.{action.method}", result)
+
             return result
+        except AWError:
+            # AWError 已经记录了日志，直接抛出
+            raise
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
 
