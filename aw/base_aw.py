@@ -391,8 +391,13 @@ class BaseAW:
             key
         )
 
-    def wait(self, duration_ms: int) -> dict:
-        """固定等待。"""
+    def wait(self, duration: float) -> dict:
+        """固定等待。
+
+        Args:
+            duration: 等待时间（秒），与 time.sleep() 单位一致。
+        """
+        duration_ms = int(duration * 1000)
         return self._execute_with_log(
             "wait",
             self.client.wait,

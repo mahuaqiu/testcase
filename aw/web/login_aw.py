@@ -3,7 +3,6 @@
 
 封装华为云会议登录相关流程，包括导航到登录页、执行登录、同意隐私政策等操作。
 """
-import time
 from typing import Optional
 
 from aw.base_aw import BaseAW
@@ -65,9 +64,9 @@ class LoginAW(BaseAW):
         self.ocr_input("密码", pwd)
         # 点击登录按钮
         self.ocr_click("登录")
-        time.sleep(0.5)
+        self.wait(0.5)
         self.do_accept_privacy()
-        time.sleep(1)
+        self.wait(1)
 
     def do_accept_privacy(self) -> None:
         """接受隐私政策。
