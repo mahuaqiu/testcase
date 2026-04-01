@@ -244,12 +244,19 @@ class BaseApiAW(BaseAW):
                 # 使用从 worker 获取的 token
                 access_token = token_dict.get("X-Auth-Token")
                 if access_token:
+                    # 从 X-Request-Operator 解析 userUUID（格式: p-xxxxxx）
+                    # 兼容大小写：优先大写，fallback 小写
+                    user_uuid = ""
+                    operator = token_dict.get("X-Request-Operator") or token_dict.get("x-request-operator", "")
+                    if operator and operator.startswith("p-"):
+                        user_uuid = operator[2:]  # 去掉 "p-" 前缀
+
                     # 设置一个较短的过期时间（5分钟），因为 UI token 可能随时失效
                     expire_time = time.time() + 300
                     self._token_info = TokenInfo(
                         access_token=access_token,
                         expire_time=expire_time,
-                        user_uuid=""
+                        user_uuid=user_uuid
                     )
                     return access_token
 
