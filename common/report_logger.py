@@ -14,6 +14,19 @@ class ReportLogger:
 
     _local = threading.local()
 
+    # 需要显示的参数名（有意义的关键参数）
+    _DISPLAY_ARGS = {
+        "text", "label", "content", "image_path", "key", "url",
+        "app_id", "x", "y", "from_x", "from_y", "to_x", "to_y",
+        "duration_ms", "timeout", "index", "confidence"
+    }
+
+    # 不显示的参数名（内部参数或 base64）
+    _HIDDEN_ARGS = {
+        "platform", "user_id", "user_account", "user_name",
+        "target_image", "image_base64", "screenshot"
+    }
+
     @classmethod
     def get_current(cls) -> "ReportLogger":
         """获取当前线程的日志收集器。"""
@@ -32,8 +45,47 @@ class ReportLogger:
         self._lock = threading.Lock()
         self._last_failed_aw: Optional[Dict[str, Any]] = None  # 追踪最后失败的 AW
 
+    def _filter_display_args(self, args: dict) -> dict:
+        """过滤参数，只保留需要显示的。
+
+        Args:
+            args: 原始参数字典。
+
+        Returns:
+            过滤后的参数字典，只包含需要显示的参数。
+        """
+        return {
+            k: v for k, v in args.items()
+            if k in self._DISPLAY_ARGS and k not in self._HIDDEN_ARGS
+        }
+
+    def _format_args(self, args: dict) -> str:
+        """格式化参数为字符串。
+
+        Args:
+            args: 参数字典。
+
+        Returns:
+            格式化后的参数字符串，如 "text=\"登录\", timeout=5000"。
+        """
+        if not args:
+            return ""
+        parts = []
+        for k, v in args.items():
+            # 字符串值加引号，其他值直接显示
+            if isinstance(v, str):
+                parts.append(f'{k}="{v}"')
+            else:
+                parts.append(f"{k}={v}")
+        return ", ".join(parts)
+
     def log_step(self, step: str, detail: str = "") -> None:
-        """记录测试步骤。"""
+        """记录测试步骤。
+
+        Args:
+            step: 步骤名称。
+            detail: 步骤详情（可选）。
+        """
         with self._lock:
             self._logs.append({
                 "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
@@ -41,6 +93,8 @@ class ReportLogger:
                 "step": step,
                 "detail": detail
             })
+        # 控制台输出
+        print(f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]} 步骤: {step}")
 
     def log_aw_call(
         self,
@@ -82,6 +136,16 @@ class ReportLogger:
             # 追踪失败的 AW 调用
             if not success:
                 self._last_failed_aw = log_entry
+
+        # 控制台输出（过滤参数，不含 base64）
+        display_args = self._filter_display_args(args)
+        args_str = self._format_args(display_args)
+        status_icon = "✓" if success else "✗"
+        time_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        if args_str:
+            print(f"{time_str} {aw_name}.{method}({args_str}) {status_icon} {duration_ms}ms")
+        else:
+            print(f"{time_str} {aw_name}.{method}() {status_icon} {duration_ms}ms")
 
     def log_worker_call(
         self,

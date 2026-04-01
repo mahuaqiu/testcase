@@ -74,12 +74,33 @@ class BaseApiAW(BaseAW):
         Returns:
             Token dict 如 {"X-Auth-Token": "xxx"}，或 None。
         """
+        logger = ReportLogger.get_current()
+        user_id = self.user.user_id if self.user else ""
+        user_account = self.user.account if self.user else ""
+        user_name = self.user.name if self.user else ""
+
         client = self.user._get_ui_client()
         if not client:
+            logger.log_aw_call(
+                aw_name=self._aw_name,
+                method="_get_token_from_worker",
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                success=False,
+                result={"error": "client is None"},
+                duration_ms=0
+            )
             return None
 
         ui_platform = self.user._get_ui_platform()
         if not ui_platform:
+            logger.log_aw_call(
+                aw_name=self._aw_name,
+                method="_get_token_from_worker",
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                success=False,
+                result={"error": "ui_platform is None"},
+                duration_ms=0
+            )
             return None
 
         try:
@@ -88,27 +109,60 @@ class BaseApiAW(BaseAW):
                 actions=[{"action_type": "get_token"}]
             )
 
-            if result.get("status") == "SUCCESS" and result.get("actions"):
+            if result.get("status") == "success" and result.get("actions"):
                 output = result["actions"][0].get("output", "")
                 if output:
                     try:
-                        return json.loads(output)
-                    except json.JSONDecodeError:
+                        token_dict = json.loads(output)
+                        logger.log_aw_call(
+                            aw_name=self._aw_name,
+                            method="_get_token_from_worker",
+                            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                            success=True,
+                            result={"raw_result": result, "token_keys": list(token_dict.keys())},
+                            duration_ms=0
+                        )
+                        return token_dict
+                    except json.JSONDecodeError as e:
+                        logger.log_aw_call(
+                            aw_name=self._aw_name,
+                            method="_get_token_from_worker",
+                            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                            success=False,
+                            result={"raw_result": result, "error": f"JSON parse failed: {e}", "output": output[:100]},
+                            duration_ms=0
+                        )
                         return None
+                else:
+                    logger.log_aw_call(
+                        aw_name=self._aw_name,
+                        method="_get_token_from_worker",
+                        args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                        success=False,
+                        result={"raw_result": result, "error": "output is empty"},
+                        duration_ms=0
+                    )
+                    return None
+            else:
+                logger.log_aw_call(
+                    aw_name=self._aw_name,
+                    method="_get_token_from_worker",
+                    args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                    success=False,
+                    result={"raw_result": result, "error": "status not success or no actions", "status": result.get("status")},
+                    duration_ms=0
+                )
+                return None
         except Exception as e:
-            # worker 调用失败，记录日志并返回 None
-            logger = ReportLogger.get_current()
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method="_get_token_from_worker",
-                args={"ui_user_id": self.user._ui_user_id if self.user else ""},
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": str(e)},
                 duration_ms=0
             )
             return None
-
-        return None
 
     def _login(self) -> TokenInfo:
         """登录获取 token。
