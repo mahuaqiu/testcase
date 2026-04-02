@@ -53,12 +53,14 @@ class BaseAW:
         stack = inspect.stack()
         aw_name = self._aw_name
 
-        for frame_info in stack:
-            func_name = frame_info.function
-            if func_name.startswith(('do_', 'should_')):
-                return f"{aw_name}.{func_name}"
-
-        return ""
+        try:
+            for frame_info in stack:
+                func_name = frame_info.function
+                if func_name.startswith(('do_', 'should_')):
+                    return f"{aw_name}.{func_name}"
+            return ""
+        finally:
+            del stack  # 显式释放栈帧引用
 
     def _execute_with_log(
         self,
