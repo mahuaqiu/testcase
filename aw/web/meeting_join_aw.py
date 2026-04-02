@@ -108,7 +108,7 @@ class MeetingJoinAW(BaseAW):
         验证等候室界面显示等待相关文字。
         """
         # 等待等候室界面出现
-        self.ocr_wait("等待主持人准入", timeout=5)
+        self.ocr_wait("主持人即将邀请您进入会议", timeout=5)
 
     def should_leave_success(self) -> None:
         """断言离会成功。
