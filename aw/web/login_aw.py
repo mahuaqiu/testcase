@@ -58,7 +58,7 @@ class LoginAW(BaseAW):
 
         if not account or not pwd:
             raise ValueError("未提供账号密码，且无用户资源")
-        self.ocr_wait("邮箱/帐号",timeout=5000)
+        self.ocr_wait("邮箱/帐号",timeout=5)
         self.wait(1)
         # 使用 OCR 识别并输入账号
         self.ocr_input("邮箱/帐号", account)
@@ -85,7 +85,7 @@ class LoginAW(BaseAW):
         验证登录成功后页面显示"会议"文字。
         失败时会自动抛出 AWError。
         """
-        self.ocr_wait("我的会议", timeout=5000)
+        self.ocr_wait("我的会议", timeout=5)
 
     def should_show_error(self, error_msg: str) -> None:
         """断言显示错误提示。
@@ -95,4 +95,4 @@ class LoginAW(BaseAW):
 
         失败时会自动抛出 AWError。
         """
-        self.ocr_wait(error_msg, timeout=5000)
+        self.ocr_wait(error_msg, timeout=5)

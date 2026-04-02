@@ -67,7 +67,7 @@ class ReportLogger:
             args: 参数字典。
 
         Returns:
-            格式化后的参数字符串，如 "text=\"登录\", timeout=5000"。
+            格式化后的参数字符串，如 "text=\"登录\", timeout=5"。
         """
         if not args:
             return ""

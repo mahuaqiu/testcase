@@ -171,14 +171,14 @@ class BaseAW:
 
         Args:
             text: 要识别并点击的文字。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
         """
         action_data = {
             "action_type": "ocr_click",
             "value": text,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "index": kwargs.get("index", 0),
         }
         if "offset" in kwargs:
@@ -192,7 +192,7 @@ class BaseAW:
         Args:
             label: 要定位的文字标签。
             content: 要输入的内容。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 输入偏移量 {"x": 0, "y": 0}。
         """
@@ -200,7 +200,7 @@ class BaseAW:
             "action_type": "ocr_input",
             "value": label,
             "text": content,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "index": kwargs.get("index", 0),
         }
         if "offset" in kwargs:
@@ -213,12 +213,12 @@ class BaseAW:
 
         Args:
             text: 要等待的文字。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
         """
         action_data = {
             "action_type": "ocr_wait",
             "value": text,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
         }
 
         return self._execute_with_log("ocr_wait", action_data, {"text": text, **kwargs})
@@ -228,12 +228,12 @@ class BaseAW:
 
         Args:
             text: 要断言的文字。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
         """
         action_data = {
             "action_type": "ocr_assert",
             "value": text,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
         }
 
         return self._execute_with_log("ocr_assert", action_data, {"text": text, **kwargs})
@@ -247,7 +247,7 @@ class BaseAW:
         action_data = {
             "action_type": "ocr_get_text",
             "value": "",
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
         }
 
         result = self._execute_with_log("ocr_get_text", action_data, {**kwargs})
@@ -262,13 +262,13 @@ class BaseAW:
         Args:
             text: 要定位的文字。
             content: 剪贴板内容。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
         """
         action_data = {
             "action_type": "ocr_paste",
             "value": text,
             "text": content,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
         }
 
         return self._execute_with_log("ocr_paste", action_data, {"text": text, "content": content, **kwargs})
@@ -278,12 +278,12 @@ class BaseAW:
 
         Args:
             text: 要定位的文字。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
         """
         action_data = {
             "action_type": "ocr_move",
             "value": text,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
         }
 
         return self._execute_with_log("ocr_move", action_data, {"text": text, **kwargs})
@@ -306,7 +306,7 @@ class BaseAW:
 
         Args:
             image_path: 图片路径。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
         """
         image_base64 = self._load_image_as_base64(image_path)
@@ -316,7 +316,7 @@ class BaseAW:
         action_data = {
             "action_type": "image_click",
             "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "threshold": kwargs.get("confidence", 0.8),
         }
 
@@ -327,7 +327,7 @@ class BaseAW:
 
         Args:
             image_path: 图片路径。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
         """
         image_base64 = self._load_image_as_base64(image_path)
@@ -337,7 +337,7 @@ class BaseAW:
         action_data = {
             "action_type": "image_wait",
             "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "threshold": kwargs.get("confidence", 0.8),
         }
 
@@ -348,7 +348,7 @@ class BaseAW:
 
         Args:
             image_path: 图片路径。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
         """
         image_base64 = self._load_image_as_base64(image_path)
@@ -358,7 +358,7 @@ class BaseAW:
         action_data = {
             "action_type": "image_assert",
             "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "threshold": kwargs.get("confidence", 0.8),
         }
 
@@ -370,7 +370,7 @@ class BaseAW:
         Args:
             image_path: 图片路径。
             text: 文本内容。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
         """
         image_base64 = self._load_image_as_base64(image_path)
@@ -382,7 +382,7 @@ class BaseAW:
             "image_base64": image_base64,
             "value": text,
             "end_x": kwargs.get("max_distance", 500),
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "threshold": kwargs.get("confidence", 0.8),
         }
 
@@ -393,7 +393,7 @@ class BaseAW:
 
         Args:
             image_path: 图片路径。
-            timeout: 超时时间（毫秒），默认 5000。
+            timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
         """
         image_base64 = self._load_image_as_base64(image_path)
@@ -403,7 +403,7 @@ class BaseAW:
         action_data = {
             "action_type": "image_move",
             "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5000),
+            "timeout": kwargs.get("timeout", 5) * 1000,
             "threshold": kwargs.get("confidence", 0.8),
         }
 
