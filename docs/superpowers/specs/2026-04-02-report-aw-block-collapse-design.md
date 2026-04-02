@@ -33,6 +33,12 @@
   <div class="aw-header">
     <span class="aw-arrow">▶</span>
     <span class="log-time">09:30:15</span>
+    <div class="log-type-wrapper">
+      <span class="log-type type-aw_call">AW</span>
+      <span class="log-user-id">userA</span>
+      <span class="log-user-name">张三</span>
+      <span class="log-user-account">account123</span>
+    </div>
     <span class="aw-title">LoginAW.do_login(text="登录")</span>
     <span class="aw-status success">✓</span>
     <span class="aw-duration">152ms</span>
@@ -57,6 +63,7 @@
 **参数格式化**：
 - 从 `args` 中提取关键参数（复用 `report_logger.py` 的 `_DISPLAY_ARGS`）
 - 格式化为 `text="登录", timeout=5` 形式
+- 无参数时显示空括号：`LoginAW.do_login()`
 - 移除 `user_id`、`user_account`、`user_name`（已在用户信息区显示）
 
 **失败截图**：
