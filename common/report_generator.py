@@ -53,6 +53,50 @@ class HTMLReportGenerator:
         return cleaned
 
     @staticmethod
+    def _format_aw_title(aw_name: str, method: str, args: Dict[str, Any]) -> str:
+        """格式化 AW 标题，显示关键参数。
+
+        Args:
+            aw_name: AW 类名。
+            method: 方法名。
+            args: 调用参数。
+
+        Returns:
+            格式化后的标题，如 "LoginAW.do_login(text=\"登录\")"。
+        """
+        # 需要显示的参数名（复用 report_logger.py 的逻辑）
+        DISPLAY_ARGS = {
+            "text", "label", "content", "image_path", "key", "url",
+            "app_id", "x", "y", "from_x", "from_y", "to_x", "to_y",
+            "duration_ms", "timeout", "index", "confidence"
+        }
+
+        # 移除用户信息字段（已在折叠标题中显示）
+        HIDDEN_ARGS = {
+            "platform", "user_id", "user_account", "user_name",
+            "target_image", "image_base64", "screenshot"
+        }
+
+        # 过滤参数
+        filtered_args = {
+            k: v for k, v in args.items()
+            if k in DISPLAY_ARGS and k not in HIDDEN_ARGS
+        }
+
+        # 格式化参数
+        if not filtered_args:
+            return f"{aw_name}.{method}()"
+
+        parts = []
+        for k, v in filtered_args.items():
+            if isinstance(v, str):
+                parts.append(f'{k}="{v}"')
+            else:
+                parts.append(f"{k}={v}")
+
+        return f"{aw_name}.{method}({', '.join(parts)})"
+
+    @staticmethod
     def generate(
         report_path: Path,
         case_name: str,
