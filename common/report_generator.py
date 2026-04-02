@@ -269,6 +269,64 @@ class HTMLReportGenerator:
             box-shadow: 0 20px 60px rgba(0,0,0,0.5);
         }}
         .modal-close {{ position: fixed; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }}
+
+        /* AW 块容器 */
+        .aw-block {{
+            margin: 8px 0;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid #e9ecef;
+            transition: all 0.2s;
+        }}
+        .aw-block:hover {{ background: #f8f9fa; }}
+        .aw-block.failed {{
+            border-left: 4px solid #dc3545;
+            background: #fff5f5;
+        }}
+        .aw-block.success {{ border-left: 4px solid #28a745; }}
+
+        /* 折叠标题 */
+        .aw-header {{
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            cursor: pointer;
+            gap: 12px;
+        }}
+        .aw-arrow {{
+            color: #6c757d;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }}
+        .aw-block.expanded .aw-arrow {{ transform: rotate(90deg); }}
+        .aw-title {{
+            font-weight: 500;
+            color: #343a40;
+            flex: 1;
+        }}
+        .aw-status {{
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }}
+        .aw-status.success {{ background: #28a745; color: white; }}
+        .aw-status.failed {{ background: #dc3545; color: white; }}
+        .aw-duration {{ color: #868e96; font-size: 12px; }}
+
+        /* 展开内容 */
+        .aw-content {{
+            display: none;
+            padding: 12px 16px;
+            border-top: 1px solid #e9ecef;
+        }}
+        .aw-block.expanded .aw-content {{ display: block; }}
+        .aw-detail {{
+            background: #f8f9fa;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+        }}
     </style>
 </head>
 <body>
