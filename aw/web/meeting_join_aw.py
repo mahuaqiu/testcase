@@ -42,7 +42,7 @@ class MeetingJoinAW(BaseAW):
         # 等待入会页面加载
         self.ocr_wait("加入会议", timeout=5)
         # 点击同意协议勾选框
-        self.image_click("images/登录同意-勾选框.png")
+        self.image_click("images/web/登录同意_勾选框.png")
         # 输入与会者名称（未登录时需要）
         if name:
             self.ocr_input("您的姓名", name)
@@ -65,7 +65,7 @@ class MeetingJoinAW(BaseAW):
         # 等待入会页面加载
         self.ocr_wait("加入会议", timeout=5)
         # 点击同意协议勾选框
-        self.image_click("images/登录同意-勾选框.png")
+        self.image_click("images/web/登录同意_勾选框.png")
         # 输入与会者名称（未登录时需要）
         if name:
             self.ocr_input("您的姓名", name)
