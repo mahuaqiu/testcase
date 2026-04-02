@@ -326,6 +326,8 @@ class HTMLReportGenerator:
             border-radius: 6px;
             font-family: 'Consolas', monospace;
             font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
         }}
     </style>
 </head>
