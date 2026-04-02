@@ -246,6 +246,8 @@ class BaseAW:
         """
         action_data = {
             "action_type": "ocr_get_text",
+            "value": "",
+            "timeout": kwargs.get("timeout", 5000),
         }
 
         result = self._execute_with_log("ocr_get_text", action_data, {**kwargs})
@@ -313,9 +315,9 @@ class BaseAW:
 
         action_data = {
             "action_type": "image_click",
-            "value": image_base64,
+            "image_base64": image_base64,
             "timeout": kwargs.get("timeout", 5000),
-            "confidence": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.8),
         }
 
         return self._execute_with_log("image_click", action_data, {"image_path": image_path, **kwargs})
@@ -334,9 +336,9 @@ class BaseAW:
 
         action_data = {
             "action_type": "image_wait",
-            "value": image_base64,
+            "image_base64": image_base64,
             "timeout": kwargs.get("timeout", 5000),
-            "confidence": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.8),
         }
 
         return self._execute_with_log("image_wait", action_data, {"image_path": image_path, **kwargs})
@@ -355,9 +357,9 @@ class BaseAW:
 
         action_data = {
             "action_type": "image_assert",
-            "value": image_base64,
+            "image_base64": image_base64,
             "timeout": kwargs.get("timeout", 5000),
-            "confidence": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.8),
         }
 
         return self._execute_with_log("image_assert", action_data, {"image_path": image_path, **kwargs})
@@ -377,10 +379,11 @@ class BaseAW:
 
         action_data = {
             "action_type": "image_click_near_text",
-            "value": image_base64,
-            "text": text,
+            "image_base64": image_base64,
+            "value": text,
+            "end_x": kwargs.get("max_distance", 500),
             "timeout": kwargs.get("timeout", 5000),
-            "confidence": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.8),
         }
 
         return self._execute_with_log("image_click_near_text", action_data, {"image_path": image_path, "text": text, **kwargs})
@@ -399,9 +402,9 @@ class BaseAW:
 
         action_data = {
             "action_type": "image_move",
-            "value": image_base64,
+            "image_base64": image_base64,
             "timeout": kwargs.get("timeout", 5000),
-            "confidence": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.8),
         }
 
         return self._execute_with_log("image_move", action_data, {"image_path": image_path, **kwargs})
@@ -450,10 +453,8 @@ class BaseAW:
         """
         action_data = {
             "action_type": "swipe",
-            "from_x": from_x,
-            "from_y": from_y,
-            "to_x": to_x,
-            "to_y": to_y,
+            "from": {"x": from_x, "y": from_y},
+            "to": {"x": to_x, "y": to_y},
         }
         if "duration" in kwargs:
             action_data["duration"] = kwargs["duration"]
@@ -469,7 +470,7 @@ class BaseAW:
             text: 要输入的文本。
         """
         action_data = {
-            "action_type": "input_text",
+            "action_type": "input",
             "x": x,
             "y": y,
             "text": text,
@@ -487,7 +488,7 @@ class BaseAW:
         """
         action_data = {
             "action_type": "press",
-            "value": key,
+            "key": key,
         }
 
         return self._execute_with_log("press", action_data, {"key": key})
@@ -501,7 +502,7 @@ class BaseAW:
         duration_ms = int(duration * 1000)
         action_data = {
             "action_type": "wait",
-            "value": duration_ms,
+            "value": str(duration_ms),
         }
 
         return self._execute_with_log("wait", action_data, {"duration_ms": duration_ms})
