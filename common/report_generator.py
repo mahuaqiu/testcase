@@ -458,28 +458,28 @@ class HTMLReportGenerator:
                 status_class = "success" if success else "failed"
                 status_text = "成功" if success else "失败"
 
-                # 格式化用户信息显示（分四排：AW、user_id、name、account）
+                # 失败块默认展开
+                expanded_class = "expanded" if not success else ""
+
+                # 格式化用户信息
                 args = log.get("args", {})
                 user_id = args.get("user_id", "")
                 user_account = args.get("user_account", "")
                 user_name = args.get("user_name", "")
-
-                # 第二排：user_id
                 user_id_display = user_id if user_id else "未知"
-
-                # 第三排：name
                 user_name_display = user_name if user_name else ""
-
-                # 第四排：account
                 user_account_display = user_account if user_account else ""
 
-                # 清理参数，移除用户信息字段用于显示（已在标签旁展示）
-                clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
-
-                # 清理 result 中的 base64 数据
-                clean_result = HTMLReportGenerator._clean_response_for_display(
-                    log.get("result", {})
+                # 格式化标题（带关键参数）
+                aw_title = HTMLReportGenerator._format_aw_title(
+                    log.get("aw_name", ""),
+                    log.get("method", ""),
+                    args
                 )
+
+                # 清理参数用于详情显示
+                clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
+                clean_result = HTMLReportGenerator._clean_response_for_display(log.get("result", {}))
 
                 # 构建参数和结果详情
                 detail_parts = []
@@ -488,7 +488,7 @@ class HTMLReportGenerator:
                 detail_parts.append(f"结果: {clean_result}")
                 detail_html = "<br>".join(detail_parts)
 
-                # 失败时展示截图和目标图片（并排，截图左、目标图片右）
+                # 失败时展示截图
                 screenshots_html = ""
                 if not success:
                     result = log.get("result", {})
@@ -496,14 +496,12 @@ class HTMLReportGenerator:
                     target_image = log.get("target_image", "")
 
                     screenshot_imgs = []
-                    # 截图（左侧）
                     if error_screenshot and len(error_screenshot) > 100:
                         screenshot_imgs.append(f'''
                             <div class="step-screenshot-wrapper">
                                 <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
                                 <div class="step-screenshot-label">📸 当前屏幕</div>
                             </div>''')
-                    # 目标图片（右侧）
                     if target_image and len(target_image) > 100:
                         screenshot_imgs.append(f'''
                             <div class="step-screenshot-wrapper">
@@ -512,24 +510,25 @@ class HTMLReportGenerator:
                             </div>''')
 
                     if screenshot_imgs:
-                        screenshots_html = f'<div class="step-screenshots">{"".join(screenshot_imgs)}</div>'
+                        screenshots_html = f'<div class="aw-screenshots" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 12px;">{"".join(screenshot_imgs)}</div>'
 
                 items.append(f"""
-            <div class="log-item {item_class}">
-                <span class="log-time">{time_str}</span>
-                <div class="log-type-wrapper">
-                    <span class="log-type type-aw_call">AW</span>
-                    <span class="log-user-id">{user_id_display}</span>
-                    <span class="log-user-name">{user_name_display}</span>
-                    <span class="log-user-account">{user_account_display}</span>
-                </div>
-                <div class="log-content">
-                    <div class="log-main">
-                        <span class="log-name">{log.get('aw_name', '')}.{log.get('method', '')}()</span>
-                        <span class="log-status {status_class}">{status_text}</span>
-                        <span class="log-duration">{log.get('duration_ms', 0)}ms</span>
+            <div class="aw-block {item_class} {expanded_class}">
+                <div class="aw-header">
+                    <span class="aw-arrow">▶</span>
+                    <span class="log-time">{time_str}</span>
+                    <div class="log-type-wrapper">
+                        <span class="log-type type-aw_call">AW</span>
+                        <span class="log-user-id">{user_id_display}</span>
+                        <span class="log-user-name">{user_name_display}</span>
+                        <span class="log-user-account">{user_account_display}</span>
                     </div>
-                    <div class="log-detail">{detail_html}</div>
+                    <span class="aw-title">{aw_title}</span>
+                    <span class="aw-status {status_class}">{status_text}</span>
+                    <span class="aw-duration">{log.get('duration_ms', 0)}ms</span>
+                </div>
+                <div class="aw-content">
+                    <div class="aw-detail">{detail_html}</div>
                     {screenshots_html}
                 </div>
             </div>""")
