@@ -361,6 +361,14 @@ class HTMLReportGenerator:
             document.getElementById('modal-img').src = 'data:image/png;base64,' + base64;
             document.getElementById('modal').classList.add('show');
         }}
+
+        // AW 块折叠/展开
+        document.querySelectorAll('.aw-header').forEach(header => {{
+            header.addEventListener('click', function() {{
+                const block = this.closest('.aw-block');
+                block.classList.toggle('expanded');
+            }});
+        }});
     </script>
 </body>
 </html>"""
