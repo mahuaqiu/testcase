@@ -651,6 +651,75 @@ class HTMLReportGenerator:
             white-space: pre-wrap;
             word-break: break-all;
         }}
+
+        /* 子步骤容器 */
+        .aw-steps {{
+            padding: 0 16px 12px 16px;
+        }}
+
+        /* 原子操作步骤 */
+        .aw-step {{
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+            cursor: pointer;
+            gap: 8px;
+            flex-wrap: wrap;
+        }}
+        .aw-step:hover {{ background: #e9ecef; }}
+
+        .step-arrow {{
+            color: #6c757d;
+            font-size: 10px;
+            transition: transform 0.2s;
+        }}
+        .aw-step.expanded .step-arrow {{ transform: rotate(90deg); }}
+
+        .step-title {{
+            font-weight: 500;
+            color: #343a40;
+            flex: 1;
+        }}
+
+        .step-status {{
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }}
+        .step-status.success {{ background: #28a745; color: white; }}
+        .step-status.failed {{ background: #dc3545; color: white; }}
+
+        .step-duration {{
+            color: #868e96;
+            font-size: 11px;
+        }}
+
+        /* 步骤详情 */
+        .step-detail {{
+            display: none;
+            width: 100%;
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #fff;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }}
+        .aw-step.expanded .step-detail {{ display: block; }}
+
+        /* 步骤截图 */
+        .step-screenshots {{
+            width: 100%;
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }}
     </style>
 </head>
 <body>
