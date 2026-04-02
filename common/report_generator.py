@@ -193,6 +193,188 @@ class HTMLReportGenerator:
         return top_blocks
 
     @staticmethod
+    def _format_step_title(method: str, args: Dict[str, Any]) -> str:
+        """格式化步骤标题，显示关键参数。
+
+        Args:
+            method: 方法名。
+            args: 调用参数。
+
+        Returns:
+            格式化后的标题，如 "ocr_wait(text=\"登录\")"。
+        """
+        DISPLAY_ARGS = {
+            "text", "label", "content", "image_path", "key", "url",
+            "app_id", "x", "y", "from_x", "from_y", "to_x", "to_y",
+            "duration_ms", "timeout", "index", "confidence"
+        }
+
+        HIDDEN_ARGS = {
+            "platform", "user_id", "user_account", "user_name",
+            "target_image", "image_base64", "screenshot"
+        }
+
+        filtered_args = {
+            k: v for k, v in args.items()
+            if k in DISPLAY_ARGS and k not in HIDDEN_ARGS
+        }
+
+        if not filtered_args:
+            return f"{method}()"
+
+        parts = []
+        for k, v in filtered_args.items():
+            if isinstance(v, str):
+                parts.append(f'{k}="{v}"')
+            else:
+                parts.append(f"{k}={v}")
+
+        return f"{method}({', '.join(parts)})"
+
+    @staticmethod
+    def _render_aw_step(step: Dict[str, Any]) -> str:
+        """渲染单个原子操作步骤。
+
+        Args:
+            step: 步骤日志数据。
+
+        Returns:
+            HTML 字符串。
+        """
+        success = step.get("success", True)
+        status_class = "success" if success else "failed"
+        status_text = "✓" if success else "✗"
+
+        method = step.get("method", "")
+        args = step.get("args", {})
+        step_title = HTMLReportGenerator._format_step_title(method, args)
+        duration = step.get("duration_ms", 0)
+
+        # 清理参数和结果用于详情显示
+        clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
+        clean_result = HTMLReportGenerator._clean_response_for_display(step.get("result", {}))
+
+        detail_parts = []
+        if clean_args:
+            detail_parts.append(f"参数: {clean_args}")
+        detail_parts.append(f"结果: {clean_result}")
+        detail_html = "<br>".join(detail_parts)
+
+        # 失败时展示截图
+        screenshots_html = ""
+        if not success:
+            result = step.get("result", {})
+            error_screenshot = result.get("error_screenshot", "")
+            target_image = step.get("target_image", "")
+
+            screenshot_imgs = []
+            if error_screenshot and len(error_screenshot) > 100:
+                screenshot_imgs.append(f'''
+                <div class="step-screenshot-wrapper">
+                    <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
+                    <div class="step-screenshot-label">📸 当前屏幕</div>
+                </div>''')
+            if target_image and len(target_image) > 100:
+                screenshot_imgs.append(f'''
+                <div class="step-screenshot-wrapper">
+                    <img src="data:image/png;base64,{target_image}" class="step-screenshot" onclick="showImage('{target_image}')">
+                    <div class="step-screenshot-label">🎯 目标图片</div>
+                </div>''')
+
+            if screenshot_imgs:
+                screenshots_html = f'<div class="step-screenshots">{"".join(screenshot_imgs)}</div>'
+
+        return f'''
+        <div class="aw-step">
+            <span class="step-arrow">▶</span>
+            <span class="step-title">{step_title}</span>
+            <span class="step-status {status_class}">{status_text}</span>
+            <span class="step-duration">{duration}ms</span>
+            <div class="step-detail">{detail_html}</div>
+            {screenshots_html}
+        </div>'''
+
+    @staticmethod
+    def _render_aw_block(block: Dict[str, Any]) -> str:
+        """渲染业务方法块（包含子步骤）。
+
+        Args:
+            block: 块数据。
+
+        Returns:
+            HTML 字符串。
+        """
+        success = block.get("success", True)
+        item_class = "success" if success else "failed"
+        expanded_class = "expanded" if not success else ""  # 失败块默认展开
+
+        aw_name = block.get("aw_name", "")
+        method = block.get("method", "")
+        user_info = block.get("user_info", {})
+        duration = block.get("duration_ms", 0)
+        time_str = block.get("time", "")
+
+        # 格式化标题
+        block_title = f"{aw_name}.{method}()"
+
+        # 格式化用户信息
+        user_id_display = user_info.get("user_id", "") or "未知"
+        user_name_display = user_info.get("user_name", "") or ""
+        user_account_display = user_info.get("user_account", "") or ""
+
+        # 单步骤块（顶层原子操作）
+        if block.get("single_step"):
+            step_data = block.get("step_data", {})
+            step_html = HTMLReportGenerator._render_aw_step(step_data)
+            return f'''
+        <div class="aw-block {item_class} {expanded_class}">
+            <div class="aw-header">
+                <span class="aw-arrow">▶</span>
+                <span class="log-time">{time_str}</span>
+                <div class="log-type-wrapper">
+                    <span class="log-type type-aw_call">AW</span>
+                    <span class="log-user-id">{user_id_display}</span>
+                    <span class="log-user-name">{user_name_display}</span>
+                    <span class="log-user-account">{user_account_display}</span>
+                </div>
+                <span class="aw-title">{block_title}</span>
+                <span class="aw-status {item_class}">{"✓" if success else "✗"}</span>
+                <span class="aw-duration">{duration}ms</span>
+            </div>
+            <div class="aw-content">
+                <div class="aw-steps">{step_html}</div>
+            </div>
+        </div>'''
+
+        # 业务方法块（多步骤）
+        steps = block.get("steps", [])
+        steps_html = ""
+        for step in steps:
+            steps_html += HTMLReportGenerator._render_aw_step(step)
+
+        status_text = "成功" if success else "失败"
+
+        return f'''
+    <div class="aw-block {item_class} {expanded_class}">
+        <div class="aw-header">
+            <span class="aw-arrow">▶</span>
+            <span class="log-time">{time_str}</span>
+            <div class="log-type-wrapper">
+                <span class="log-type type-aw_call">AW</span>
+                <span class="log-user-id">{user_id_display}</span>
+                <span class="log-user-name">{user_name_display}</span>
+                <span class="log-user-account">{user_account_display}</span>
+            </div>
+            <span class="aw-title">{block_title}</span>
+            <span class="aw-status {item_class}">{status_text}</span>
+            <span class="aw-duration">{duration}ms</span>
+        </div>
+        <div class="aw-content">
+            <div class="aw-steps">{steps_html}</div>
+        </div>
+    </div>'''
+
+    @staticmethod
     def generate(
         report_path: Path,
         case_name: str,
