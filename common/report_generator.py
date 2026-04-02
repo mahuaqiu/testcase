@@ -790,6 +790,12 @@ class HTMLReportGenerator:
         """构建日志列表 HTML。"""
         items = []
 
+        # 使用新的树形结构构建 AW 块
+        aw_blocks = HTMLReportGenerator._build_aw_tree(logs)
+        for block in aw_blocks:
+            items.append(HTMLReportGenerator._render_aw_block(block))
+
+        # 处理其他类型日志（step、error）
         for log in logs:
             log_type = log.get("type", "")
             time_str = log.get("time", "")
@@ -806,92 +812,6 @@ class HTMLReportGenerator:
                     {f'<div class="log-detail">{log.get("detail", "")}</div>' if log.get('detail') else ''}
                 </div>
             </div>""")
-
-            elif log_type == "aw_call":
-                success = log.get("success", False)
-                item_class = "success" if success else "failed"
-                status_class = "success" if success else "failed"
-                status_text = "成功" if success else "失败"
-
-                # 失败块默认展开
-                expanded_class = "expanded" if not success else ""
-
-                # 格式化用户信息
-                args = log.get("args", {})
-                user_id = args.get("user_id", "")
-                user_account = args.get("user_account", "")
-                user_name = args.get("user_name", "")
-                user_id_display = user_id if user_id else "未知"
-                user_name_display = user_name if user_name else ""
-                user_account_display = user_account if user_account else ""
-
-                # 格式化标题（带关键参数）
-                aw_title = HTMLReportGenerator._format_aw_title(
-                    log.get("aw_name", ""),
-                    log.get("method", ""),
-                    args
-                )
-
-                # 清理参数用于详情显示
-                clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
-                clean_result = HTMLReportGenerator._clean_response_for_display(log.get("result", {}))
-
-                # 构建参数和结果详情
-                detail_parts = []
-                if clean_args:
-                    detail_parts.append(f"参数: {clean_args}")
-                detail_parts.append(f"结果: {clean_result}")
-                detail_html = "<br>".join(detail_parts)
-
-                # 失败时展示截图
-                screenshots_html = ""
-                if not success:
-                    result = log.get("result", {})
-                    error_screenshot = result.get("error_screenshot", "")
-                    target_image = log.get("target_image", "")
-
-                    screenshot_imgs = []
-                    if error_screenshot and len(error_screenshot) > 100:
-                        screenshot_imgs.append(f'''
-                            <div class="step-screenshot-wrapper">
-                                <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
-                                <div class="step-screenshot-label">📸 当前屏幕</div>
-                            </div>''')
-                    if target_image and len(target_image) > 100:
-                        screenshot_imgs.append(f'''
-                            <div class="step-screenshot-wrapper">
-                                <img src="data:image/png;base64,{target_image}" class="step-screenshot" onclick="showImage('{target_image}')">
-                                <div class="step-screenshot-label">🎯 目标图片</div>
-                            </div>''')
-
-                    if screenshot_imgs:
-                        screenshots_html = f'<div class="aw-screenshots" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 12px;">{"".join(screenshot_imgs)}</div>'
-
-                items.append(f"""
-            <div class="aw-block {item_class} {expanded_class}">
-                <div class="aw-header">
-                    <span class="aw-arrow">▶</span>
-                    <span class="log-time">{time_str}</span>
-                    <div class="log-type-wrapper">
-                        <span class="log-type type-aw_call">AW</span>
-                        <span class="log-user-id">{user_id_display}</span>
-                        <span class="log-user-name">{user_name_display}</span>
-                        <span class="log-user-account">{user_account_display}</span>
-                    </div>
-                    <span class="aw-title">{aw_title}</span>
-                    <span class="aw-status {status_class}">{status_text}</span>
-                    <span class="aw-duration">{log.get('duration_ms', 0)}ms</span>
-                </div>
-                <div class="aw-content">
-                    <div class="aw-detail">{detail_html}</div>
-                    {screenshots_html}
-                </div>
-            </div>""")
-
-            elif log_type == "worker_call":
-                # Worker 调用日志不再单独显示，避免与 AW 日志重复
-                # 但仍用于底部截图过滤逻辑
-                pass
 
             elif log_type == "error":
                 items.append(f"""
