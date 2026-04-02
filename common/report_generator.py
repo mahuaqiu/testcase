@@ -760,6 +760,14 @@ class HTMLReportGenerator:
                 block.classList.toggle('expanded');
             }});
         }});
+
+        // 原子操作步骤折叠/展开
+        document.querySelectorAll('.aw-step').forEach(step => {{
+            step.addEventListener('click', function(e) {{
+                if (e.target.closest('.step-detail') || e.target.closest('.step-screenshots')) return;
+                this.classList.toggle('expanded');
+            }});
+        }});
     </script>
 </body>
 </html>"""
