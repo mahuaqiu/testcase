@@ -1,5 +1,6 @@
 """AW 基类。"""
 
+import inspect
 import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -42,6 +43,23 @@ class BaseAW:
 
     # ── 内部方法 ─────────────────────────────────────────
 
+    def _find_parent_aw(self) -> str:
+        """从调用栈中查找最近的 do_*/should_* 方法作为 parent。
+
+        Returns:
+            父级 AW 标识，如 "LoginAW.do_login"。
+            如果没找到业务方法，返回空字符串（顶层）。
+        """
+        stack = inspect.stack()
+        aw_name = self._aw_name
+
+        for frame_info in stack:
+            func_name = frame_info.function
+            if func_name.startswith(('do_', 'should_')):
+                return f"{aw_name}.{func_name}"
+
+        return ""
+
     def _execute_with_log(
         self,
         method: str,
@@ -82,6 +100,8 @@ class BaseAW:
                 return {}  # 收集模式返回空字典
 
         # 同步执行模式
+        # 自动识别 parent_aw
+        parent_aw = self._find_parent_aw()
         logger = ReportLogger.get_current()
         start_time = time.time()
 
@@ -98,6 +118,7 @@ class BaseAW:
                 success=False,
                 result={"error": str(e)},
                 duration_ms=duration_ms,
+                parent_aw=parent_aw,
             )
             raise
 
@@ -147,6 +168,7 @@ class BaseAW:
             duration_ms=duration_ms,
             target_image=target_image_base64,
             target_image_path=target_image_path,
+            parent_aw=parent_aw,
         )
 
         # 记录 worker 调用日志（用于调试，报告中不显示）
