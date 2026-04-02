@@ -106,15 +106,16 @@ class MeetingControlAW(MeetingManageAW):
             "X-Password": chair_password
         }
         params = {"conferenceID": conference_id}
-        result = self._post_with_headers(url, data=None, headers=headers, params=params, need_token=False)
+        result = self._get(url, headers=headers, params=params, need_token=False)
 
         # 解析响应
         token = result.get("data", {}).get("token", "")
         if not token:
             raise ApiError("get_control_token", 0, "未获取到控制 token")
 
+        token = base64.b64encode(token.encode()).decode()
         # 缓存结果
-        self._control_token_cache[conference_id] = base64.b64encode(token.encode()).decode()
+        self._control_token_cache[conference_id] = token
         return token
 
     def do_set_waiting_room(self, conference_id: str, chair_password: str, enable: bool) -> None:
