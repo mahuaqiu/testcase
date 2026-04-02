@@ -188,7 +188,7 @@ class HTMLReportGenerator:
             top_blocks.append(block)
 
         # 按时间排序
-        top_blocks.sort(key=lambda b: b.get("time", ""))
+        top_blocks.sort(key=lambda b: b.get("time") or "")
 
         return top_blocks
 
