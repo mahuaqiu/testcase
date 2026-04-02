@@ -97,6 +97,102 @@ class HTMLReportGenerator:
         return f"{aw_name}.{method}({', '.join(parts)})"
 
     @staticmethod
+    def _build_aw_tree(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """将日志按 parent_aw 分组构建树形结构。
+
+        Args:
+            logs: 原始日志列表。
+
+        Returns:
+            块列表，每个块包含业务方法信息和子步骤列表。
+        """
+        # 按 parent_aw 分组
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for log in logs:
+            if log.get("type") != "aw_call":
+                continue
+            parent = log.get("parent_aw", "")
+            if parent not in groups:
+                groups[parent] = []
+            groups[parent].append(log)
+
+        # 构建业务方法块（parent_aw != "" 的日志属于某个业务方法）
+        # 首先找出所有业务方法块
+        business_blocks: Dict[str, Dict[str, Any]] = {}
+
+        for parent_aw, steps in groups.items():
+            if parent_aw == "":
+                continue  # 顶层原子操作，后面处理
+
+            # 从 parent_aw 解析 aw_name 和 method
+            parts = parent_aw.rsplit(".", 1)
+            if len(parts) != 2:
+                continue
+            aw_name, method = parts
+
+            # 计算整体状态和耗时
+            total_duration = sum(s.get("duration_ms", 0) for s in steps)
+            all_success = all(s.get("success", True) for s in steps)
+
+            # 从第一个步骤获取用户信息
+            first_step = steps[0] if steps else {}
+            args = first_step.get("args", {})
+            user_info = {
+                "user_id": args.get("user_id", ""),
+                "user_name": args.get("user_name", ""),
+                "user_account": args.get("user_account", ""),
+            }
+
+            business_blocks[parent_aw] = {
+                "block_id": parent_aw,
+                "aw_name": aw_name,
+                "method": method,
+                "user_info": user_info,
+                "success": all_success,
+                "duration_ms": total_duration,
+                "steps": steps,
+                "time": first_step.get("time", ""),
+            }
+
+        # 构建顶层块列表（parent_aw == "" 的原子操作 + 业务方法块）
+        top_blocks: List[Dict[str, Any]] = []
+
+        # 添加顶层原子操作（不属于任何业务方法）
+        for log in groups.get("", []):
+            aw_name = log.get("aw_name", "")
+            method = log.get("method", "")
+            block_id = f"{aw_name}.{method}"
+
+            args = log.get("args", {})
+            user_info = {
+                "user_id": args.get("user_id", ""),
+                "user_name": args.get("user_name", ""),
+                "user_account": args.get("user_account", ""),
+            }
+
+            top_blocks.append({
+                "block_id": block_id,
+                "aw_name": aw_name,
+                "method": method,
+                "user_info": user_info,
+                "success": log.get("success", True),
+                "duration_ms": log.get("duration_ms", 0),
+                "steps": [],  # 无子步骤
+                "time": log.get("time", ""),
+                "single_step": True,  # 标记为单步骤块
+                "step_data": log,  # 保存原始日志数据
+            })
+
+        # 添加业务方法块
+        for block_id, block in business_blocks.items():
+            top_blocks.append(block)
+
+        # 按时间排序
+        top_blocks.sort(key=lambda b: b.get("time", ""))
+
+        return top_blocks
+
+    @staticmethod
     def generate(
         report_path: Path,
         case_name: str,
