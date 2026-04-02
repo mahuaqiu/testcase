@@ -224,9 +224,21 @@ class ParallelContext:
                         results = future.result()
                         self._results[batch["user_id"]] = results
                     except Exception as e:
-                        # 将批量错误拆分为单个 action 的错误
-                        for action_obj in batch["action_objs"]:
-                            self._errors.append(ParallelActionError(action_obj, e))
+                        from aw.base_aw import AWError
+                        # 只把真正失败的 action（最后一个执行的）添加到 errors
+                        if isinstance(e, AWError):
+                            action_results = e.result.get("actions", [])
+                            if action_results:
+                                # 最后一个 action 是失败的
+                                failed_index = len(action_results) - 1
+                                if failed_index < len(batch["action_objs"]):
+                                    self._errors.append(
+                                        ParallelActionError(batch["action_objs"][failed_index], e)
+                                    )
+                        else:
+                            # 其他异常（如连接失败），只记录第一个 action 的错误
+                            if batch["action_objs"]:
+                                self._errors.append(ParallelActionError(batch["action_objs"][0], e))
             except TimeoutError:
                 # 超时处理
                 for future, batch in futures.items():
@@ -300,15 +312,16 @@ class ParallelContext:
                 return action_results
 
             if status == "failed":
-                # 中间有失败，记录已执行的 action 日志
+                # 中间有失败，只记录已执行的 action 日志（未执行的不记录）
                 action_results = task_result.get("actions", [])
-                for i, action_obj in enumerate(action_objs):
-                    action_result = action_results[i] if i < len(action_results) else {}
-                    self._log_action_result(action_obj, action_result, logger)
+                for i, action_result in enumerate(action_results):
+                    if i < len(action_objs):
+                        self._log_action_result(action_objs[i], action_result, logger)
 
                 # 找到失败的 action（最后一个是失败的）
                 failed_action_result = action_results[-1] if action_results else {}
-                raise AWError("parallel_batch", {
+                failed_error = failed_action_result.get("error", "未知错误")
+                raise AWError(failed_error, {
                     "task_id": task_id,
                     "failed_action": failed_action_result,
                     "actions": action_results,
@@ -348,6 +361,16 @@ class ParallelContext:
         error_screenshot = action_result.get("error_screenshot") or action_result.get("screenshot")
         if error_screenshot:
             result["error_screenshot"] = error_screenshot
+        elif not success and action.client:
+            # 失败时主动截图（Worker 没有返回截图时）
+            try:
+                screenshot_result = action.client.screenshot(action.platform)
+                if screenshot_result.get("status") == "success" and screenshot_result.get("actions"):
+                    screenshot_data = screenshot_result["actions"][0].get("screenshot") or screenshot_result["actions"][0].get("output", "")
+                    if screenshot_data:
+                        result["error_screenshot"] = screenshot_data
+            except Exception:
+                pass  # 截图失败不影响主流程
 
         # 如果有目标图片路径（image_* 操作），尝试加载
         target_image_base64 = ""
