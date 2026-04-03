@@ -1,5 +1,6 @@
 """AW 基类。"""
 
+import functools
 import inspect
 import time
 from typing import Any, Dict, Optional, TYPE_CHECKING
@@ -23,6 +24,48 @@ class AWError(Exception):
         super().__init__(f"{method} 执行失败: {error_msg}")
 
 
+def _auto_log_aw_call(func):
+    """自动记录业务方法参数的装饰器。
+
+    用于 do_*/should_* 方法，在执行前记录方法参数。
+    这样业务方法块标题可以显示关键参数。
+    """
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        # 获取方法签名和绑定参数
+        sig = inspect.signature(func)
+        bound_args = sig.bind(self, *args, **kwargs)
+        bound_args.apply_defaults()
+
+        # 提取参数（排除 self）
+        method_args = {
+            k: v for k, v in bound_args.arguments.items()
+            if k != "self"
+        }
+
+        # 获取 parent_aw（调用栈中上层的业务方法）
+        parent_aw = self._find_parent_aw(skip_self=True)
+
+        # 非收集模式下，记录业务方法参数
+        if not is_collecting():
+            logger = ReportLogger.get_current()
+            logger.log_aw_call(
+                aw_name=self._aw_name,
+                method=func.__name__,
+                args=method_args,
+                success=True,  # 先假设成功，失败时更新
+                result={},
+                duration_ms=0,  # 先记0，实际耗时由子步骤计算
+                parent_aw=parent_aw,
+                is_business_method=True,  # 标记为业务方法日志
+            )
+
+        # 执行原方法
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
 class BaseAW:
     """AW 基类。
 
@@ -36,6 +79,18 @@ class BaseAW:
 
     PLATFORM: str = ""  # 子类必须覆盖
 
+    def __init_subclass__(cls, **kwargs):
+        """子类创建时自动装饰所有 do_*/should_* 方法。"""
+        super().__init_subclass__(**kwargs)
+        for name in dir(cls):
+            if name.startswith(('do_', 'should_')):
+                method = getattr(cls, name)
+                if callable(method) and not hasattr(method, '_auto_logged'):
+                    # 装饰并替换类方法
+                    wrapped = _auto_log_aw_call(method)
+                    wrapped._auto_logged = True
+                    setattr(cls, name, wrapped)
+
     def __init__(self, client: TestagentClient, user: Optional["User"] = None):
         self.client = client
         self.user = user
@@ -43,8 +98,11 @@ class BaseAW:
 
     # ── 内部方法 ─────────────────────────────────────────
 
-    def _find_parent_aw(self) -> str:
+    def _find_parent_aw(self, skip_self: bool = False) -> str:
         """从调用栈中查找最近的 do_*/should_* 方法作为 parent。
+
+        Args:
+            skip_self: 是否跳过当前方法（装饰器调用时需要）。
 
         Returns:
             父级 AW 标识，如 "LoginAW.do_login"。
@@ -54,8 +112,13 @@ class BaseAW:
         aw_name = self._aw_name
 
         try:
+            first = True
             for frame_info in stack:
                 func_name = frame_info.function
+                # 跳过当前方法（装饰器调用时）
+                if skip_self and first:
+                    first = False
+                    continue
                 if func_name.startswith(('do_', 'should_')):
                     return f"{aw_name}.{func_name}"
             return ""

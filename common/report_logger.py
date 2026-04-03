@@ -108,7 +108,8 @@ class ReportLogger:
         duration_ms: int,
         target_image: str = "",
         target_image_path: str = "",
-        parent_aw: str = ""  # 新增：父级 AW 标识
+        parent_aw: str = "",  # 父级 AW 标识
+        is_business_method: bool = False  # 是否是业务方法日志
     ) -> None:
         """记录 AW 方法调用。
 
@@ -122,6 +123,7 @@ class ReportLogger:
             target_image: 目标图片的 base64 编码（仅 image_* 操作失败时有值）。
             target_image_path: 目标图片路径（仅 image_* 操作失败时有值）。
             parent_aw: 父级 AW 标识，格式为 "LoginAW.do_login"，表示该原子操作属于哪个业务方法。
+            is_business_method: 是否是业务方法日志（用于区分业务方法和原子操作）。
         """
         with self._lock:
             log_entry = {
@@ -135,7 +137,8 @@ class ReportLogger:
                 "duration_ms": duration_ms,
                 "target_image": target_image,
                 "target_image_path": target_image_path,
-                "parent_aw": parent_aw  # 新增
+                "parent_aw": parent_aw,
+                "is_business_method": is_business_method  # 新增
             }
             self._logs.append(log_entry)
             # 追踪失败的 AW 调用
@@ -143,15 +146,17 @@ class ReportLogger:
                 self._last_failed_aw = log_entry
 
         # 控制台输出（使用 stderr 绕过 pytest 输出捕获，实时显示）
-        display_args = self._filter_display_args(args)
-        args_str = self._format_args(display_args)
-        status_icon = "✓" if success else "✗"
-        time_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        if args_str:
-            sys.stderr.write(f"{time_str} {aw_name}.{method}({args_str}) {status_icon} {duration_ms}ms\n")
-        else:
-            sys.stderr.write(f"{time_str} {aw_name}.{method}() {status_icon} {duration_ms}ms\n")
-        sys.stderr.flush()
+        # 业务方法日志不输出（避免重复）
+        if not is_business_method:
+            display_args = self._filter_display_args(args)
+            args_str = self._format_args(display_args)
+            status_icon = "✓" if success else "✗"
+            time_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            if args_str:
+                sys.stderr.write(f"{time_str} {aw_name}.{method}({args_str}) {status_icon} {duration_ms}ms\n")
+            else:
+                sys.stderr.write(f"{time_str} {aw_name}.{method}() {status_icon} {duration_ms}ms\n")
+            sys.stderr.flush()
 
     def log_worker_call(
         self,

@@ -68,7 +68,10 @@ class HTMLReportGenerator:
         DISPLAY_ARGS = {
             "text", "label", "content", "image_path", "key", "url",
             "app_id", "x", "y", "from_x", "from_y", "to_x", "to_y",
-            "duration_ms", "timeout", "index", "confidence"
+            "duration_ms", "timeout", "index", "confidence",
+            # 业务方法常见参数
+            "username", "password", "subject", "meeting_id", "name",
+            "title", "message", "file_path", "wait_time"
         }
 
         # 移除用户信息字段（已在折叠标题中显示）
@@ -89,12 +92,35 @@ class HTMLReportGenerator:
 
         parts = []
         for k, v in filtered_args.items():
+            # 跳过 None 值
+            if v is None:
+                continue
             if isinstance(v, str):
-                parts.append(f'{k}="{v}"')
+                # 字符串过长时截断显示
+                display_v = v if len(v) <= 20 else v[:17] + "..."
+                parts.append(f'{k}="{display_v}"')
             else:
                 parts.append(f"{k}={v}")
 
+        # 如果过滤后没有参数，返回空括号
+        if not parts:
+            return f"{aw_name}.{method}()"
+
         return f"{aw_name}.{method}({', '.join(parts)})"
+
+    @staticmethod
+    def _format_duration(duration_ms: int) -> str:
+        """格式化耗时显示，超过1秒显示为秒。
+
+        Args:
+            duration_ms: 耗时（毫秒）。
+
+        Returns:
+            格式化后的耗时字符串，如 "1.5s" 或 "800ms"。
+        """
+        if duration_ms >= 1000:
+            return f"{duration_ms / 1000:.1f}s"
+        return f"{duration_ms}ms"
 
     @staticmethod
     def _build_aw_tree(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -106,18 +132,28 @@ class HTMLReportGenerator:
         Returns:
             块列表，每个块包含业务方法信息和子步骤列表。
         """
-        # 按 parent_aw 分组
+        # 先找出所有业务方法日志（用于提取参数）
+        business_method_logs: Dict[str, Dict[str, Any]] = {}
+        for log in logs:
+            if log.get("type") != "aw_call":
+                continue
+            if log.get("is_business_method"):
+                block_id = f"{log.get('aw_name', '')}.{log.get('method', '')}"
+                business_method_logs[block_id] = log
+
+        # 按 parent_aw 分组原子操作日志
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for log in logs:
             if log.get("type") != "aw_call":
                 continue
+            if log.get("is_business_method"):
+                continue  # 业务方法日志单独处理
             parent = log.get("parent_aw", "")
             if parent not in groups:
                 groups[parent] = []
             groups[parent].append(log)
 
         # 构建业务方法块（parent_aw != "" 的日志属于某个业务方法）
-        # 首先找出所有业务方法块
         business_blocks: Dict[str, Dict[str, Any]] = {}
 
         for parent_aw, steps in groups.items():
@@ -134,19 +170,24 @@ class HTMLReportGenerator:
             total_duration = sum(s.get("duration_ms", 0) for s in steps)
             all_success = all(s.get("success", True) for s in steps)
 
+            # 从业务方法日志提取参数（如果有）
+            business_log = business_method_logs.get(parent_aw, {})
+            business_args = business_log.get("args", {}) if business_log else {}
+
             # 从第一个步骤获取用户信息
             first_step = steps[0] if steps else {}
-            args = first_step.get("args", {})
+            step_args = first_step.get("args", {})
             user_info = {
-                "user_id": args.get("user_id", ""),
-                "user_name": args.get("user_name", ""),
-                "user_account": args.get("user_account", ""),
+                "user_id": step_args.get("user_id", ""),
+                "user_name": step_args.get("user_name", ""),
+                "user_account": step_args.get("user_account", ""),
             }
 
             business_blocks[parent_aw] = {
                 "block_id": parent_aw,
                 "aw_name": aw_name,
                 "method": method,
+                "args": business_args,  # 业务方法参数
                 "user_info": user_info,
                 "success": all_success,
                 "duration_ms": total_duration,
@@ -174,6 +215,7 @@ class HTMLReportGenerator:
                 "block_id": block_id,
                 "aw_name": aw_name,
                 "method": method,
+                "args": args,
                 "user_info": user_info,
                 "success": log.get("success", True),
                 "duration_ms": log.get("duration_ms", 0),
@@ -232,11 +274,12 @@ class HTMLReportGenerator:
         return f"{method}({', '.join(parts)})"
 
     @staticmethod
-    def _render_aw_step(step: Dict[str, Any]) -> str:
+    def _render_aw_step(step: Dict[str, Any], is_last: bool = False) -> str:
         """渲染单个原子操作步骤。
 
         Args:
             step: 步骤日志数据。
+            is_last: 是否是最后一个步骤（用于样式）。
 
         Returns:
             HTML 字符串。
@@ -249,6 +292,7 @@ class HTMLReportGenerator:
         args = step.get("args", {})
         step_title = HTMLReportGenerator._format_step_title(method, args)
         duration = step.get("duration_ms", 0)
+        duration_str = HTMLReportGenerator._format_duration(duration)
 
         # 清理参数和结果用于详情显示
         clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
@@ -289,7 +333,7 @@ class HTMLReportGenerator:
             <span class="step-arrow">▶</span>
             <span class="step-title">{step_title}</span>
             <span class="step-status {status_class}">{status_text}</span>
-            <span class="step-duration">{duration}ms</span>
+            <span class="step-duration">{duration_str}</span>
             <div class="step-detail">{detail_html}</div>
             {screenshots_html}
         </div>'''
@@ -310,22 +354,29 @@ class HTMLReportGenerator:
 
         aw_name = block.get("aw_name", "")
         method = block.get("method", "")
+        args = block.get("args", {})  # 业务方法参数
         user_info = block.get("user_info", {})
         duration = block.get("duration_ms", 0)
         time_str = block.get("time", "")
 
-        # 格式化标题
-        block_title = f"{aw_name}.{method}()"
+        # 格式化标题（显示参数）
+        block_title = HTMLReportGenerator._format_aw_title(aw_name, method, args)
+
+        # 格式化耗时
+        duration_str = HTMLReportGenerator._format_duration(duration)
 
         # 格式化用户信息
         user_id_display = user_info.get("user_id", "") or "未知"
         user_name_display = user_info.get("user_name", "") or ""
         user_account_display = user_info.get("user_account", "") or ""
 
+        # 状态图标
+        status_icon = "✓" if success else "✗"
+
         # 单步骤块（顶层原子操作）
         if block.get("single_step"):
             step_data = block.get("step_data", {})
-            step_html = HTMLReportGenerator._render_aw_step(step_data)
+            step_html = HTMLReportGenerator._render_aw_step(step_data, is_last=True)
             return f'''
         <div class="aw-block {item_class} {expanded_class}">
             <div class="aw-header">
@@ -338,8 +389,8 @@ class HTMLReportGenerator:
                     <span class="log-user-account">{user_account_display}</span>
                 </div>
                 <span class="aw-title">{block_title}</span>
-                <span class="aw-status {item_class}">{"✓" if success else "✗"}</span>
-                <span class="aw-duration">{duration}ms</span>
+                <span class="aw-status {item_class}">{status_icon}</span>
+                <span class="aw-duration">{duration_str}</span>
             </div>
             <div class="aw-content">
                 <div class="aw-steps">{step_html}</div>
@@ -349,10 +400,9 @@ class HTMLReportGenerator:
         # 业务方法块（多步骤）
         steps = block.get("steps", [])
         steps_html = ""
-        for step in steps:
-            steps_html += HTMLReportGenerator._render_aw_step(step)
-
-        status_text = "成功" if success else "失败"
+        for i, step in enumerate(steps):
+            is_last = (i == len(steps) - 1)
+            steps_html += HTMLReportGenerator._render_aw_step(step, is_last=is_last)
 
         return f'''
     <div class="aw-block {item_class} {expanded_class}">
@@ -366,8 +416,8 @@ class HTMLReportGenerator:
                 <span class="log-user-account">{user_account_display}</span>
             </div>
             <span class="aw-title">{block_title}</span>
-            <span class="aw-status {item_class}">{status_text}</span>
-            <span class="aw-duration">{duration}ms</span>
+            <span class="aw-status {item_class}">{status_icon}</span>
+            <span class="aw-duration">{duration_str}</span>
         </div>
         <div class="aw-content">
             <div class="aw-steps">{steps_html}</div>
@@ -787,13 +837,16 @@ class HTMLReportGenerator:
 
     @staticmethod
     def _build_logs_html(logs: List[Dict[str, Any]]) -> str:
-        """构建日志列表 HTML。"""
-        items = []
+        """构建日志列表 HTML，按时间统一排序。"""
+        # 构建所有日志项，统一按时间排序
+        log_items: List[tuple] = []  # (time_str, html)
 
-        # 使用新的树形结构构建 AW 块
+        # 使用树形结构构建 AW 块
         aw_blocks = HTMLReportGenerator._build_aw_tree(logs)
         for block in aw_blocks:
-            items.append(HTMLReportGenerator._render_aw_block(block))
+            time_str = block.get("time", "")
+            html = HTMLReportGenerator._render_aw_block(block)
+            log_items.append((time_str, html))
 
         # 处理其他类型日志（step、error）
         for log in logs:
@@ -801,7 +854,7 @@ class HTMLReportGenerator:
             time_str = log.get("time", "")
 
             if log_type == "step":
-                items.append(f"""
+                html = f"""
             <div class="log-item">
                 <span class="log-time">{time_str}</span>
                 <span class="log-type type-step">步骤</span>
@@ -811,10 +864,11 @@ class HTMLReportGenerator:
                     </div>
                     {f'<div class="log-detail">{log.get("detail", "")}</div>' if log.get('detail') else ''}
                 </div>
-            </div>""")
+            </div>"""
+                log_items.append((time_str, html))
 
             elif log_type == "error":
-                items.append(f"""
+                html = f"""
             <div class="log-item failed">
                 <span class="log-time">{time_str}</span>
                 <span class="log-type type-error">错误</span>
@@ -823,9 +877,13 @@ class HTMLReportGenerator:
                         <span class="log-name" style="color: #dc3545;">{log.get('error', '')}</span>
                     </div>
                 </div>
-            </div>""")
+            </div>"""
+                log_items.append((time_str, html))
 
-        return "\n".join(items) if items else '<div class="log-item"><span style="color: #868e96;">暂无日志</span></div>'
+        # 按时间排序
+        log_items.sort(key=lambda x: x[0] or "")
+
+        return "\n".join(item[1] for item in log_items) if log_items else '<div class="log-item"><span style="color: #868e96;">暂无日志</span></div>'
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
