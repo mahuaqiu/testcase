@@ -9,6 +9,25 @@ class HTMLReportGenerator:
     """HTML 报告生成器。"""
 
     @staticmethod
+    def _clean_text_for_display(text: str) -> str:
+        """清理文本内容，只过滤 base64 数据，保留其他内容。
+
+        Args:
+            text: 原始文本。
+
+        Returns:
+            清理后的文本，base64 数据被替换为占位符。
+        """
+        if not text:
+            return ""
+        # 检测并替换 PNG base64（以 iVBORw0KGgo 开头）
+        import re
+        # PNG base64 特征：iVBORw0KGgo 开头，后面是长字符串
+        base64_pattern = r'iVBORw0KGgo[A-Za-z0-9+/=]{100,}'
+        cleaned = re.sub(base64_pattern, '[截图数据]', text)
+        return cleaned
+
+    @staticmethod
     def _clean_response_for_display(response: Dict[str, Any]) -> Dict[str, Any]:
         """清理响应数据，移除大型 base64 数据用于显示。
 
@@ -38,7 +57,7 @@ class HTMLReportGenerator:
                     if isinstance(action, dict):
                         clean_action = {}
                         for ak, av in action.items():
-                            if ak == "screenshot" and isinstance(av, str) and len(av) > 100:
+                            if ak in ("screenshot", "error_screenshot") and isinstance(av, str) and len(av) > 100:
                                 clean_action[ak] = "[截图数据]"
                             elif ak == "output" and isinstance(av, str) and len(av) > 500:
                                 # 可能是 base64 输出
@@ -293,13 +312,17 @@ class HTMLReportGenerator:
         duration = step.get("duration_ms", 0)
         duration_str = HTMLReportGenerator._format_duration(duration)
 
-        clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
+        clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name", "target_image", "image_base64", "screenshot", "error_screenshot")}
+        # 对 args 值做进一步清理，只过滤 base64
+        if clean_args:
+            clean_args = {k: HTMLReportGenerator._clean_text_for_display(str(v)) if isinstance(v, str) and "iVBORw0KGgo" in v else v for k, v in clean_args.items()}
         clean_result = HTMLReportGenerator._clean_response_for_display(step.get("result", {}))
 
         detail_parts = []
         if clean_args:
             detail_parts.append(f"参数: {clean_args}")
-        detail_parts.append(f"结果: {clean_result}")
+        if clean_result:
+            detail_parts.append(f"结果: {clean_result}")
         detail_html = "<br>".join(detail_parts)
 
         # 失败时展示截图
@@ -718,6 +741,36 @@ class HTMLReportGenerator:
         .modal.show {{ display: flex; align-items: center; justify-content: center; }}
         .modal img {{ max-width: 95%; max-height: 95%; border-radius: 8px; }}
         .modal-close {{ position: fixed; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }}
+
+        /* 步骤卡片样式 */
+        .step-block {{ border-color: #dbeafe; }}
+        .step-block .aw-header {{ background: linear-gradient(to right, #eff6ff, white); }}
+        .step-block .aw-icon {{ background: #dbeafe; color: #1d4ed8; }}
+        .step-block .aw-content {{ background: #eff6ff; }}
+        .step-detail-box {{
+            padding: 10px 12px;
+            background: white;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            color: #4b5563;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }}
+
+        /* 错误卡片样式 */
+        .error-block {{ border-color: #fecaca; }}
+        .error-block .aw-content {{ background: #fef2f2; }}
+        .error-detail {{
+            padding: 10px 12px;
+            background: white;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            color: #dc2626;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }}
     </style>
 </head>
 <body>
@@ -803,42 +856,39 @@ class HTMLReportGenerator:
             html = HTMLReportGenerator._render_aw_block(block)
             log_items.append((time_str, html))
 
-        # 处理其他类型日志（step、error）
+        # 处理其他类型日志（step、error）使用卡片样式
         for log in logs:
             log_type = log.get("type", "")
             time_str = log.get("time", "")
 
             if log_type == "step":
+                step_name = log.get('step', '')
+                detail = log.get('detail', '')
+                # 只过滤 base64，不截断其他内容
+                clean_detail = HTMLReportGenerator._clean_text_for_display(detail) if detail else ""
+
                 html = f"""
-            <div class="log-item">
-                <span class="log-time">{time_str}</span>
-                <span class="log-type type-step">步骤</span>
-                <div class="log-content">
-                    <div class="log-main">
-                        <span class="log-name">{log.get('step', '')}</span>
+            <div class="aw-block step-block">
+                <div class="aw-header step-header">
+                    <div class="aw-icon step-icon">▶</div>
+                    <div class="aw-info">
+                        <div class="aw-title-row">
+                            <span class="aw-title">{step_name}</span>
+                        </div>
+                        <div class="aw-meta">{time_str}</div>
                     </div>
-                    {f'<div class="log-detail">{log.get("detail", "")}</div>' if log.get('detail') else ''}
                 </div>
+                {f'<div class="aw-content step-content"><div class="step-detail-box">{clean_detail}</div></div>' if clean_detail else ''}
             </div>"""
                 log_items.append((time_str, html))
 
-            elif log_type == "error":
-                html = f"""
-            <div class="log-item failed">
-                <span class="log-time">{time_str}</span>
-                <span class="log-type type-error">错误</span>
-                <div class="log-content">
-                    <div class="log-main">
-                        <span class="log-name" style="color: #dc3545;">{log.get('error', '')}</span>
-                    </div>
-                </div>
-            </div>"""
-                log_items.append((time_str, html))
+            # error 类型日志不显示，已在报告头部显示
+            # elif log_type == "error":
 
         # 按时间排序
         log_items.sort(key=lambda x: x[0] or "")
 
-        return "\n".join(item[1] for item in log_items) if log_items else '<div class="log-item"><span style="color: #868e96;">暂无日志</span></div>'
+        return "\n".join(item[1] for item in log_items) if log_items else '<div class="aw-block"><div class="aw-header"><span style="color: #868e96;">暂无日志</span></div></div>'
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:

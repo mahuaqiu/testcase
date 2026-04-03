@@ -181,7 +181,6 @@ def users(request) -> Dict[str, User]:
                 keepalive.stop()
             _keepalive_managers.clear()
 
-            logger.log_step("用例结束（setup 失障）")
             _generate_report(request, logger, user_instances, force_failed=True, error_msg=str(setup_error))
 
             # 标记用例失障
@@ -207,11 +206,9 @@ def users(request) -> Dict[str, User]:
         _keepalive_managers.clear()
 
         if teardown_failed:
-            logger.log_step("用例结束（teardown 失障）")
             _generate_report(request, logger, user_instances, force_failed=True, error_msg=str(teardown_error))
             pytest.fail(f"Teardown hook 失障: {teardown_error}")
         else:
-            logger.log_step("用例结束")
             _generate_report(request, logger, user_instances)
 
 
@@ -295,9 +292,19 @@ def _generate_report(
     # 获取测试结果
     result = _test_results.get(request.node.nodeid, {"passed": True, "failed": False, "error_msg": ""})
 
-    # hook 失障时强制标记为失障
+    # hook 失障时，保留原始测试错误，追加 hook 错误
     if force_failed:
-        result = {"passed": False, "failed": True, "error_msg": error_msg}
+        original_error = result.get("error_msg", "")
+        if original_error:
+            # 有原始测试错误，追加 hook 错误
+            result = {
+                "passed": False,
+                "failed": True,
+                "error_msg": original_error + "\n\n--- Hook 错误 ---\n" + error_msg
+            }
+        else:
+            # 无原始错误（如 setup 失障），直接显示 hook 错误
+            result = {"passed": False, "failed": True, "error_msg": error_msg}
 
     # 生成报告（始终在项目根目录下）
     timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -355,5 +362,10 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
                 else:
                     method()
             except Exception as e:
-                logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}")
-                raise HookFailureError(hook_name, e, hook_type)
+                # 忽略连接关闭错误（不影响实际功能）
+                import errno
+                if isinstance(e, OSError) and e.errno == errno.EPIPE:
+                    pass  # Broken pipe，不影响功能
+                else:
+                    logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}")
+                    raise HookFailureError(hook_name, e, hook_type)
