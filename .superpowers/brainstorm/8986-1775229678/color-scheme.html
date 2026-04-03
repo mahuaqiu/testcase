@@ -1,0 +1,53 @@
+<h2>配色方案</h2>
+<p class="subtitle">清新活力风格的主色调选择</p>
+
+<div class="cards">
+  <div class="card" data-choice="green" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 20px; border-radius: 8px;">
+      <div style="display: flex; gap: 8px; justify-content: center;">
+        <div style="width: 40px; height: 40px; background: #22c55e; border-radius: 8px;"></div>
+        <div style="width: 40px; height: 40px; background: #16a34a; border-radius: 8px;"></div>
+        <div style="width: 40px; height: 40px; background: #15803d; border-radius: 8px;"></div>
+      </div>
+      <div style="text-align: center; margin-top: 12px; color: #166534; font-weight: 600;">绿色系</div>
+    </div>
+    <div class="card-body">
+      <h3>绿色 (默认)</h3>
+      <p>自然、成功、健康感。与"通过"状态呼应</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="blue" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); padding: 20px; border-radius: 8px;">
+      <div style="display: flex; gap: 8px; justify-content: center;">
+        <div style="width: 40px; height: 40px; background: #3b82f6; border-radius: 8px;"></div>
+        <div style="width: 40px; height: 40px; background: #2563eb; border-radius: 8px;"></div>
+        <div style="width: 40px; height: 40px; background: #1d4ed8; border-radius: 8px;"></div>
+      </div>
+      <div style="text-align: center; margin-top: 12px; color: #1e40af; font-weight: 600;">蓝色系</div>
+    </div>
+    <div class="card-body">
+      <h3>蓝色</h3>
+      <p>专业、信任、科技感。适合企业级测试报告</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="purple" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); padding: 20px; border-radius: 8px;">
+      <div style="display: flex; gap: 8px; justify-content: center;">
+        <div style="width: 40px; height: 40px; background: #a855f7; border-radius: 8px;"></div>
+        <div style="width: 40px; height: 40px; background: #9333ea; border-radius: 8px;"></div>
+        <div style="width: 40px; height: 40px; background: #7e22ce; border-radius: 8px;"></div>
+      </div>
+      <div style="text-align: center; margin-top: 12px; color: #7e22ce; font-weight: 600;">紫色系</div>
+    </div>
+    <div class="card-body">
+      <h3>紫色</h3>
+      <p>创新、高端、差异化。适合现代化团队</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top: 16px; color: #64748b; font-size: 13px; text-align: center;">
+  失败状态统一使用红色系 (#ef4444) 作为警示色
+</p>

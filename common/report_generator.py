@@ -279,7 +279,6 @@ class HTMLReportGenerator:
 
         Args:
             step: 步骤日志数据。
-            is_last: 是否是最后一个步骤（用于样式）。
 
         Returns:
             HTML 字符串。
@@ -294,7 +293,6 @@ class HTMLReportGenerator:
         duration = step.get("duration_ms", 0)
         duration_str = HTMLReportGenerator._format_duration(duration)
 
-        # 清理参数和结果用于详情显示
         clean_args = {k: v for k, v in args.items() if k not in ("user_id", "user_account", "user_name")}
         clean_result = HTMLReportGenerator._clean_response_for_display(step.get("result", {}))
 
@@ -310,29 +308,33 @@ class HTMLReportGenerator:
             result = step.get("result", {})
             error_screenshot = result.get("error_screenshot", "")
             target_image = step.get("target_image", "")
+            error_msg = result.get("error", "")
 
             screenshot_imgs = []
             if error_screenshot and len(error_screenshot) > 100:
                 screenshot_imgs.append(f'''
                 <div class="step-screenshot-wrapper">
                     <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
-                    <div class="step-screenshot-label">📸 当前屏幕</div>
+                    <div class="step-screenshot-label">当前屏幕</div>
                 </div>''')
             if target_image and len(target_image) > 100:
                 screenshot_imgs.append(f'''
                 <div class="step-screenshot-wrapper">
                     <img src="data:image/png;base64,{target_image}" class="step-screenshot" onclick="showImage('{target_image}')">
-                    <div class="step-screenshot-label">🎯 目标图片</div>
+                    <div class="step-screenshot-label">目标图片</div>
                 </div>''')
 
             if screenshot_imgs:
                 screenshots_html = f'<div class="step-screenshots">{"".join(screenshot_imgs)}</div>'
 
+            # 错误信息
+            if error_msg:
+                detail_html += f'<div class="step-error">{error_msg}</div>'
+
         return f'''
-        <div class="aw-step">
-            <span class="step-arrow">▶</span>
-            <span class="step-title">{step_title}</span>
+        <div class="aw-step {status_class}">
             <span class="step-status {status_class}">{status_text}</span>
+            <span class="step-title">{step_title}</span>
             <span class="step-duration">{duration_str}</span>
             <div class="step-detail">{detail_html}</div>
             {screenshots_html}
@@ -350,47 +352,47 @@ class HTMLReportGenerator:
         """
         success = block.get("success", True)
         item_class = "success" if success else "failed"
-        expanded_class = "expanded" if not success else ""  # 失败块默认展开
+        expanded_class = "expanded" if not success else ""
 
         aw_name = block.get("aw_name", "")
         method = block.get("method", "")
-        args = block.get("args", {})  # 业务方法参数
+        args = block.get("args", {})
         user_info = block.get("user_info", {})
         duration = block.get("duration_ms", 0)
         time_str = block.get("time", "")
 
-        # 格式化标题（显示参数）
         block_title = HTMLReportGenerator._format_aw_title(aw_name, method, args)
-
-        # 格式化耗时
         duration_str = HTMLReportGenerator._format_duration(duration)
 
-        # 格式化用户信息
         user_id_display = user_info.get("user_id", "") or "未知"
         user_name_display = user_info.get("user_name", "") or ""
         user_account_display = user_info.get("user_account", "") or ""
 
-        # 状态图标
         status_icon = "✓" if success else "✗"
 
-        # 单步骤块（顶层原子操作）
+        # 用户信息行
+        user_parts = [user_id_display]
+        if user_name_display:
+            user_parts.append(user_name_display)
+        if user_account_display:
+            user_parts.append(user_account_display)
+        user_line = " · ".join(user_parts)
+
+        # 单步骤块
         if block.get("single_step"):
             step_data = block.get("step_data", {})
-            step_html = HTMLReportGenerator._render_aw_step(step_data, is_last=True)
+            step_html = HTMLReportGenerator._render_aw_step(step_data)
             return f'''
         <div class="aw-block {item_class} {expanded_class}">
             <div class="aw-header">
-                <span class="aw-arrow">▶</span>
-                <span class="log-time">{time_str}</span>
-                <div class="log-type-wrapper">
-                    <span class="log-type type-aw_call">AW</span>
-                    <span class="log-user-id">{user_id_display}</span>
-                    <span class="log-user-name">{user_name_display}</span>
-                    <span class="log-user-account">{user_account_display}</span>
+                <div class="aw-icon">{status_icon}</div>
+                <div class="aw-info">
+                    <div class="aw-title-row">
+                        <span class="aw-title">{block_title}</span>
+                        <span class="aw-duration">{duration_str}</span>
+                    </div>
+                    <div class="aw-meta">{user_line} · {time_str}</div>
                 </div>
-                <span class="aw-title">{block_title}</span>
-                <span class="aw-status {item_class}">{status_icon}</span>
-                <span class="aw-duration">{duration_str}</span>
             </div>
             <div class="aw-content">
                 <div class="aw-steps">{step_html}</div>
@@ -400,24 +402,20 @@ class HTMLReportGenerator:
         # 业务方法块（多步骤）
         steps = block.get("steps", [])
         steps_html = ""
-        for i, step in enumerate(steps):
-            is_last = (i == len(steps) - 1)
-            steps_html += HTMLReportGenerator._render_aw_step(step, is_last=is_last)
+        for step in steps:
+            steps_html += HTMLReportGenerator._render_aw_step(step)
 
         return f'''
     <div class="aw-block {item_class} {expanded_class}">
         <div class="aw-header">
-            <span class="aw-arrow">▶</span>
-            <span class="log-time">{time_str}</span>
-            <div class="log-type-wrapper">
-                <span class="log-type type-aw_call">AW</span>
-                <span class="log-user-id">{user_id_display}</span>
-                <span class="log-user-name">{user_name_display}</span>
-                <span class="log-user-account">{user_account_display}</span>
+            <div class="aw-icon">{status_icon}</div>
+            <div class="aw-info">
+                <div class="aw-title-row">
+                    <span class="aw-title">{block_title}</span>
+                    <span class="aw-duration">{duration_str}</span>
+                </div>
+                <div class="aw-meta">{user_line} · {time_str}</div>
             </div>
-            <span class="aw-title">{block_title}</span>
-            <span class="aw-status {item_class}">{status_icon}</span>
-            <span class="aw-duration">{duration_str}</span>
         </div>
         <div class="aw-content">
             <div class="aw-steps">{steps_html}</div>
@@ -459,169 +457,253 @@ class HTMLReportGenerator:
         * {{ box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f8fafc;
             min-height: 100vh;
             margin: 0;
-            padding: 20px;
+            padding: 24px;
         }}
-        .container {{ max-width: 1200px; margin: 0 auto; }}
+        .container {{ max-width: 1000px; margin: 0 auto; }}
+
+        /* 报告头部 */
         .header {{
-            background: white;
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
             border-radius: 16px;
-            padding: 30px;
+            padding: 24px 32px;
             margin-bottom: 24px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(34,197,94,0.1);
         }}
-        .header h1 {{ margin: 0 0 8px 0; font-size: 28px; color: #1a1a2e; }}
-        .header h2 {{ margin: 0 0 20px 0; font-size: 16px; font-weight: normal; color: #6c757d; }}
-        .header-meta {{ display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }}
-        .status-badge {{ padding: 8px 20px; border-radius: 20px; font-weight: 600; font-size: 14px; }}
-        .status-passed {{ background: #d4edda; color: #155724; }}
-        .status-failed {{ background: #f8d7da; color: #721c24; }}
-        .meta-item {{ color: #6c757d; font-size: 14px; }}
-        .meta-item span {{ font-weight: 600; color: #343a40; }}
+        .header.failed {{
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+            box-shadow: 0 4px 20px rgba(239,68,68,0.1);
+        }}
+        .header-content {{ display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }}
+        .header-left {{ flex: 1; }}
+        .header h1 {{ margin: 0 0 4px 0; font-size: 22px; color: #166534; font-weight: 700; }}
+        .header.failed h1 {{ color: #dc2626; }}
+        .header h2 {{ margin: 0; font-size: 14px; color: #15803d; font-weight: 400; }}
+        .header.failed h2 {{ color: #b91c1c; }}
+        .header-right {{ display: flex; align-items: center; gap: 20px; }}
+        .status-badge {{
+            padding: 10px 20px;
+            border-radius: 24px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 2px 10px rgba(34,197,94,0.3);
+        }}
+        .status-passed {{ background: #22c55e; color: white; }}
+        .status-failed {{ background: #ef4444; color: white; box-shadow: 0 2px 10px rgba(239,68,68,0.3); }}
+        .header-meta {{ text-align: right; }}
+        .header-meta .duration {{ font-size: 20px; font-weight: 700; color: #166534; }}
+        .header.failed .header-meta .duration {{ color: #dc2626; }}
+        .header-meta .time {{ font-size: 12px; color: #6b7280; margin-top: 2px; }}
+
         .failed-steps {{
-            margin-top: 20px;
-            padding: 16px 20px;
-            background: #fff5f5;
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: white;
             border-radius: 8px;
-            border-left: 4px solid #dc3545;
+            border-left: 4px solid #ef4444;
         }}
-        .failed-steps-title {{ font-weight: 600; color: #dc3545; margin-bottom: 10px; font-size: 14px; }}
-        .failed-steps-list {{ margin: 0; padding-left: 20px; color: #721c24; }}
-        .failed-steps-list li {{ margin: 6px 0; font-size: 14px; }}
+        .failed-steps-title {{ font-weight: 600; color: #dc2626; margin-bottom: 8px; font-size: 13px; }}
+        .failed-steps-list {{ margin: 0; padding-left: 20px; color: #7f1d1d; font-size: 13px; }}
+        .failed-steps-list li {{ margin: 4px 0; }}
+
         .error-box {{
-            background: #fff5f5;
-            border-left: 4px solid #f44336;
-            padding: 16px;
-            margin-top: 20px;
-            border-radius: 0 8px 8px 0;
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #ef4444;
             font-family: 'Consolas', monospace;
-            font-size: 13px;
-            color: #c62828;
+            font-size: 12px;
+            color: #dc2626;
             white-space: pre-wrap;
             word-break: break-all;
         }}
+
         .logs-card {{
             background: white;
             border-radius: 16px;
             padding: 24px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.04);
         }}
-        .logs-card h3 {{ margin: 0 0 20px 0; font-size: 18px; color: #343a40; padding-bottom: 12px; border-bottom: 2px solid #f0f0f0; }}
+        .logs-card h3 {{ margin: 0 0 16px 0; font-size: 14px; color: #374151; font-weight: 600; }}
+
+        /* 步骤日志 */
         .log-item {{
-            display: flex;
-            align-items: flex-start;
             padding: 12px 16px;
             margin: 8px 0;
+            background: #f9fafb;
             border-radius: 8px;
-            transition: background 0.2s;
         }}
-        .log-item:hover {{ background: #f8f9fa; }}
-        .log-item.success {{ background: #d4edda; border-left: 4px solid #28a745; }}
-        .log-item.failed {{ background: #f8d7da; border-left: 4px solid #dc3545; }}
-        .log-item.success:hover {{ background: #c3e6cb; }}
-        .log-item.failed:hover {{ background: #f5c6cb; }}
-        .log-time {{ color: #868e96; font-size: 12px; min-width: 90px; font-family: 'Consolas', monospace; }}
+        .log-item:hover {{ background: #f3f4f6; }}
+        .log-time {{ color: #9ca3af; font-size: 12px; font-family: 'Consolas', monospace; margin-right: 12px; }}
         .log-type {{
-            padding: 3px 10px;
+            padding: 2px 8px;
             border-radius: 4px;
             font-size: 11px;
             font-weight: 600;
-            text-transform: uppercase;
-            margin: 0 12px;
+            margin-right: 8px;
         }}
-        .type-step {{ background: #e3f2fd; color: #1565c0; }}
-        .type-aw_call {{ background: #f3e5f5; color: #7b1fa2; }}
-        .type-worker_call {{ background: #e8f5e9; color: #2e7d32; }}
-        .type-error {{ background: #ffebee; color: #c62828; }}
-        .type-screenshot {{ background: #fff3e0; color: #e65100; }}
-        .log-type-wrapper {{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 0 12px;
-            min-width: 80px;
-        }}
-        .log-user-id {{
-            color: #2e7d32;
-            font-size: 11px;
-            font-weight: 600;
-            margin-top: 4px;
-        }}
-        .log-user-name {{
-            color: #343a40;
-            font-size: 10px;
-            margin-top: 2px;
-        }}
-        .log-user-account {{
-            color: #6c757d;
-            font-size: 10px;
-            margin-top: 2px;
-        }}
-        .log-content {{ flex: 1; }}
-        .log-main {{ display: flex; align-items: center; gap: 12px; }}
-        .log-name {{ font-weight: 500; color: #343a40; }}
-        .log-status {{ font-size: 12px; padding: 2px 8px; border-radius: 4px; }}
-        .log-status.success {{ background: #28a745; color: white; }}
-        .log-status.failed {{ background: #dc3545; color: white; }}
-        .log-duration {{ color: #868e96; font-size: 12px; }}
+        .type-step {{ background: #dbeafe; color: #1d4ed8; }}
+        .log-name {{ font-weight: 500; color: #374151; font-size: 13px; }}
         .log-detail {{
             margin-top: 8px;
-            padding: 10px 12px;
-            background: #f8f9fa;
+            padding: 8px 12px;
+            background: white;
             border-radius: 6px;
             font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #495057;
+            font-size: 11px;
+            color: #6b7280;
             white-space: pre-wrap;
             word-break: break-all;
         }}
+
+        /* AW 块容器 */
+        .aw-block {{
+            margin: 12px 0;
+            border-radius: 12px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }}
+        .aw-block.success {{ border-color: #bbf7d0; }}
+        .aw-block.failed {{ border-color: #fecaca; }}
+
+        /* 卡片头部 */
+        .aw-header {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }}
+        .aw-block.success .aw-header {{ background: linear-gradient(to right, #f0fdf4, white); }}
+        .aw-block.failed .aw-header {{ background: linear-gradient(to right, #fef2f2, white); }}
+        .aw-header:hover {{ filter: brightness(0.98); }}
+
+        .aw-icon {{
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }}
+        .aw-block.success .aw-icon {{ background: #dcfce7; color: #22c55e; }}
+        .aw-block.failed .aw-icon {{ background: #fee2e2; color: #ef4444; }}
+
+        .aw-info {{ flex: 1; min-width: 0; }}
+        .aw-title-row {{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
+        .aw-title {{ font-weight: 600; color: #1f2937; font-size: 14px; }}
+        .aw-duration {{
+            font-weight: 700;
+            font-size: 14px;
+        }}
+        .aw-block.success .aw-duration {{ color: #166534; }}
+        .aw-block.failed .aw-duration {{ color: #dc2626; }}
+        .aw-meta {{ color: #6b7280; font-size: 12px; margin-top: 2px; }}
+
+        /* 展开内容 */
+        .aw-content {{ display: none; padding: 12px; }}
+        .aw-block.expanded .aw-content {{ display: block; }}
+        .aw-block.success .aw-content {{ background: #f0fdf4; }}
+        .aw-block.failed .aw-content {{ background: #fef2f2; }}
+
+        /* 子步骤 */
+        .aw-steps {{ display: flex; flex-direction: column; gap: 6px; }}
+        .aw-step {{
+            background: white;
+            padding: 10px 14px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            transition: box-shadow 0.15s;
+        }}
+        .aw-step:hover {{ box-shadow: 0 2px 4px rgba(0,0,0,0.08); }}
+        .aw-step.failed {{ border: 1px solid #fecaca; }}
+
+        .step-status {{
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+        }}
+        .step-status.success {{ background: #dcfce7; color: #166534; }}
+        .step-status.failed {{ background: #fee2e2; color: #dc2626; }}
+
+        .step-title {{ flex: 1; color: #374151; font-size: 12px; font-weight: 500; }}
+        .step-duration {{ color: #9ca3af; font-size: 11px; }}
+
+        .step-detail {{
+            display: none;
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px 12px;
+            background: #f9fafb;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            color: #4b5563;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }}
+        .aw-step.expanded .step-detail {{ display: block; }}
+
+        .step-error {{
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: #fef2f2;
+            border-radius: 4px;
+            color: #dc2626;
+        }}
+
         .step-screenshots {{
-            margin-top: 10px;
+            width: 100%;
+            margin-top: 8px;
             display: flex;
             flex-wrap: wrap;
             gap: 12px;
         }}
-        .step-screenshot-wrapper {{
-            text-align: center;
-        }}
+        .step-screenshot-wrapper {{ text-align: center; }}
         .step-screenshot {{
-            width: 200px;
-            height: 130px;
+            width: 180px;
+            height: 120px;
             object-fit: cover;
             border-radius: 6px;
-            border: 2px solid #e9ecef;
+            border: 2px solid #e5e7eb;
             cursor: pointer;
             transition: transform 0.2s;
         }}
-        .step-screenshot:hover {{ transform: scale(1.05); }}
-        .step-screenshot-label {{
-            margin-top: 4px;
-            font-size: 12px;
-            color: #6c757d;
-            font-weight: 500;
-        }}
+        .step-screenshot:hover {{ transform: scale(1.02); }}
+        .step-screenshot-label {{ margin-top: 4px; font-size: 11px; color: #6b7280; }}
+
         .screenshots-card {{
             background: white;
             border-radius: 16px;
             padding: 24px;
             margin-top: 24px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.04);
         }}
-        .screenshots-card h3 {{ margin: 0 0 20px 0; font-size: 18px; color: #343a40; padding-bottom: 12px; border-bottom: 2px solid #f0f0f0; }}
+        .screenshots-card h3 {{ margin: 0 0 16px 0; font-size: 14px; color: #374151; font-weight: 600; }}
         .screenshots-grid {{ display: flex; flex-wrap: wrap; gap: 16px; }}
-        .screenshot-item {{ cursor: pointer; text-align: center; transition: transform 0.2s; }}
-        .screenshot-item:hover {{ transform: scale(1.02); }}
+        .screenshot-item {{ cursor: pointer; text-align: center; }}
         .screenshot-item img {{
-            width: 240px;
-            height: 160px;
+            width: 200px;
+            height: 130px;
             object-fit: cover;
             border-radius: 8px;
-            border: 2px solid #e9ecef;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 2px solid #e5e7eb;
         }}
-        .screenshot-item .user-id {{ margin-top: 8px; font-size: 12px; color: #6c757d; font-weight: 500; }}
+        .screenshot-item .user-id {{ margin-top: 6px; font-size: 12px; color: #6b7280; }}
+
         .modal {{
             display: none;
             position: fixed;
@@ -629,166 +711,38 @@ class HTMLReportGenerator:
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.95);
+            background: rgba(0,0,0,0.9);
             z-index: 1000;
             cursor: zoom-out;
         }}
         .modal.show {{ display: flex; align-items: center; justify-content: center; }}
-        .modal img {{
-            max-width: 95%;
-            max-height: 95%;
-            border-radius: 8px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-        }}
+        .modal img {{ max-width: 95%; max-height: 95%; border-radius: 8px; }}
         .modal-close {{ position: fixed; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }}
-
-        /* AW 块容器 */
-        .aw-block {{
-            margin: 8px 0;
-            border-radius: 8px;
-            background: white;
-            border: 1px solid #e9ecef;
-            transition: all 0.2s;
-        }}
-        .aw-block:hover {{ background: #f8f9fa; }}
-        .aw-block.failed {{
-            border-left: 4px solid #dc3545;
-            background: #fff5f5;
-        }}
-        .aw-block.success {{ border-left: 4px solid #28a745; }}
-
-        /* 折叠标题 */
-        .aw-header {{
-            display: flex;
-            align-items: center;
-            padding: 12px 16px;
-            cursor: pointer;
-            gap: 12px;
-        }}
-        .aw-arrow {{
-            color: #6c757d;
-            font-size: 12px;
-            transition: transform 0.2s;
-        }}
-        .aw-block.expanded .aw-arrow {{ transform: rotate(90deg); }}
-        .aw-title {{
-            font-weight: 500;
-            color: #343a40;
-            flex: 1;
-        }}
-        .aw-status {{
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-        }}
-        .aw-status.success {{ background: #28a745; color: white; }}
-        .aw-status.failed {{ background: #dc3545; color: white; }}
-        .aw-duration {{ color: #868e96; font-size: 12px; }}
-
-        /* 展开内容 */
-        .aw-content {{
-            display: none;
-            padding: 12px 16px;
-            border-top: 1px solid #e9ecef;
-        }}
-        .aw-block.expanded .aw-content {{ display: block; }}
-        .aw-detail {{
-            background: #f8f9fa;
-            padding: 10px 12px;
-            border-radius: 6px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }}
-
-        /* 子步骤容器 */
-        .aw-steps {{
-            padding: 0 16px 12px 16px;
-        }}
-
-        /* 原子操作步骤 */
-        .aw-step {{
-            display: flex;
-            align-items: center;
-            padding: 8px 12px;
-            margin: 4px 0;
-            background: #f8f9fa;
-            border-radius: 6px;
-            cursor: pointer;
-            gap: 8px;
-            flex-wrap: wrap;
-        }}
-        .aw-step:hover {{ background: #e9ecef; }}
-
-        .step-arrow {{
-            color: #6c757d;
-            font-size: 10px;
-            transition: transform 0.2s;
-        }}
-        .aw-step.expanded .step-arrow {{ transform: rotate(90deg); }}
-
-        .step-title {{
-            font-weight: 500;
-            color: #343a40;
-            flex: 1;
-        }}
-
-        .step-status {{
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-        }}
-        .step-status.success {{ background: #28a745; color: white; }}
-        .step-status.failed {{ background: #dc3545; color: white; }}
-
-        .step-duration {{
-            color: #868e96;
-            font-size: 11px;
-        }}
-
-        /* 步骤详情 */
-        .step-detail {{
-            display: none;
-            width: 100%;
-            margin-top: 8px;
-            padding: 8px 12px;
-            background: #fff;
-            border-radius: 4px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }}
-        .aw-step.expanded .step-detail {{ display: block; }}
-
-        /* 步骤截图 */
-        .step-screenshots {{
-            width: 100%;
-            margin-top: 8px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-        }}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>{case_name}</h1>
-            {f'<h2>{case_title}</h2>' if case_title else ''}
-            <div class="header-meta">
-                <span class="status-badge {'status-passed' if status == 'passed' else 'status-failed'}">
-                    {'✓ 通过' if status == 'passed' else '✗ 失败'}
-                </span>
-                <span class="meta-item">耗时: <span>{duration_ms}ms</span></span>
-                <span class="meta-item">时间: <span>{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</span></span>
+        <div class="header {'failed' if status == 'failed' else ''}">
+            <div class="header-content">
+                <div class="header-left">
+                    <h1>{case_name}</h1>
+                    {f'<h2>{case_title}</h2>' if case_title else ''}
+                </div>
+                <div class="header-right">
+                    <span class="status-badge {'status-passed' if status == 'passed' else 'status-failed'}">
+                        {'✓ 通过' if status == 'passed' else '✗ 失败'}
+                    </span>
+                    <div class="header-meta">
+                        <div class="duration">{HTMLReportGenerator._format_duration(duration_ms)}</div>
+                        <div class="time">{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
+                    </div>
+                </div>
             </div>
             {failed_steps_html}
             {f'<div class="error-box">{error_msg}</div>' if error_msg else ''}
         </div>
         <div class="logs-card">
-            <h3>📋 执行日志</h3>
+            <h3>执行日志</h3>
             {logs_html}
         </div>
         {screenshots_html}
@@ -805,7 +759,8 @@ class HTMLReportGenerator:
 
         // AW 块折叠/展开
         document.querySelectorAll('.aw-header').forEach(header => {{
-            header.addEventListener('click', function() {{
+            header.addEventListener('click', function(e) {{
+                if (e.target.closest('.step-detail') || e.target.closest('.step-screenshots')) return;
                 const block = this.closest('.aw-block');
                 block.classList.toggle('expanded');
             }});

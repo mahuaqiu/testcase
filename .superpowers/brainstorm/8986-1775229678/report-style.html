@@ -1,0 +1,93 @@
+<h2>报告样式设计方案</h2>
+<p class="subtitle">选择你喜欢的现代化风格</p>
+
+<div class="cards">
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px;">
+      <div style="background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <div style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%;"></div>
+          <span style="font-size: 11px; color: #6b7280;">✓ 通过</span>
+        </div>
+        <div style="font-weight: 600; color: #1f2937; margin-bottom: 4px;">test_login_001</div>
+        <div style="font-size: 12px; color: #6b7280;">登录功能测试</div>
+        <div style="margin-top: 12px; padding: 8px; background: #f9fafb; border-radius: 6px; border-left: 3px solid #22c55e;">
+          <div style="font-size: 11px; color: #374151;">▼ LoginAW.do_login()</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 极简现代</h3>
+      <p>干净留白，淡雅配色，圆角卡片，状态徽章</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="dark" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: #0f172a; padding: 20px; border-radius: 8px;">
+      <div style="background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <div style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e;"></div>
+          <span style="font-size: 11px; color: #94a3b8;">✓ 通过</span>
+        </div>
+        <div style="font-weight: 600; color: #f1f5f9; margin-bottom: 4px;">test_login_001</div>
+        <div style="font-size: 12px; color: #64748b;">登录功能测试</div>
+        <div style="margin-top: 12px; padding: 8px; background: #0f172a; border-radius: 6px; border-left: 3px solid #22c55e;">
+          <div style="font-size: 11px; color: #e2e8f0;">▼ LoginAW.do_login()</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 暗色专业</h3>
+      <p>深色背景，发光效果，高对比度，适合长时间查看</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="glass" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 20px; border-radius: 8px;">
+      <div style="background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 8px 32px rgba(99,102,241,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <div style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%;"></div>
+          <span style="font-size: 11px; color: #6b7280;">✓ 通过</span>
+        </div>
+        <div style="font-weight: 600; color: #1f2937; margin-bottom: 4px;">test_login_001</div>
+        <div style="font-size: 12px; color: #6b7280;">登录功能测试</div>
+        <div style="margin-top: 12px; padding: 8px; background: rgba(255,255,255,0.5); border-radius: 6px; border-left: 3px solid #22c55e;">
+          <div style="font-size: 11px; color: #374151;">▼ LoginAW.do_login()</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 玻璃拟态</h3>
+      <p>毛玻璃效果，柔和渐变，轻盈通透感</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="vibrant" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 20px; border-radius: 8px;">
+      <div style="background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(34,197,94,0.15);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <div style="padding: 2px 8px; background: #22c55e; color: white; border-radius: 12px; font-size: 10px; font-weight: 600;">✓ PASS</div>
+        </div>
+        <div style="font-weight: 700; color: #166534; margin-bottom: 4px;">test_login_001</div>
+        <div style="font-size: 12px; color: #15803d;">登录功能测试</div>
+        <div style="margin-top: 12px; padding: 10px; background: #f0fdf4; border-radius: 8px;">
+          <div style="font-size: 11px; color: #166534; font-weight: 500;">▼ LoginAW.do_login()</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>D. 清新活力</h3>
+      <p>明亮配色，状态色块，活力感，适合团队展示</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 8px;">
+  <h4 style="margin: 0 0 8px 0; color: #475569;">共同改进点</h4>
+  <ul style="margin: 0; padding-left: 20px; color: #64748b; font-size: 13px;">
+    <li>更清晰的信息层级：测试名称 → 状态 → 详情</li>
+    <li>折叠块默认收起，点击展开查看子步骤</li>
+    <li>状态用颜色+图标双重指示</li>
+    <li>时间显示更友好（相对时间或本地化格式）</li>
+  </ul>
+</div>

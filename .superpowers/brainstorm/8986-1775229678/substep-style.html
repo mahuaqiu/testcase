@@ -1,0 +1,90 @@
+<h2>子步骤样式</h2>
+<p class="subtitle">展开后子步骤的展示方式</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">方案 A: 列表式</div>
+    <div class="mockup-body" style="background: #f9fafb; padding: 12px; border-radius: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+        <span style="color: #22c55e; font-size: 12px;">▶</span>
+        <span style="flex: 1; color: #374151; font-size: 12px;">ocr_wait("邮箱/帐号")</span>
+        <span style="color: #22c55e; font-size: 11px; font-weight: 500;">✓ 1.6s</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+        <span style="color: #22c55e; font-size: 12px;">▶</span>
+        <span style="flex: 1; color: #374151; font-size: 12px;">ocr_input("邮箱/帐号", "151****")</span>
+        <span style="color: #22c55e; font-size: 11px; font-weight: 500;">✓ 945ms</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 0;">
+        <span style="color: #22c55e; font-size: 12px;">▶</span>
+        <span style="flex: 1; color: #374151; font-size: 12px;">ocr_click("登录")</span>
+        <span style="color: #22c55e; font-size: 11px; font-weight: 500;">✓ 813ms</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">方案 B: 缩进卡片</div>
+    <div class="mockup-body" style="padding: 12px; background: #f0fdf4; border-radius: 8px;">
+      <div style="background: white; padding: 10px 12px; border-radius: 6px; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: #22c55e; font-size: 10px; background: #dcfce7; padding: 2px 6px; border-radius: 4px;">✓</span>
+          <span style="flex: 1; color: #374151; font-size: 12px;">ocr_wait("邮箱/帐号")</span>
+          <span style="color: #6b7280; font-size: 11px;">1.6s</span>
+        </div>
+      </div>
+      <div style="background: white; padding: 10px 12px; border-radius: 6px; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: #22c55e; font-size: 10px; background: #dcfce7; padding: 2px 6px; border-radius: 4px;">✓</span>
+          <span style="flex: 1; color: #374151; font-size: 12px;">ocr_input("邮箱/帐号", "151****")</span>
+          <span style="color: #6b7280; font-size: 11px;">945ms</span>
+        </div>
+      </div>
+      <div style="background: white; padding: 10px 12px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: #22c55e; font-size: 10px; background: #dcfce7; padding: 2px 6px; border-radius: 4px;">✓</span>
+          <span style="flex: 1; color: #374151; font-size: 12px;">ocr_click("登录")</span>
+          <span style="color: #6b7280; font-size: 11px;">813ms</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="split" style="margin-top: 16px;">
+  <div class="mockup">
+    <div class="mockup-header">方案 C: 时间线</div>
+    <div class="mockup-body" style="padding: 12px;">
+      <div style="position: relative; padding-left: 20px;">
+        <div style="position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: #dcfce7;"></div>
+        <div style="position: relative; margin-bottom: 12px;">
+          <div style="position: absolute; left: -17px; width: 12px; height: 12px; background: #22c55e; border-radius: 50%;"></div>
+          <div style="font-size: 12px; color: #374151;">ocr_wait("邮箱/帐号") <span style="color: #6b7280;">1.6s</span></div>
+        </div>
+        <div style="position: relative; margin-bottom: 12px;">
+          <div style="position: absolute; left: -17px; width: 12px; height: 12px; background: #22c55e; border-radius: 50%;"></div>
+          <div style="font-size: 12px; color: #374151;">ocr_input("邮箱/帐号", "151****") <span style="color: #6b7280;">945ms</span></div>
+        </div>
+        <div style="position: relative;">
+          <div style="position: absolute; left: -17px; width: 12px; height: 12px; background: #22c55e; border-radius: 50%;"></div>
+          <div style="font-size: 12px; color: #374151;">ocr_click("登录") <span style="color: #6b7280;">813ms</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">方案 D: 轻量行</div>
+    <div class="mockup-body" style="padding: 8px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+      <div style="padding: 6px 8px; margin: 2px 0; border-radius: 4px; font-size: 12px;">
+        <span style="color: #22c55e;">✓</span> ocr_wait("邮箱/帐号") · 1.6s
+      </div>
+      <div style="padding: 6px 8px; margin: 2px 0; border-radius: 4px; font-size: 12px;">
+        <span style="color: #22c55e;">✓</span> ocr_input("邮箱/帐号", "151****") · 945ms
+      </div>
+      <div style="padding: 6px 8px; margin: 2px 0; border-radius: 4px; font-size: 12px;">
+        <span style="color: #22c55e;">✓</span> ocr_click("登录") · 813ms
+      </div>
+    </div>
+  </div>
+</div>
