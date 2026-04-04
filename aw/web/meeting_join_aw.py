@@ -75,11 +75,15 @@ class MeetingJoinAW(BaseAW):
     def do_leave(self) -> None:
         """离会。
 
-        步骤: 点击离开按钮 → 确认离开。
+        步骤: 触发会控栏 → 点击挂断按钮 → 等待1秒 → 确认离开。
         """
-        # 点击离开按钮
-        self.ocr_click("离开")
-        # 确认离开（如有确认弹窗）
+        # 触发会控栏显示
+        self.user.do_trigger_control_bar()
+        # 点击挂断按钮
+        self.image_click("images/web/会中_挂断.png")
+        # 等待1秒
+        self.wait(1)
+        # 确认离开
         self.ocr_click("确定")
 
     def do_admit_participant(self, name: str | None = None) -> None:
