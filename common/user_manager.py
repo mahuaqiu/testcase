@@ -71,11 +71,14 @@ class UserManager:
         # 退出时自动释放资源
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, config: Optional[Dict[str, Any]] = None, namespace: Optional[str] = None
+    ):
         """初始化用户资源管理器。
 
         Args:
             config: 配置字典，如果为 None 则自动加载。
+            namespace: namespace 覆盖值，如果传入则优先使用，否则从 config 读取。
         """
         self.config = config or ConfigLoader().load()
         self._resources: Dict[str, UserResource] = {}
@@ -85,7 +88,8 @@ class UserManager:
 
         rm_config = self.config.get("resource_manager", {})
         self._base_url = rm_config.get("base_url", "").rstrip("/")
-        self._namespace = rm_config.get("namespace", "default")
+        # 允许传入 namespace 覆盖配置
+        self._namespace = namespace or rm_config.get("namespace", "default")
         self._timeout = rm_config.get("timeout", 30)
         self._mock_users = rm_config.get("mock_users", {})
 

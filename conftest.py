@@ -59,6 +59,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "hooks: 用例级别 hooks 标记，如 @pytest.mark.hooks(setup=['+login'])"
     )
+    config.addinivalue_line(
+        "markers", "namespace: namespace 标记，如 @pytest.mark.namespace('web_public')"
+    )
 
 
 # ── 用户资源 Fixture ─────────────────────────────────
@@ -88,7 +91,10 @@ def users(request) -> Dict[str, User]:
     raw_resources: Dict[str, Any] = {}
     user_instances: Dict[str, User] = {}
 
-    with UserManager(config) as manager:
+    # 获取 namespace（优先级：用例标记 > 目录 conftest > 全局配置）
+    namespace = _get_namespace(request.node, config)
+
+    with UserManager(config, namespace=namespace) as manager:
         resources = manager.apply(users_requirement)
         raw_resources = manager.get_raw_resources()
 
@@ -269,6 +275,44 @@ def _get_case_hooks(node) -> Dict[str, Any]:
     if not marker:
         return {}
     return marker.args[0] if marker.args else marker.kwargs
+
+
+def _get_namespace(node, config) -> str:
+    """获取 namespace，优先级：用例标记 > 目录 conftest > 全局配置。
+
+    Args:
+        node: pytest node 对象。
+        config: 全局配置字典。
+
+    Returns:
+        namespace 字符串。
+    """
+    # 1. 用例级标记
+    marker = node.get_closest_marker("namespace")
+    if marker:
+        return marker.args[0] if marker.args else marker.kwargs.get("value")
+
+    # 2. 目录级 conftest（向上查找最近的 conftest.py）
+    import importlib.util
+
+    test_file_path = Path(node.fspath) if hasattr(node, "fspath") else Path(node.path)
+    for parent in test_file_path.parents:
+        conftest_path = parent / "conftest.py"
+        if conftest_path.exists() and conftest_path != Path(__file__):
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "dir_conftest", conftest_path
+                )
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                if hasattr(module, "get_namespace"):
+                    return module.get_namespace()
+            except Exception:
+                # 目录 conftest 加载失败，继续向上查找
+                continue
+
+    # 3. 全局配置
+    return config.get("resource_manager", {}).get("namespace", "default")
 
 
 def _generate_report(
