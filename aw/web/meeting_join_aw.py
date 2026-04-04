@@ -108,13 +108,16 @@ class MeetingJoinAW(BaseAW):
 
     # ── 断言方法 ─────────────────────────────────────────────
 
-    def should_join_success(self) -> None:
+    def should_join_success(self, number: int) -> None:
         """断言入会成功。
 
-        验证入会后页面显示会议相关文字。
+        验证入会后页面显示会议相关文字，并验证会议人数。
+
+        Args:
+            number: 会议人数（必填）。
         """
-        # 等待会议界面出现
-        self.ocr_wait("reg_会议中\(\d\)", timeout=5)
+        # 等待会议界面出现，验证人数
+        self.ocr_wait(f"reg_会议中\({number}\)", timeout=5)
 
     def should_in_waitingroom(self) -> None:
         """断言用户在等候室中。
