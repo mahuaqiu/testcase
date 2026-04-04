@@ -234,7 +234,12 @@ class MeetingManageAW(BaseApiAW):
         if guest_pwd:
             body["confConfigInfo"]["guestPwd"] = guest_pwd
 
-        # 合并额外配置
+        # 处理等候室开关参数
+        if "enableWaitingRoom" in kwargs:
+            body["confConfigInfo"]["enableWaitingRoom"] = kwargs["enableWaitingRoom"]
+            kwargs.pop("enableWaitingRoom")
+
+        # 合并其他额外配置
         body.update(kwargs)
 
         return body

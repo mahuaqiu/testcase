@@ -58,7 +58,7 @@
 | 方法 | 说明 |
 |------|------|
 | `do_login()` | 显式登录获取 token |
-| `do_create_meeting(subject, **kwargs)` | 预约/创建会议，返回 MeetingInfo |
+| `do_create_meeting(subject, **kwargs)` | 预约/创建会议，返回 MeetingInfo；kwargs 可传入 enableWaitingRoom 开启等候室 |
 | `do_cancel_meeting(conference_id)` | 取消指定会议 |
 | `do_query_meetings(limit=10)` | 查询我的会议列表 |
 | `do_cancel_all_meetings()` | 取消所有会议 |
