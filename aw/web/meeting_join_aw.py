@@ -82,15 +82,29 @@ class MeetingJoinAW(BaseAW):
         # 确认离开（如有确认弹窗）
         self.ocr_click("确定")
 
-    def do_admit_participant(self) -> None:
+    def do_admit_participant(self, name: str | None = None) -> None:
         """主持人准入与会者。
 
-        步骤: 点击准入按钮（在等候室列表或弹窗中）。
-
-        注意: 需要在主持人端执行，且等候室中有等待入会的与会者。
+        Args:
+            name: 用户名称（可选）。
+                - 传入时：准入指定用户（点击等候中 → 点击(name) → 点击准入）
+                - 未传入时：准入所有用户（点击等候中 → 点击全部准入 → 点击确认弹窗上的全部准入）
         """
-        # 点击准入按钮
-        self.ocr_click("准入")
+        # 点击等候中
+        self.ocr_click("等候中")
+        self.wait(1)
+        if name:
+            # 准入指定用户
+            self.ocr_click(name)
+            self.wait(1)
+            self.ocr_click("准入")
+        else:
+            # 准入所有用户
+            self.ocr_click("全部准入")
+            self.wait(1)
+            # 确认弹窗上的全部准入
+            self.ocr_click("全部准入")
+        self.wait(1)
 
     # ── 断言方法 ─────────────────────────────────────────────
 

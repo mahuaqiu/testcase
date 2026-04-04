@@ -31,7 +31,7 @@
 | `do_join_as_host(meeting)` | 主持人入会 |
 | `do_join_as_guest(meeting)` | 与会者入会 |
 | `do_leave()` | 离会 |
-| `do_admit_participant()` | 主持人准入与会者 |
+| `do_admit_participant(name=None)` | 主持人准入与会者（可选指定用户名） |
 | `should_join_success()` | 断言入会成功 |
 | `should_in_waitingroom()` | 断言在等候室中 |
 | `should_leave_success()` | 断言离会成功 |
