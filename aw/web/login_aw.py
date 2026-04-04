@@ -58,7 +58,7 @@ class LoginAW(BaseAW):
 
         if not account or not pwd:
             raise ValueError("未提供账号密码，且无用户资源")
-        self.ocr_wait("邮箱/帐11号",timeout=5)
+        self.ocr_wait("邮箱/帐号",timeout=5)
         self.wait(1)
         # 使用 OCR 识别并输入账号
         self.ocr_input("邮箱/帐号", account)
