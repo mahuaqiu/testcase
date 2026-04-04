@@ -36,6 +36,15 @@
 | `should_in_waitingroom()` | 断言在等候室中 |
 | `should_leave_success()` | 断言离会成功 |
 
+### MeetingControlAW
+
+> 文件路径：`aw/web/meeting_control_aw.py`
+> 功能概述：Web 会议控制栏操作
+
+| 方法 | 说明 |
+|------|------|
+| `do_trigger_control_bar()` | 触发会控栏显示 |
+
 ### InitAW
 
 > 文件路径：`aw/web/init_aw.py`
