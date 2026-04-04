@@ -32,7 +32,7 @@
 | `do_join_as_guest(meeting)` | 与会者入会 |
 | `do_leave()` | 离会 |
 | `do_admit_participant(name=None)` | 主持人准入与会者（可选指定用户名） |
-| `should_join_success(number)` | 断言入会成功，验证会议人数 |
+| `should_join_success(number)` | 断言入会成功，验证会议人数（number: 期望人数） |
 | `should_in_waitingroom()` | 断言在等候室中 |
 | `should_leave_success()` | 断言离会成功 |
 
