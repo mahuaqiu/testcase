@@ -39,6 +39,7 @@ class HookFailureError(Exception):
 _config = None
 _keepalive_managers: Dict[str, KeepAliveManager] = {}
 _test_results: Dict[str, Dict[str, Any]] = {}  # 存储测试结果
+_exe_param: Dict[str, Any] = {}  # 存储 exeParam 参数解析结果
 
 
 def get_config() -> Dict[str, Any]:
@@ -49,10 +50,30 @@ def get_config() -> Dict[str, Any]:
     return _config
 
 
+def get_exe_param() -> Dict[str, Any]:
+    """获取 exeParam 参数（解析后的 JSON 字典）。"""
+    return _exe_param
+
+
+# ── 命令行参数注册 ─────────────────────────────────────────
+
+def pytest_addoption(parser):
+    """注册自定义命令行参数。"""
+    parser.addoption(
+        "--exeParam",
+        action="store",
+        default="{}",
+        help="执行参数，JSON 字符串格式，如 --exeParam='{\"key\": \"value\"}'"
+    )
+
+
 # ── 标记注册 ─────────────────────────────────────────
 
 def pytest_configure(config):
-    """注册自定义标记。"""
+    """注册自定义标记，解析命令行参数。"""
+    global _exe_param
+
+    # 注册自定义标记
     config.addinivalue_line(
         "markers", "users: 用户资源需求标记，如 @pytest.mark.users({'userA': 'web'})"
     )
@@ -62,6 +83,14 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "namespace: namespace 标记，如 @pytest.mark.namespace('web_public')"
     )
+
+    # 解析 exeParam 参数
+    exe_param_str = config.getoption("--exeParam", default="{}")
+    try:
+        _exe_param = json.loads(exe_param_str) if exe_param_str else {}
+    except json.JSONDecodeError as e:
+        print(f"[警告] exeParam 参数解析失败，将使用空字典: {e}")
+        _exe_param = {}
 
 
 # ── 用户资源 Fixture ─────────────────────────────────
