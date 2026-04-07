@@ -84,7 +84,8 @@ class MeetingJoinAW(BaseAW):
         # 等待1秒
         self.wait(1)
         # 确认离开
-        self.ocr_click("确定")
+        self.ocr_click("确认")
+        self.wait(1)
 
     def do_admit_participant(self, name: str | None = None) -> None:
         """主持人准入与会者。
@@ -137,4 +138,4 @@ class MeetingJoinAW(BaseAW):
         验证离会后页面不再显示会议相关文字。
         """
         # 等待离开会议后的界面
-        self.ocr_wait("我的会议", timeout=5)
+        self.ocr_wait("感谢您参加此会议", timeout=3)
