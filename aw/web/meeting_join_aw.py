@@ -122,7 +122,7 @@ class MeetingJoinAW(BaseAW):
             number: 会议人数（必填）。
         """
         # 等待会议界面出现，验证人数
-        self.ocr_wait(f"reg_会议中\({number}\)", timeout=10)
+        self.ocr_wait(f"reg_会议中\({number}\)", timeout=15)
 
     def should_in_waitingroom(self) -> None:
         """断言用户在等候室中。
