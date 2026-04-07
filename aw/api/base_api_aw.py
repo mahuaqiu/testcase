@@ -78,8 +78,10 @@ class BaseApiAW(BaseAW):
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
         user_name = self.user.name if self.user else ""
+        # 获取 parent_aw（用于日志聚合）
+        parent_aw = self._find_parent_aw()
 
-        client = self.user._get_ui_client()
+        client = self.user._get_ui_client() if self.user else None
         if not client:
             logger.log_aw_call(
                 aw_name=self._aw_name,
@@ -87,11 +89,12 @@ class BaseApiAW(BaseAW):
                 args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": "client is None"},
-                duration_ms=0
+                duration_ms=0,
+                parent_aw=parent_aw,
             )
             return None
 
-        ui_platform = self.user._get_ui_platform()
+        ui_platform = self.user._get_ui_platform() if self.user else None
         if not ui_platform:
             logger.log_aw_call(
                 aw_name=self._aw_name,
@@ -99,7 +102,8 @@ class BaseApiAW(BaseAW):
                 args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": "ui_platform is None"},
-                duration_ms=0
+                duration_ms=0,
+                parent_aw=parent_aw,
             )
             return None
 
@@ -120,7 +124,8 @@ class BaseApiAW(BaseAW):
                             args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                             success=True,
                             result={"raw_result": result, "token_keys": list(token_dict.keys())},
-                            duration_ms=0
+                            duration_ms=0,
+                            parent_aw=parent_aw,
                         )
                         return token_dict
                     except json.JSONDecodeError as e:
@@ -130,7 +135,8 @@ class BaseApiAW(BaseAW):
                             args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                             success=False,
                             result={"raw_result": result, "error": f"JSON parse failed: {e}", "output": output[:100]},
-                            duration_ms=0
+                            duration_ms=0,
+                            parent_aw=parent_aw,
                         )
                         return None
                 else:
@@ -140,7 +146,8 @@ class BaseApiAW(BaseAW):
                         args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                         success=False,
                         result={"raw_result": result, "error": "output is empty"},
-                        duration_ms=0
+                        duration_ms=0,
+                        parent_aw=parent_aw,
                     )
                     return None
             else:
@@ -150,7 +157,8 @@ class BaseApiAW(BaseAW):
                     args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                     success=False,
                     result={"raw_result": result, "error": "status not success or no actions", "status": result.get("status")},
-                    duration_ms=0
+                    duration_ms=0,
+                    parent_aw=parent_aw,
                 )
                 return None
         except Exception as e:
@@ -160,7 +168,8 @@ class BaseApiAW(BaseAW):
                 args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": str(e)},
-                duration_ms=0
+                duration_ms=0,
+                parent_aw=parent_aw,
             )
             return None
 
@@ -400,6 +409,9 @@ class BaseApiAW(BaseAW):
                 duration_ms = int((time.time() - start_time) * 1000)
                 success = response.ok
 
+                # 获取 parent_aw（用于日志聚合）
+                parent_aw = self._find_parent_aw()
+
                 # 记录重试日志
                 retry_reason = "worker_token" if worker_token else "api_login"
                 logger.log_aw_call(
@@ -408,7 +420,8 @@ class BaseApiAW(BaseAW):
                     args=log_args,
                     success=success,
                     result={"status_code": response.status_code, "body": response.text[:500]},
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    parent_aw=parent_aw,
                 )
 
                 if not success:
@@ -419,6 +432,9 @@ class BaseApiAW(BaseAW):
             duration_ms = int((time.time() - start_time) * 1000)
             success = response.ok
 
+            # 获取 parent_aw（用于日志聚合）
+            parent_aw = self._find_parent_aw()
+
             # 记录日志
             logger.log_aw_call(
                 aw_name=self._aw_name,
@@ -426,7 +442,8 @@ class BaseApiAW(BaseAW):
                 args=log_args,
                 success=success,
                 result={"status_code": response.status_code, "body": response.text[:500]},
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                parent_aw=parent_aw,
             )
 
             if not success:
@@ -436,13 +453,16 @@ class BaseApiAW(BaseAW):
 
         except requests.exceptions.RequestException as e:
             duration_ms = int((time.time() - start_time) * 1000)
+            # 获取 parent_aw（用于日志聚合）
+            parent_aw = self._find_parent_aw()
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method=method,
                 args=log_args,
                 success=False,
                 result={"error": str(e)},
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                parent_aw=parent_aw,
             )
             raise ApiError(method, 0, str(e)) from e
 

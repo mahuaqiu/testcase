@@ -152,6 +152,8 @@ class BaseAW:
             if queue is not None:
                 # 构建 Action 对象并添加到队列
                 user_id = self.user.user_id if self.user else ""
+                # 获取 parent_aw（用于日志聚合）
+                parent_aw = self._find_parent_aw()
                 action_obj = Action(
                     action_data=action_data,
                     platform=self.PLATFORM,
@@ -160,6 +162,7 @@ class BaseAW:
                     method=method,
                     log_args=log_args,
                     client=self.client,
+                    parent_aw=parent_aw,  # 传递 parent_aw 以支持日志聚合
                 )
                 queue.append(action_obj)
                 return {}  # 收集模式返回空字典

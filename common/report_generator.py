@@ -143,7 +143,7 @@ class HTMLReportGenerator:
 
     @staticmethod
     def _build_aw_tree(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """将日志按 parent_aw 分组构建树形结构。
+        """将日志按 parent_aw + user_id 分组构建树形结构。
 
         Args:
             logs: 原始日志列表。
@@ -152,15 +152,20 @@ class HTMLReportGenerator:
             块列表，每个块包含业务方法信息和子步骤列表。
         """
         # 先找出所有业务方法日志（用于提取参数）
+        # block_id 格式：{aw_name}.{method}#{user_id}
         business_method_logs: Dict[str, Dict[str, Any]] = {}
         for log in logs:
             if log.get("type") != "aw_call":
                 continue
             if log.get("is_business_method"):
+                args = log.get("args", {})
+                user_id = args.get("user_id", "")
                 block_id = f"{log.get('aw_name', '')}.{log.get('method', '')}"
+                if user_id:
+                    block_id = f"{block_id}#{user_id}"
                 business_method_logs[block_id] = log
 
-        # 按 parent_aw 分组原子操作日志
+        # 按 parent_aw + user_id 分组原子操作日志
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for log in logs:
             if log.get("type") != "aw_call":
@@ -168,6 +173,12 @@ class HTMLReportGenerator:
             if log.get("is_business_method"):
                 continue  # 业务方法日志单独处理
             parent = log.get("parent_aw", "")
+            # 如果有 parent_aw，需要加上 user_id 来区分不同用户
+            if parent:
+                args = log.get("args", {})
+                user_id = args.get("user_id", "")
+                if user_id:
+                    parent = f"{parent}#{user_id}"
             if parent not in groups:
                 groups[parent] = []
             groups[parent].append(log)
@@ -175,9 +186,17 @@ class HTMLReportGenerator:
         # 构建业务方法块（parent_aw != "" 的日志属于某个业务方法）
         business_blocks: Dict[str, Dict[str, Any]] = {}
 
-        for parent_aw, steps in groups.items():
-            if parent_aw == "":
+        for block_key, steps in groups.items():
+            if block_key == "":
                 continue  # 顶层原子操作，后面处理
+
+            # 从 block_key 解析 aw_name, method, user_id
+            # 格式：{aw_name}.{method}#{user_id}
+            user_id = ""
+            if "#" in block_key:
+                parent_aw, user_id = block_key.rsplit("#", 1)
+            else:
+                parent_aw = block_key
 
             # 从 parent_aw 解析 aw_name 和 method
             parts = parent_aw.rsplit(".", 1)
@@ -190,20 +209,20 @@ class HTMLReportGenerator:
             all_success = all(s.get("success", True) for s in steps)
 
             # 从业务方法日志提取参数（如果有）
-            business_log = business_method_logs.get(parent_aw, {})
+            business_log = business_method_logs.get(block_key, {})
             business_args = business_log.get("args", {}) if business_log else {}
 
             # 从第一个步骤获取用户信息
             first_step = steps[0] if steps else {}
             step_args = first_step.get("args", {})
             user_info = {
-                "user_id": step_args.get("user_id", ""),
+                "user_id": user_id or step_args.get("user_id", ""),
                 "user_name": step_args.get("user_name", ""),
                 "user_account": step_args.get("user_account", ""),
             }
 
-            business_blocks[parent_aw] = {
-                "block_id": parent_aw,
+            business_blocks[block_key] = {
+                "block_id": block_key,
                 "aw_name": aw_name,
                 "method": method,
                 "args": business_args,  # 业务方法参数
@@ -221,11 +240,14 @@ class HTMLReportGenerator:
         for log in groups.get("", []):
             aw_name = log.get("aw_name", "")
             method = log.get("method", "")
-            block_id = f"{aw_name}.{method}"
-
             args = log.get("args", {})
+            user_id = args.get("user_id", "")
+            block_id = f"{aw_name}.{method}"
+            if user_id:
+                block_id = f"{block_id}#{user_id}"
+
             user_info = {
-                "user_id": args.get("user_id", ""),
+                "user_id": user_id,
                 "user_name": args.get("user_name", ""),
                 "user_account": args.get("user_account", ""),
             }

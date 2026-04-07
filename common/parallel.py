@@ -87,6 +87,7 @@ class Action:
         method: 方法名（如 ocr_click）。
         log_args: 用于日志记录的参数字典。
         client: TestagentClient 实例（用于发送请求）。
+        parent_aw: 父级 AW 标识（如 LoginAW.do_login），用于日志聚合。
     """
 
     action_data: Dict[str, Any]
@@ -96,6 +97,7 @@ class Action:
     method: str = ""
     log_args: Dict[str, Any] = field(default_factory=dict)
     client: Optional["TestagentClient"] = None
+    parent_aw: str = ""  # 父级 AW 标识，用于日志聚合
 
 
 # ── 异常类 ───────────────────────────────────────────────────────
@@ -389,6 +391,7 @@ class ParallelContext:
             duration_ms=action_result.get("duration_ms", 0),
             target_image=target_image_base64,
             target_image_path=target_image_path,
+            parent_aw=action.parent_aw,  # 传递 parent_aw 以支持日志聚合
         )
 
 
