@@ -378,6 +378,160 @@ class BaseAW:
 
         return self._execute_with_log("ocr_move", action_data, {"text": text, **kwargs})
 
+    def ocr_double_click(self, text: str, **kwargs) -> dict:
+        """OCR 定位后双击。
+
+        Args:
+            text: 要识别并双击的文字。
+            timeout: 超时时间（秒），默认 5。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
+        """
+        action_data = {
+            "action_type": "ocr_double_click",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "index": kwargs.get("index", 0),
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log("ocr_double_click", action_data, {"text": text, **kwargs})
+
+    def ocr_click_same_row_text(
+        self, anchor_text: str, target_text: str, **kwargs
+    ) -> dict:
+        """点击锚点文本同一行的目标文本。
+
+        Args:
+            anchor_text: 锚点文本内容。
+            target_text: 目标文本内容。
+            anchor_index: 锚点文本索引（从 0 开始），默认 0。
+            target_index: 目标文本索引（从 0 开始），默认 0。
+            row_tolerance: 水平带范围（像素），默认 20。
+            timeout: 超时时间（秒），默认 5。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
+        """
+        action_data = {
+            "action_type": "ocr_click_same_row_text",
+            "anchor_text": anchor_text,
+            "value": target_text,
+            "anchor_index": kwargs.get("anchor_index", 0),
+            "target_index": kwargs.get("target_index", 0),
+            "row_tolerance": kwargs.get("row_tolerance", 20),
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log(
+            "ocr_click_same_row_text",
+            action_data,
+            {"anchor_text": anchor_text, "target_text": target_text, **kwargs},
+        )
+
+    def ocr_click_same_row_image(
+        self, anchor_text: str, image_path: str, **kwargs
+    ) -> dict:
+        """点击锚点文本同一行的目标图片。
+
+        Args:
+            anchor_text: 锚点文本内容。
+            image_path: 目标图片路径。
+            anchor_index: 锚点文本索引（从 0 开始），默认 0。
+            target_index: 目标图片索引（从 0 开始），默认 0。
+            row_tolerance: 水平带范围（像素），默认 20。
+            confidence: 匹置信度（0-1），默认 0.8。
+            timeout: 超时时间（秒），默认 5。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
+        """
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        action_data = {
+            "action_type": "ocr_click_same_row_image",
+            "anchor_text": anchor_text,
+            "image_base64": image_base64,
+            "anchor_index": kwargs.get("anchor_index", 0),
+            "target_index": kwargs.get("target_index", 0),
+            "row_tolerance": kwargs.get("row_tolerance", 20),
+            "threshold": kwargs.get("confidence", 0.8),
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log(
+            "ocr_click_same_row_image",
+            action_data,
+            {"anchor_text": anchor_text, "image_path": image_path, **kwargs},
+        )
+
+    def ocr_check_same_row_text(
+        self, anchor_text: str, target_text: str, **kwargs
+    ) -> dict:
+        """检查锚点文本同一行的目标文本是否存在。
+
+        Args:
+            anchor_text: 锚点文本内容。
+            target_text: 目标文本内容。
+            anchor_index: 锚点文本索引（从 0 开始），默认 0。
+            target_index: 目标文本索引（从 0 开始），默认 0。
+            row_tolerance: 水平带范围（像素），默认 20。
+            timeout: 超时时间（秒），默认 5。
+        """
+        action_data = {
+            "action_type": "ocr_check_same_row_text",
+            "anchor_text": anchor_text,
+            "value": target_text,
+            "anchor_index": kwargs.get("anchor_index", 0),
+            "target_index": kwargs.get("target_index", 0),
+            "row_tolerance": kwargs.get("row_tolerance", 20),
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+
+        return self._execute_with_log(
+            "ocr_check_same_row_text",
+            action_data,
+            {"anchor_text": anchor_text, "target_text": target_text, **kwargs},
+        )
+
+    def ocr_check_same_row_image(
+        self, anchor_text: str, image_path: str, **kwargs
+    ) -> dict:
+        """检查锚点文本同一行的目标图片是否存在。
+
+        Args:
+            anchor_text: 锚点文本内容。
+            image_path: 目标图片路径。
+            anchor_index: 锚点文本索引（从 0 开始），默认 0。
+            target_index: 目标图片索引（从 0 开始），默认 0。
+            row_tolerance: 水平带范围（像素），默认 20。
+            confidence: 匹置信度（0-1），默认 0.8。
+            timeout: 超时时间（秒），默认 5。
+        """
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        action_data = {
+            "action_type": "ocr_check_same_row_image",
+            "anchor_text": anchor_text,
+            "image_base64": image_base64,
+            "anchor_index": kwargs.get("anchor_index", 0),
+            "target_index": kwargs.get("target_index", 0),
+            "row_tolerance": kwargs.get("row_tolerance", 20),
+            "threshold": kwargs.get("confidence", 0.8),
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+
+        return self._execute_with_log(
+            "ocr_check_same_row_image",
+            action_data,
+            {"anchor_text": anchor_text, "image_path": image_path, **kwargs},
+        )
+
     # ── 图像识别动作 ─────────────────────────────────────────
 
     def _load_image_as_base64(self, image_path: str) -> Optional[str]:
@@ -499,6 +653,32 @@ class BaseAW:
 
         return self._execute_with_log("image_move", action_data, {"image_path": image_path, **kwargs})
 
+    def image_double_click(self, image_path: str, **kwargs) -> dict:
+        """图像识别后双击。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（秒），默认 5。
+            confidence: 匹置信度（0-1），默认 0.8。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
+        """
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        action_data = {
+            "action_type": "image_double_click",
+            "image_base64": image_base64,
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "threshold": kwargs.get("confidence", 0.8),
+            "index": kwargs.get("index", 0),
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log("image_double_click", action_data, {"image_path": image_path, **kwargs})
+
     # ── 坐标动作 ─────────────────────────────────────────
 
     def click(self, x: int, y: int) -> dict:
@@ -515,6 +695,24 @@ class BaseAW:
         }
 
         return self._execute_with_log("click", action_data, {"x": x, "y": y})
+
+    def double_click(self, x: int, y: int, **kwargs) -> dict:
+        """坐标双击。
+
+        Args:
+            x: X 坐标。
+            y: Y 坐标。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
+        """
+        action_data = {
+            "action_type": "double_click",
+            "x": x,
+            "y": y,
+        }
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+
+        return self._execute_with_log("double_click", action_data, {"x": x, "y": y, **kwargs})
 
     def move(self, x: int, y: int, **kwargs) -> dict:
         """移动鼠标到指定坐标（仅桌面端支持）。
@@ -635,6 +833,22 @@ class BaseAW:
         }
 
         return self._execute_with_log("navigate", action_data, {"url": url})
+
+    def cmd_exec(self, command: str, **kwargs) -> dict:
+        """在宿主机执行命令。
+
+        Args:
+            command: 要执行的命令字符串。
+            timeout: 超时时间（秒），默认 30。
+        """
+        timeout_ms = kwargs.get("timeout", 30) * 1000
+        action_data = {
+            "action_type": "cmd_exec",
+            "value": command,
+            "timeout": timeout_ms,
+        }
+
+        return self._execute_with_log("cmd_exec", action_data, {"command": command, **kwargs})
 
     def screenshot(self) -> str:
         """截图并返回 base64。
