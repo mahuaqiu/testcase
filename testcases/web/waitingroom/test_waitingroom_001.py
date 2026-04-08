@@ -32,7 +32,7 @@ from common.parallel import parallel
 @pytest.mark.users({"userA": "web","userB": "web"})
 class TestClass:
 
-    def test_waitingroom_switch_001(self, users):
+    def test_waitingroom_001(self, users):
         """会议等候室功能。"""
         userA = users["userA"]
         userB = users["userB"]
