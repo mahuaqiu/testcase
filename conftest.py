@@ -123,8 +123,11 @@ def users(request) -> Dict[str, User]:
     # 获取 namespace（优先级：用例标记 > 目录 conftest > 全局配置）
     namespace = _get_namespace(request.node, config)
 
+    # 获取当前测试方法名作为 testcase_id
+    testcase_id = request.node.name
+
     with UserManager(config, namespace=namespace) as manager:
-        resources = manager.apply(users_requirement)
+        resources = manager.apply(users_requirement, testcase_id=testcase_id)
         raw_resources = manager.get_raw_resources()
 
         # 记录申请到的机器资源信息

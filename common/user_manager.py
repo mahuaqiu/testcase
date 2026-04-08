@@ -93,7 +93,9 @@ class UserManager:
         self._timeout = rm_config.get("timeout", 30)
         self._mock_users = rm_config.get("mock_users", {})
 
-    def apply(self, users: Dict[str, str]) -> Dict[str, UserResource]:
+    def apply(
+        self, users: Dict[str, str], testcase_id: Optional[str] = None
+    ) -> Dict[str, UserResource]:
         """申请用户资源。
 
         当 base_url 为空时，使用 mock_users 本地调试模式。
@@ -102,6 +104,7 @@ class UserManager:
         Args:
             users: 用户需求字典，key 为用户标识（如 userA），
                    value 为平台类型（如 web）。
+            testcase_id: 测试用例 ID，用于请求 header 中标识当前测试。
 
         Returns:
             用户资源字典，key 为用户标识，value 为 UserResource 实例。
@@ -120,7 +123,7 @@ class UserManager:
             return self._apply_mock(users)
 
         # 远程模式：调用 API
-        result = self._apply_remote(users)
+        result = self._apply_remote(users, testcase_id=testcase_id)
 
         # 启动保活
         if self._base_url and self._raw_resources:
@@ -163,11 +166,14 @@ class UserManager:
 
         return self._resources
 
-    def _apply_remote(self, users: Dict[str, str]) -> Dict[str, UserResource]:
+    def _apply_remote(
+        self, users: Dict[str, str], testcase_id: Optional[str] = None
+    ) -> Dict[str, UserResource]:
         """远程模式：调用 API 申请资源，支持重试。
 
         Args:
             users: 用户需求字典。
+            testcase_id: 测试用例 ID，用于请求 header 中标识当前测试。
 
         Returns:
             用户资源字典。
@@ -185,10 +191,17 @@ class UserManager:
 
         url = f"{self._base_url}/env/{self._namespace}/application"
 
+        # 设置请求 header
+        headers = {}
+        if testcase_id:
+            headers["X-TestCase-Id"] = testcase_id
+
         for attempt in range(max_retries + 1):
             # 发起申请请求
             try:
-                response = self._session.post(url, json=users, timeout=self._timeout)
+                response = self._session.post(
+                    url, json=users, timeout=self._timeout, headers=headers
+                )
                 response.raise_for_status()
                 data = response.json()
             except requests.Timeout as e:
