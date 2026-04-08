@@ -398,6 +398,28 @@ class BaseAW:
 
         return self._execute_with_log("ocr_double_click", action_data, {"text": text, **kwargs})
 
+    def ocr_exist(self, text: str, **kwargs) -> bool:
+        """检查文字是否存在。
+
+        Args:
+            text: 要检查的文字。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
+            timeout: 超时时间（秒），默认 5。
+            index: 选择第几个匹配结果（从 0 开始）。
+
+        Returns:
+            True 如果文字存在，False 如果不存在。不抛异常。
+        """
+        action_data = {
+            "action_type": "ocr_exist",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "index": kwargs.get("index", 0),
+        }
+
+        # 使用特殊处理：ocr_exist 不抛异常
+        result = self._execute_exist_check("ocr_exist", action_data, {"text": text, **kwargs})
+        return result.get("exists", False)
+
     def ocr_click_same_row_text(
         self, anchor_text: str, target_text: str, **kwargs
     ) -> dict:
@@ -545,6 +567,117 @@ class BaseAW:
         """
         return load_image_as_base64(image_path)
 
+    def _execute_exist_check(
+        self,
+        method: str,
+        action_data: Dict[str, Any],
+        log_args: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """执行 exist 类型操作，不抛异常，返回 exists 结果。
+
+        ocr_exist 和 image_exist 无论是否存在都返回 SUCCESS 状态，
+        不会抛出 AWError。
+
+        Args:
+            method: 方法名。
+            action_data: 原始 action 数据。
+            log_args: 用于日志记录的参数。
+
+        Returns:
+            包含 exists 字段的结果字典。
+        """
+        import json
+
+        # 检查是否处于收集模式
+        if is_collecting():
+            queue = get_action_queue()
+            if queue is not None:
+                user_id = self.user.user_id if self.user else ""
+                parent_aw = self._find_parent_aw()
+                action_obj = Action(
+                    action_data=action_data,
+                    platform=self.PLATFORM,
+                    user_id=user_id,
+                    aw_name=self._aw_name,
+                    method=method,
+                    log_args=log_args,
+                    client=self.client,
+                    parent_aw=parent_aw,
+                )
+                queue.append(action_obj)
+                return {"exists": False}  # 收集模式返回默认值
+
+        # 同步执行模式
+        parent_aw = self._find_parent_aw()
+        logger = ReportLogger.get_current()
+        start_time = time.time()
+
+        try:
+            result = self.client.execute(self.PLATFORM, [action_data])
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.log_aw_call(
+                aw_name=self._aw_name,
+                method=method,
+                args=log_args,
+                success=False,
+                result={"error": str(e)},
+                duration_ms=duration_ms,
+                parent_aw=parent_aw,
+            )
+            # exist 方法不抛异常，返回 False
+            return {"exists": False}
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        action_result = result.get("actions", [{}])[0] if result.get("actions") else {}
+        success = action_result.get("status") == "success"
+
+        # 解析 output 中的 exists 结果
+        output = action_result.get("output", "")
+        exists = False
+        if output:
+            try:
+                output_data = json.loads(output)
+                exists = output_data.get("exists", False)
+            except (json.JSONDecodeError, TypeError):
+                exists = False
+
+        # 构建完整结果
+        full_result = {
+            "status": action_result.get("status", "success"),
+            "platform": self.PLATFORM,
+            "duration_ms": action_result.get("duration_ms", 0),
+            "actions": [action_result],
+            "output": output,
+            "exists": exists,
+        }
+
+        user_id = self.user.user_id if self.user else ""
+        user_account = self.user.account if self.user else ""
+        user_name = self.user.name if self.user else ""
+
+        logger.log_aw_call(
+            aw_name=self._aw_name,
+            method=method,
+            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            success=success,
+            result=full_result,
+            duration_ms=duration_ms,
+            parent_aw=parent_aw,
+        )
+
+        logger.log_worker_call(
+            api="task/execute",
+            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            success=success,
+            response=full_result,
+            duration_ms=duration_ms,
+        )
+
+        # exist 方法不抛异常，直接返回结果
+        return {"exists": exists}
+
     def image_click(self, image_path: str, **kwargs) -> dict:
         """图像识别点击。
 
@@ -679,7 +812,33 @@ class BaseAW:
 
         return self._execute_with_log("image_double_click", action_data, {"image_path": image_path, **kwargs})
 
-    # ── 坐标动作 ─────────────────────────────────────────
+    def image_exist(self, image_path: str, **kwargs) -> bool:
+        """检查图像是否存在。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（秒），默认 5。
+            confidence: 匹置信度（0-1），默认 0.8。
+            index: 选择第几个匹配结果（从 0 开始）。
+
+        Returns:
+            True 如果图像存在，False 如果不存在。不抛异常。
+        """
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        action_data = {
+            "action_type": "image_exist",
+            "image_base64": image_base64,
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "threshold": kwargs.get("confidence", 0.8),
+            "index": kwargs.get("index", 0),
+        }
+
+        # 使用特殊处理：image_exist 不抛异常
+        result = self._execute_exist_check("image_exist", action_data, {"image_path": image_path, **kwargs})
+        return result.get("exists", False)
 
     def click(self, x: int, y: int) -> dict:
         """坐标点击。
