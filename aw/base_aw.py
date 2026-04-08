@@ -146,6 +146,11 @@ class BaseAW:
         Raises:
             AWError: 执行失败时抛出。
         """
+        # 公共 AW 继承 User 的平台
+        platform = self.PLATFORM
+        if platform == "common" and self.user:
+            platform = self.user.platform
+
         # 检查是否处于收集模式（parallel 上下文）
         if is_collecting():
             queue = get_action_queue()
@@ -156,7 +161,7 @@ class BaseAW:
                 parent_aw = self._find_parent_aw()
                 action_obj = Action(
                     action_data=action_data,
-                    platform=self.PLATFORM,
+                    platform=platform,
                     user_id=user_id,
                     aw_name=self._aw_name,
                     method=method,
@@ -175,7 +180,7 @@ class BaseAW:
 
         try:
             # 调用 client.execute（批量接口，传入单个 action）
-            result = self.client.execute(self.PLATFORM, [action_data])
+            result = self.client.execute(platform, [action_data])
         except Exception as e:
             # 记录异常
             duration_ms = int((time.time() - start_time) * 1000)
@@ -218,7 +223,7 @@ class BaseAW:
         # 构建完整的 result（包含 status/duration_ms/output/error）
         full_result = {
             "status": action_result.get("status", "failed"),
-            "platform": self.PLATFORM,
+            "platform": platform,
             "duration_ms": action_result.get("duration_ms", 0),
             "actions": [action_result],
             "output": action_result.get("output", ""),
@@ -242,7 +247,7 @@ class BaseAW:
         # 记录 worker 调用日志（用于调试，报告中不显示）
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            params={"platform": platform, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
             success=success,
             response=full_result,
             duration_ms=duration_ms,
@@ -588,6 +593,11 @@ class BaseAW:
         """
         import json
 
+        # 公共 AW 继承 User 的平台
+        platform = self.PLATFORM
+        if platform == "common" and self.user:
+            platform = self.user.platform
+
         # 检查是否处于收集模式
         if is_collecting():
             queue = get_action_queue()
@@ -596,7 +606,7 @@ class BaseAW:
                 parent_aw = self._find_parent_aw()
                 action_obj = Action(
                     action_data=action_data,
-                    platform=self.PLATFORM,
+                    platform=platform,
                     user_id=user_id,
                     aw_name=self._aw_name,
                     method=method,
@@ -613,7 +623,7 @@ class BaseAW:
         start_time = time.time()
 
         try:
-            result = self.client.execute(self.PLATFORM, [action_data])
+            result = self.client.execute(platform, [action_data])
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.log_aw_call(
@@ -646,7 +656,7 @@ class BaseAW:
         # 构建完整结果
         full_result = {
             "status": action_result.get("status", "success"),
-            "platform": self.PLATFORM,
+            "platform": platform,
             "duration_ms": action_result.get("duration_ms", 0),
             "actions": [action_result],
             "output": output,
@@ -669,7 +679,7 @@ class BaseAW:
 
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": self.PLATFORM, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            params={"platform": platform, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
             success=success,
             response=full_result,
             duration_ms=duration_ms,
@@ -1015,7 +1025,18 @@ class BaseAW:
         Returns:
             截图的 base64 编码，失败返回空字符串。
         """
-        result = self.client.screenshot(self.PLATFORM)
+        # 公共 AW 继承 User 的平台
+        platform = self.PLATFORM
+        if platform == "common" and self.user:
+            platform = self.user.platform
+
+        user_id = self.user.user_id if self.user else None
+        action_data = {
+            "action_type": "screenshot",
+            "value": f"screenshot_{int(time.time() * 1000)}",
+        }
+        # 直接调用 execute 以传递 user_id
+        result = self.client.execute(platform, [action_data], user_id=user_id)
         if result.get("status") == "success" and result.get("actions"):
             action = result["actions"][0]
             # 优先取 screenshot 字段，其次取 output 字段

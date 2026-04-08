@@ -145,7 +145,11 @@
 ### CheckAW
 
 > 文件路径：`aw/common/check_aw.py`
-> 功能概述：公共检查操作封装（暂无方法）
+> 功能概述：公共检查操作封装
+
+| 方法 | 说明 |
+|------|------|
+| `should_toast_exists(text)` | 断言toast提示文字存在 |
 
 ---
 
