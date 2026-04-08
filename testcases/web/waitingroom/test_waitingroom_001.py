@@ -48,7 +48,7 @@ class TestClass:
         # api预约会议，并开启等候室
         meeting = userA_api.do_create_meeting(
             subject="会议等候室功能",
-            waiting_room=True
+            enableWaitingRoom=True
         )
 
         # STEP 1. WEBRTC主持人、与会者B入会
