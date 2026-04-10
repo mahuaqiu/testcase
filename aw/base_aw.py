@@ -730,19 +730,15 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_click",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-        }
-
-        return self._execute_with_log("image_click", action_data, {"image_path": image_path, **kwargs})
+        return self._exec("image_click",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def image_wait(self, image_path: str, **kwargs) -> dict:
         """等待图像出现。
@@ -755,15 +751,9 @@ class BaseAW:
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_wait",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-        }
-
-        return self._execute_with_log("image_wait", action_data, {"image_path": image_path, **kwargs})
+        return self._exec("image_wait",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def image_assert(self, image_path: str, **kwargs) -> dict:
         """断言图像存在。
@@ -776,15 +766,9 @@ class BaseAW:
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_assert",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-        }
-
-        return self._execute_with_log("image_assert", action_data, {"image_path": image_path, **kwargs})
+        return self._exec("image_assert",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def image_click_near_text(self, image_path: str, text: str, **kwargs) -> dict:
         """点击文本附近最近的图像。
@@ -794,21 +778,14 @@ class BaseAW:
             text: 文本内容。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
+            max_distance: 最大搜索距离（像素），默认 500。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_click_near_text",
-            "image_base64": image_base64,
-            "value": text,
-            "end_x": kwargs.get("max_distance", 500),
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-        }
-
-        return self._execute_with_log("image_click_near_text", action_data, {"image_path": image_path, "text": text, **kwargs})
+        return self._exec("image_click_near_text",
+            {"image_base64": image_base64, "value": text, "end_x": kwargs.get("max_distance", 500), **self._image_params(kwargs)},
+            {"image_path": image_path, "text": text, **kwargs})
 
     def image_move(self, image_path: str, **kwargs) -> dict:
         """图像识别后移动鼠标（仅桌面端支持）。
@@ -817,19 +794,15 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 移动偏移量 {"x": 0, "y": 0}。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_move",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-        }
-
-        return self._execute_with_log("image_move", action_data, {"image_path": image_path, **kwargs})
+        return self._exec("image_move",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def image_double_click(self, image_path: str, **kwargs) -> dict:
         """图像识别后双击。
@@ -844,18 +817,9 @@ class BaseAW:
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_double_click",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-            "index": kwargs.get("index", 0),
-        }
-        if "offset" in kwargs:
-            action_data["offset"] = kwargs["offset"]
-
-        return self._execute_with_log("image_double_click", action_data, {"image_path": image_path, **kwargs})
+        return self._exec("image_double_click",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def image_exist(self, image_path: str, **kwargs) -> bool:
         """检查图像是否存在。
@@ -872,18 +836,9 @@ class BaseAW:
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_exist",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-            "index": kwargs.get("index", 0),
-        }
-
-        # 使用特殊处理：image_exist 不抛异常
-        result = self._execute_exist_check("image_exist", action_data, {"image_path": image_path, **kwargs})
-        return result.get("exists", False)
+        return self._exec_bool("image_exist",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def image_get_position(self, image_path: str, **kwargs) -> list:
         """获取图像坐标列表。
@@ -896,30 +851,12 @@ class BaseAW:
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]。
         """
-        import json
-
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "image_get_position",
-            "image_base64": image_base64,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),
-        }
-
-        result = self._execute_with_log("image_get_position", action_data, {"image_path": image_path, **kwargs})
-        # 从 output 中解析 positions
-        if result.get("actions"):
-            output = result["actions"][0].get("output", "")
-            if output:
-                try:
-                    output_data = json.loads(output)
-                    return output_data.get("positions", [])
-                except (json.JSONDecodeError, TypeError):
-                    pass
-        return []
+        return self._exec_list("image_get_position",
+            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_path": image_path, **kwargs})
 
     def click(self, x: int, y: int) -> dict:
         """坐标点击。
