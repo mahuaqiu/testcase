@@ -219,6 +219,7 @@ class HTMLReportGenerator:
                 "user_id": user_id or step_args.get("user_id", ""),
                 "user_name": step_args.get("user_name", ""),
                 "user_account": step_args.get("user_account", ""),
+                "user_ip": step_args.get("user_ip", ""),
             }
 
             business_blocks[block_key] = {
@@ -250,6 +251,7 @@ class HTMLReportGenerator:
                 "user_id": user_id,
                 "user_name": args.get("user_name", ""),
                 "user_account": args.get("user_account", ""),
+                "user_ip": args.get("user_ip", ""),
             }
 
             top_blocks.append({
@@ -412,11 +414,14 @@ class HTMLReportGenerator:
         user_id_display = user_info.get("user_id", "") or "未知"
         user_name_display = user_info.get("user_name", "") or ""
         user_account_display = user_info.get("user_account", "") or ""
+        user_ip_display = user_info.get("user_ip", "") or ""
 
         status_icon = "✓" if success else "✗"
 
-        # 用户信息行
+        # 用户信息行：user_id · IP · user_name · user_account
         user_parts = [user_id_display]
+        if user_ip_display:
+            user_parts.append(user_ip_display)
         if user_name_display:
             user_parts.append(user_name_display)
         if user_account_display:

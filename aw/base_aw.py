@@ -157,12 +157,18 @@ class BaseAW:
             if queue is not None:
                 # 构建 Action 对象并添加到队列
                 user_id = self.user.user_id if self.user else ""
+                user_name = self.user.name if self.user else ""
+                user_account = self.user.account if self.user else ""
+                user_ip = self.user.ip if self.user else ""
                 # 获取 parent_aw（用于日志聚合）
                 parent_aw = self._find_parent_aw()
                 action_obj = Action(
                     action_data=action_data,
                     platform=platform,
                     user_id=user_id,
+                    user_name=user_name,
+                    user_account=user_account,
+                    user_ip=user_ip,
                     aw_name=self._aw_name,
                     method=method,
                     log_args=log_args,
@@ -219,6 +225,7 @@ class BaseAW:
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
         user_name = self.user.name if self.user else ""
+        user_ip = self.user.ip if self.user else ""
 
         # 构建完整的 result（包含 status/duration_ms/output/error）
         full_result = {
@@ -235,7 +242,7 @@ class BaseAW:
         logger.log_aw_call(
             aw_name=self._aw_name,
             method=method,
-            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **log_args},
             success=success,
             result=full_result,
             duration_ms=duration_ms,
@@ -247,7 +254,7 @@ class BaseAW:
         # 记录 worker 调用日志（用于调试，报告中不显示）
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": platform, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            params={"platform": platform, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **log_args},
             success=success,
             response=full_result,
             duration_ms=duration_ms,
@@ -541,11 +548,17 @@ class BaseAW:
             queue = get_action_queue()
             if queue is not None:
                 user_id = self.user.user_id if self.user else ""
+                user_name = self.user.name if self.user else ""
+                user_account = self.user.account if self.user else ""
+                user_ip = self.user.ip if self.user else ""
                 parent_aw = self._find_parent_aw()
                 action_obj = Action(
                     action_data=action_data,
                     platform=platform,
                     user_id=user_id,
+                    user_name=user_name,
+                    user_account=user_account,
+                    user_ip=user_ip,
                     aw_name=self._aw_name,
                     method=method,
                     log_args=log_args,
@@ -604,11 +617,12 @@ class BaseAW:
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
         user_name = self.user.name if self.user else ""
+        user_ip = self.user.ip if self.user else ""
 
         logger.log_aw_call(
             aw_name=self._aw_name,
             method=method,
-            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **log_args},
             success=success,
             result=full_result,
             duration_ms=duration_ms,
@@ -617,7 +631,7 @@ class BaseAW:
 
         logger.log_worker_call(
             api="task/execute",
-            params={"platform": platform, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, **log_args},
+            params={"platform": platform, "method": method, "user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **log_args},
             success=success,
             response=full_result,
             duration_ms=duration_ms,

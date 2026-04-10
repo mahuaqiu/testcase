@@ -78,6 +78,7 @@ class BaseApiAW(BaseAW):
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
         user_name = self.user.name if self.user else ""
+        user_ip = self.user.ip if self.user else ""
         # 获取 parent_aw（用于日志聚合）
         parent_aw = self._find_parent_aw()
 
@@ -86,7 +87,7 @@ class BaseApiAW(BaseAW):
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method="_get_token_from_worker",
-                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": "client is None"},
                 duration_ms=0,
@@ -99,7 +100,7 @@ class BaseApiAW(BaseAW):
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method="_get_token_from_worker",
-                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": "ui_platform is None"},
                 duration_ms=0,
@@ -121,7 +122,7 @@ class BaseApiAW(BaseAW):
                         logger.log_aw_call(
                             aw_name=self._aw_name,
                             method="_get_token_from_worker",
-                            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                             success=True,
                             result={"raw_result": result, "token_keys": list(token_dict.keys())},
                             duration_ms=0,
@@ -132,7 +133,7 @@ class BaseApiAW(BaseAW):
                         logger.log_aw_call(
                             aw_name=self._aw_name,
                             method="_get_token_from_worker",
-                            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                            args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                             success=False,
                             result={"raw_result": result, "error": f"JSON parse failed: {e}", "output": output[:100]},
                             duration_ms=0,
@@ -143,7 +144,7 @@ class BaseApiAW(BaseAW):
                     logger.log_aw_call(
                         aw_name=self._aw_name,
                         method="_get_token_from_worker",
-                        args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                        args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                         success=False,
                         result={"raw_result": result, "error": "output is empty"},
                         duration_ms=0,
@@ -154,7 +155,7 @@ class BaseApiAW(BaseAW):
                 logger.log_aw_call(
                     aw_name=self._aw_name,
                     method="_get_token_from_worker",
-                    args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                    args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                     success=False,
                     result={"raw_result": result, "error": "status not success or no actions", "status": result.get("status")},
                     duration_ms=0,
@@ -165,7 +166,7 @@ class BaseApiAW(BaseAW):
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method="_get_token_from_worker",
-                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "ui_user_id": self.user._ui_user_id if self.user else ""},
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, "ui_user_id": self.user._ui_user_id if self.user else ""},
                 success=False,
                 result={"error": str(e)},
                 duration_ms=0,
@@ -320,7 +321,7 @@ class BaseApiAW(BaseAW):
             final_headers["x-access-token"] = token
 
         # 记录请求参数（用于日志）
-        log_args = {"url": url, "method": method, "user_id": self.user.user_id if self.user else ""}
+        log_args = {"url": url, "method": method, "user_id": self.user.user_id if self.user else "", "user_name": self.user.name if self.user else "", "user_account": self.user.account if self.user else "", "user_ip": self.user.ip if self.user else ""}
         if params:
             log_args["params"] = params
         if json_data:

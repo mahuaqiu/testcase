@@ -83,6 +83,9 @@ class Action:
         action_data: 原始 action 数据（发给服务端）。
         platform: 平台类型。
         user_id: 用户标识（如 userA）。
+        user_name: 用户姓名。
+        user_account: 用户账号。
+        user_ip: 用户 IP 地址。
         aw_name: AW 类名（如 LoginAW）。
         method: 方法名（如 ocr_click）。
         log_args: 用于日志记录的参数字典。
@@ -93,6 +96,9 @@ class Action:
     action_data: Dict[str, Any]
     platform: str
     user_id: str = ""
+    user_name: str = ""
+    user_account: str = ""
+    user_ip: str = ""
     aw_name: str = ""
     method: str = ""
     log_args: Dict[str, Any] = field(default_factory=dict)
@@ -385,7 +391,7 @@ class ParallelContext:
         logger.log_aw_call(
             aw_name=action.aw_name,
             method=action.method,
-            args={"user_id": action.user_id, **action.log_args},
+            args={"user_id": action.user_id, "user_name": action.user_name, "user_account": action.user_account, "user_ip": action.user_ip, **action.log_args},
             success=success,
             result=result,
             duration_ms=action_result.get("duration_ms", 0),
