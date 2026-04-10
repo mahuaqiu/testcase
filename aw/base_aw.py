@@ -718,6 +718,47 @@ class BaseAW:
         # exist 方法不抛异常，直接返回结果
         return {"exists": exists}
 
+    # ── 参数构建器 ─────────────────────────────────────────
+
+    def _ocr_params(self, kwargs: dict) -> dict:
+        """构建 OCR 类 action 的通用参数。
+
+        包含：timeout(默认5秒转毫秒)、index(默认0)、offset
+        """
+        params = {
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "index": kwargs.get("index", 0),  # 总是设置，默认值 0
+        }
+        if "offset" in kwargs:
+            params["offset"] = kwargs["offset"]
+        return params
+
+    def _image_params(self, kwargs: dict) -> dict:
+        """构建 Image 类 action 的通用参数。
+
+        包含：timeout、threshold(默认0.8)、index、offset
+        """
+        params = {
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "threshold": kwargs.get("confidence", 0.8),  # alias
+        }
+        if "index" in kwargs:
+            params["index"] = kwargs["index"]
+        if "offset" in kwargs:
+            params["offset"] = kwargs["offset"]
+        return params
+
+    def _same_row_params(self, kwargs: dict) -> dict:
+        """构建 same_row 类 action 的通用参数。
+
+        包含：anchor_index、target_index、row_tolerance
+        """
+        return {
+            "anchor_index": kwargs.get("anchor_index", 0),
+            "target_index": kwargs.get("target_index", 0),
+            "row_tolerance": kwargs.get("row_tolerance", 20),
+        }
+
     def image_click(self, image_path: str, **kwargs) -> dict:
         """图像识别点击。
 
