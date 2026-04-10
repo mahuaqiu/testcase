@@ -268,7 +268,7 @@ components:
           description: "失败重试次数，任务失败后自动重试"
       example:
         timeout: 60000
-        action_timeout: 10000
+        action_timeout: 5000
         screenshot_on_error: true
         slow_motion: 500
         retry_count: 1
@@ -598,7 +598,7 @@ components:
   # 示例 3: 点击第二个"确定"按钮（index 从 0 开始）
   # {"action_type": "ocr_click", "value": "确定", "index": 1}
   # 示例 4: 点击"登录"按钮并设置超时
-  # {"action_type": "ocr_click", "value": "登录", "timeout": 10000}
+  # {"action_type": "ocr_click", "value": "登录", "timeout": 5000}
 
   # ocr_input - 在文字附近输入文本
   # 示例 1: 在"用户名"标签右侧输入账号
@@ -608,7 +608,7 @@ components:
 
   # ocr_wait - 等待文字出现
   # 示例: 等待"加载完成"出现，最多等 10 秒
-  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 10000}
+  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 5000}
 
   # ocr_assert - 断言文字存在
   # 示例: 断言"操作成功"文字存在
