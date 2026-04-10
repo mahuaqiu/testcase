@@ -104,6 +104,8 @@
 | `ocr_paste(text, content, **kwargs)` | OCR 定位后粘贴剪贴板内容 |
 | `ocr_move(text, **kwargs)` | OCR 定位后移动鼠标（仅桌面端） |
 | `ocr_double_click(text, **kwargs)` | OCR 定位后双击文字 |
+| `ocr_exist(text, **kwargs)` | 检查文字是否存在（返回 bool） |
+| `ocr_get_position(text, **kwargs)` | 获取文字坐标列表 |
 | `ocr_click_same_row_text(anchor_text, target_text, **kwargs)` | 点击锚点文本同一行的目标文本 |
 | `ocr_click_same_row_image(anchor_text, image_path, **kwargs)` | 点击锚点文本同一行的目标图片 |
 | `ocr_check_same_row_text(anchor_text, target_text, **kwargs)` | 检查锚点文本同一行的目标文本是否存在 |
@@ -119,6 +121,8 @@
 | `image_click_near_text(image_path, text, **kwargs)` | 点击文本附近最近的图像 |
 | `image_move(image_path, **kwargs)` | 图像识别后移动鼠标（仅桌面端） |
 | `image_double_click(image_path, **kwargs)` | 图像识别后双击 |
+| `image_exist(image_path, **kwargs)` | 检查图像是否存在（返回 bool） |
+| `image_get_position(image_path, **kwargs)` | 获取图像坐标列表 |
 
 **坐标动作：**
 
@@ -139,6 +143,9 @@
 | `start_app(app_id)` | 启动应用 |
 | `stop_app(app_id)` | 关闭应用 |
 | `navigate(url)` | 导航到 URL（Web 端专用） |
+| `switched_page(page_index)` | 切换到指定页面（Web 端专用） |
+| `close_page()` | 关闭当前页面（Web 端专用） |
+| `web_image_upload(x, y, image_path)` | 处理文件上传弹窗（Web 端专用） |
 | `cmd_exec(command, **kwargs)` | 在宿主机执行命令 |
 | `screenshot()` | 截图并返回 base64 |
 

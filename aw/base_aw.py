@@ -425,6 +425,36 @@ class BaseAW:
         result = self._execute_exist_check("ocr_exist", action_data, {"text": text, **kwargs})
         return result.get("exists", False)
 
+    def ocr_get_position(self, text: str, **kwargs) -> list:
+        """获取文字坐标列表。
+
+        Args:
+            text: 要查找的文字内容。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
+            timeout: 超时时间（秒），默认 5。
+
+        Returns:
+            坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
+        """
+        import json
+
+        action_data = {
+            "action_type": "ocr_get_position",
+            "value": text,
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+
+        result = self._execute_with_log("ocr_get_position", action_data, {"text": text, **kwargs})
+        # 从 output 中解析 positions
+        if result.get("actions"):
+            output = result["actions"][0].get("output", "")
+            if output:
+                try:
+                    output_data = json.loads(output)
+                    return output_data.get("positions", [])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return []
+
     def ocr_click_same_row_text(
         self, anchor_text: str, target_text: str, **kwargs
     ) -> dict:
@@ -850,6 +880,42 @@ class BaseAW:
         result = self._execute_exist_check("image_exist", action_data, {"image_path": image_path, **kwargs})
         return result.get("exists", False)
 
+    def image_get_position(self, image_path: str, **kwargs) -> list:
+        """获取图像坐标列表。
+
+        Args:
+            image_path: 图片路径。
+            timeout: 超时时间（秒），默认 5。
+            confidence: 匹置信度（0-1），默认 0.8。
+
+        Returns:
+            坐标列表 [[x1, y1], [x2, y2], ...]。
+        """
+        import json
+
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        action_data = {
+            "action_type": "image_get_position",
+            "image_base64": image_base64,
+            "timeout": kwargs.get("timeout", 5) * 1000,
+            "threshold": kwargs.get("confidence", 0.8),
+        }
+
+        result = self._execute_with_log("image_get_position", action_data, {"image_path": image_path, **kwargs})
+        # 从 output 中解析 positions
+        if result.get("actions"):
+            output = result["actions"][0].get("output", "")
+            if output:
+                try:
+                    output_data = json.loads(output)
+                    return output_data.get("positions", [])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return []
+
     def click(self, x: int, y: int) -> dict:
         """坐标点击。
 
@@ -1002,6 +1068,53 @@ class BaseAW:
         }
 
         return self._execute_with_log("navigate", action_data, {"url": url})
+
+    def switched_page(self, page_index: int) -> dict:
+        """切换到指定页面（Web 端专用）。
+
+        Args:
+            page_index: 页面索引（从 1 开始），如 1 表示第一个打开的标签页。
+        """
+        action_data = {
+            "action_type": "switched_page",
+            "value": str(page_index),
+        }
+
+        return self._execute_with_log("switched_page", action_data, {"page_index": page_index})
+
+    def close_page(self) -> dict:
+        """关闭当前页面（Web 端专用）。
+
+        关闭后会自动切换到浏览器当前显示的页面。
+        """
+        action_data = {
+            "action_type": "close_page",
+        }
+
+        return self._execute_with_log("close_page", action_data, {})
+
+    def web_image_upload(self, x: int, y: int, image_path: str) -> dict:
+        """处理文件上传弹窗（Web 端专用）。
+
+        使用 Playwright 文件选择器 API 处理原生文件上传对话框。
+
+        Args:
+            x: 点击位置的 X 坐标。
+            y: 点击位置的 Y 坐标。
+            image_path: 要上传的图片路径。
+        """
+        image_base64 = self._load_image_as_base64(image_path)
+        if not image_base64:
+            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+
+        action_data = {
+            "action_type": "web_image_upload",
+            "x": x,
+            "y": y,
+            "image_base64": image_base64,
+        }
+
+        return self._execute_with_log("web_image_upload", action_data, {"x": x, "y": y, "image_path": image_path})
 
     def cmd_exec(self, command: str, **kwargs) -> dict:
         """在宿主机执行命令。
