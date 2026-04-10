@@ -922,133 +922,49 @@ class BaseAW:
     # ── 其他动作 ─────────────────────────────────────────
 
     def press(self, key: str) -> dict:
-        """按键操作。
-
-        Args:
-            key: 按键名称（如 "Enter", "Tab", "Escape"）。
-        """
-        action_data = {
-            "action_type": "press",
-            "key": key,
-        }
-
-        return self._execute_with_log("press", action_data, {"key": key})
+        """按键操作。"""
+        return self._exec("press", {"key": key}, {"key": key})
 
     def wait(self, duration: float) -> dict:
-        """固定等待。
-
-        Args:
-            duration: 等待时间（秒），与 time.sleep() 单位一致。
-        """
+        """固定等待。"""
         duration_ms = int(duration * 1000)
-        action_data = {
-            "action_type": "wait",
-            "value": str(duration_ms),
-        }
-
-        return self._execute_with_log("wait", action_data, {"duration_ms": duration_ms})
+        return self._exec("wait", {"value": str(duration_ms)}, {"duration_ms": duration_ms})
 
     def start_app(self, app_id: str) -> dict:
-        """启动应用。
-
-        Args:
-            app_id: 应用 ID 或名称。
-        """
-        action_data = {
-            "action_type": "start_app",
-            "value": app_id,
-        }
-
-        return self._execute_with_log("start_app", action_data, {"app_id": app_id})
+        """启动应用。"""
+        return self._exec("start_app", {"value": app_id}, {"app_id": app_id})
 
     def stop_app(self, app_id: str) -> dict:
-        """关闭应用。
-
-        Args:
-            app_id: 应用 ID 或名称。
-        """
-        action_data = {
-            "action_type": "stop_app",
-            "value": app_id,
-        }
-
-        return self._execute_with_log("stop_app", action_data, {"app_id": app_id})
+        """关闭应用。"""
+        return self._exec("stop_app", {"value": app_id}, {"app_id": app_id})
 
     def navigate(self, url: str) -> dict:
-        """导航到 URL（Web 端专用）。
-
-        Args:
-            url: 目标 URL。
-        """
-        action_data = {
-            "action_type": "navigate",
-            "value": url,
-        }
-
-        return self._execute_with_log("navigate", action_data, {"url": url})
+        """导航到 URL（Web 端专用）。"""
+        return self._exec("navigate", {"value": url}, {"url": url})
 
     def switched_page(self, page_index: int) -> dict:
-        """切换到指定页面（Web 端专用）。
-
-        Args:
-            page_index: 页面索引（从 1 开始），如 1 表示第一个打开的标签页。
-        """
-        action_data = {
-            "action_type": "switched_page",
-            "value": str(page_index),
-        }
-
-        return self._execute_with_log("switched_page", action_data, {"page_index": page_index})
+        """切换到指定页面（Web 端专用）。"""
+        return self._exec("switched_page", {"value": str(page_index)}, {"page_index": page_index})
 
     def close_page(self) -> dict:
-        """关闭当前页面（Web 端专用）。
-
-        关闭后会自动切换到浏览器当前显示的页面。
-        """
-        action_data = {
-            "action_type": "close_page",
-        }
-
-        return self._execute_with_log("close_page", action_data, {})
+        """关闭当前页面（Web 端专用）。"""
+        return self._exec("close_page", {}, {})
 
     def web_image_upload(self, x: int, y: int, image_path: str) -> dict:
-        """处理文件上传弹窗（Web 端专用）。
-
-        使用 Playwright 文件选择器 API 处理原生文件上传对话框。
-
-        Args:
-            x: 点击位置的 X 坐标。
-            y: 点击位置的 Y 坐标。
-            image_path: 要上传的图片路径。
-        """
+        """处理文件上传弹窗（Web 端专用）。"""
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
-
-        action_data = {
-            "action_type": "web_image_upload",
-            "x": x,
-            "y": y,
-            "image_base64": image_base64,
-        }
-
-        return self._execute_with_log("web_image_upload", action_data, {"x": x, "y": y, "image_path": image_path})
+        return self._exec("web_image_upload",
+            {"x": x, "y": y, "image_base64": image_base64},
+            {"x": x, "y": y, "image_path": image_path})
 
     def cmd_exec(self, command: str, **kwargs) -> dict:
-        """在宿主机执行命令。
-
-        Args:
-            command: 要执行的命令字符串。
-            timeout: 超时时间（秒），默认 30。
-        """
+        """在宿主机执行命令。"""
         timeout_ms = kwargs.get("timeout", 30) * 1000
-        action_data = {
-            "action_type": "cmd_exec",
-            "value": command,
-            "timeout": timeout_ms,
-        }
-
-        return self._execute_with_log("cmd_exec", action_data, {"command": command, **kwargs})
+        return self._exec("cmd_exec",
+            {"value": command, "timeout": timeout_ms},
+            {"command": command, **kwargs})
 
     def screenshot(self) -> str:
         """截图并返回 base64。
