@@ -337,8 +337,8 @@ class BaseApiAW(BaseAW):
                 verify=False
             )
 
-            # 401 时尝试从 worker 获取 token 或重新登录
-            if response.status_code == 401 and need_token:
+            # 401/403 时尝试从 worker 获取 token 或重新登录
+            if response.status_code in (401, 403) and need_token:
                 # 清除缓存的 token
                 self._token_info = None
 
@@ -363,8 +363,8 @@ class BaseApiAW(BaseAW):
                             verify=False
                         )
 
-                        # worker token 也 401，则执行 API login
-                        if response.status_code == 401:
+                        # worker token 也返回 401/403，则执行 API login
+                        if response.status_code in (401, 403):
                             token = self._ensure_token()
                             final_headers["x-auth-token"] = token
                             final_headers["x-access-token"] = token
@@ -416,7 +416,7 @@ class BaseApiAW(BaseAW):
                 retry_reason = "worker_token" if worker_token else "api_login"
                 logger.log_aw_call(
                     aw_name=self._aw_name,
-                    method=f"{method}_retry_after_401_{retry_reason}",
+                    method=f"{method}_retry_after_401_or_403_{retry_reason}",
                     args=log_args,
                     success=success,
                     result={"status_code": response.status_code, "body": response.text[:500]},
