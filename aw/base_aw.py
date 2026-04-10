@@ -759,6 +759,60 @@ class BaseAW:
             "row_tolerance": kwargs.get("row_tolerance", 20),
         }
 
+    # ── 执行包装层 ─────────────────────────────────────────
+
+    def _exec(
+        self,
+        action_type: str,
+        action_data: dict,
+        log_args: dict,
+    ) -> dict:
+        """执行 action 并记录日志，失败时抛 AWError。
+
+        Args:
+            action_type: 动作类型，如 "ocr_click"
+            action_data: 发给 worker 的完整 action dict
+            log_args: 用于日志记录的参数
+        """
+        return self._execute_with_log(action_type, action_data, log_args)
+
+    def _exec_bool(self, action_type: str, action_data: dict, log_args: dict) -> bool:
+        """执行 exist 类 action，返回 bool，不抛异常。"""
+        result = self._execute_exist_check(action_type, action_data, log_args)
+        return result.get("exists", False)
+
+    def _exec_str(
+        self,
+        action_type: str,
+        action_data: dict,
+        log_args: dict,
+        field: str = "output"
+    ) -> str:
+        """执行 action 并提取 str 返回值。"""
+        result = self._exec(action_type, action_data, log_args)
+        if result.get("actions"):
+            return result["actions"][0].get(field, "")
+        return ""
+
+    def _exec_list(
+        self,
+        action_type: str,
+        action_data: dict,
+        log_args: dict,
+        key: str = "positions"
+    ) -> list:
+        """执行 action 并解析 list 返回值（如 positions）。"""
+        import json
+        result = self._exec(action_type, action_data, log_args)
+        if result.get("actions"):
+            output = result["actions"][0].get("output", "")
+            if output:
+                try:
+                    return json.loads(output).get(key, [])
+                except json.JSONDecodeError:
+                    pass
+        return []
+
     def image_click(self, image_path: str, **kwargs) -> dict:
         """图像识别点击。
 
