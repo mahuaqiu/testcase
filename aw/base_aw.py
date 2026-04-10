@@ -270,16 +270,9 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "ocr_click",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "index": kwargs.get("index", 0),
-        }
-        if "offset" in kwargs:
-            action_data["offset"] = kwargs["offset"]
-
-        return self._execute_with_log("ocr_click", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_click",
+            {"value": text, **self._ocr_params(kwargs)},
+            {"text": text, **kwargs})
 
     def ocr_input(self, label: str, content: str, **kwargs) -> dict:
         """OCR 定位后输入。
@@ -291,17 +284,9 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 输入偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "ocr_input",
-            "value": label,
-            "text": content,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "index": kwargs.get("index", 0),
-        }
-        if "offset" in kwargs:
-            action_data["offset"] = kwargs["offset"]
-
-        return self._execute_with_log("ocr_input", action_data, {"label": label, "content": content, **kwargs})
+        return self._exec("ocr_input",
+            {"value": label, "text": content, **self._ocr_params(kwargs)},
+            {"label": label, "content": content, **kwargs})
 
     def ocr_wait(self, text: str, **kwargs) -> dict:
         """等待文字出现。
@@ -310,13 +295,9 @@ class BaseAW:
             text: 要等待的文字。
             timeout: 超时时间（秒），默认 5。
         """
-        action_data = {
-            "action_type": "ocr_wait",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        return self._execute_with_log("ocr_wait", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_wait",
+            {"value": text, "timeout": kwargs.get("timeout", 5) * 1000},
+            {"text": text, **kwargs})
 
     def ocr_assert(self, text: str, **kwargs) -> dict:
         """断言文字存在。
@@ -325,13 +306,9 @@ class BaseAW:
             text: 要断言的文字。
             timeout: 超时时间（秒），默认 5。
         """
-        action_data = {
-            "action_type": "ocr_assert",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        return self._execute_with_log("ocr_assert", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_assert",
+            {"value": text, "timeout": kwargs.get("timeout", 5) * 1000},
+            {"text": text, **kwargs})
 
     def ocr_get_text(self, **kwargs) -> str:
         """获取屏幕所有文字。
@@ -339,17 +316,9 @@ class BaseAW:
         Returns:
             识别到的文字内容。
         """
-        action_data = {
-            "action_type": "ocr_get_text",
-            "value": "",
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        result = self._execute_with_log("ocr_get_text", action_data, {**kwargs})
-        # 从结果中提取文字
-        if result.get("actions"):
-            return result["actions"][0].get("output", "")
-        return ""
+        return self._exec_str("ocr_get_text",
+            {"value": "", "timeout": kwargs.get("timeout", 5) * 1000},
+            {**kwargs})
 
     def ocr_paste(self, text: str, content: str, **kwargs) -> dict:
         """OCR 定位后粘贴剪贴板内容。
@@ -358,15 +327,12 @@ class BaseAW:
             text: 要定位的文字。
             content: 剪贴板内容。
             timeout: 超时时间（秒），默认 5。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "ocr_paste",
-            "value": text,
-            "text": content,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        return self._execute_with_log("ocr_paste", action_data, {"text": text, "content": content, **kwargs})
+        return self._exec("ocr_paste",
+            {"value": text, "text": content, **self._ocr_params(kwargs)},
+            {"text": text, "content": content, **kwargs})
 
     def ocr_move(self, text: str, **kwargs) -> dict:
         """OCR 定位后移动鼠标（仅桌面端支持）。
@@ -374,14 +340,12 @@ class BaseAW:
         Args:
             text: 要定位的文字。
             timeout: 超时时间（秒），默认 5。
+            index: 选择第几个匹配结果（从 0 开始）。
+            offset: 点击偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "ocr_move",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        return self._execute_with_log("ocr_move", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_move",
+            {"value": text, **self._ocr_params(kwargs)},
+            {"text": text, **kwargs})
 
     def ocr_double_click(self, text: str, **kwargs) -> dict:
         """OCR 定位后双击。
@@ -392,16 +356,9 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "ocr_double_click",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "index": kwargs.get("index", 0),
-        }
-        if "offset" in kwargs:
-            action_data["offset"] = kwargs["offset"]
-
-        return self._execute_with_log("ocr_double_click", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_double_click",
+            {"value": text, **self._ocr_params(kwargs)},
+            {"text": text, **kwargs})
 
     def ocr_exist(self, text: str, **kwargs) -> bool:
         """检查文字是否存在。
@@ -414,16 +371,9 @@ class BaseAW:
         Returns:
             True 如果文字存在，False 如果不存在。不抛异常。
         """
-        action_data = {
-            "action_type": "ocr_exist",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-            "index": kwargs.get("index", 0),
-        }
-
-        # 使用特殊处理：ocr_exist 不抛异常
-        result = self._execute_exist_check("ocr_exist", action_data, {"text": text, **kwargs})
-        return result.get("exists", False)
+        return self._exec_bool("ocr_exist",
+            {"value": text, **self._ocr_params(kwargs)},
+            {"text": text, **kwargs})
 
     def ocr_get_position(self, text: str, **kwargs) -> list:
         """获取文字坐标列表。
@@ -435,25 +385,9 @@ class BaseAW:
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
         """
-        import json
-
-        action_data = {
-            "action_type": "ocr_get_position",
-            "value": text,
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        result = self._execute_with_log("ocr_get_position", action_data, {"text": text, **kwargs})
-        # 从 output 中解析 positions
-        if result.get("actions"):
-            output = result["actions"][0].get("output", "")
-            if output:
-                try:
-                    output_data = json.loads(output)
-                    return output_data.get("positions", [])
-                except (json.JSONDecodeError, TypeError):
-                    pass
-        return []
+        return self._exec_list("ocr_get_position",
+            {"value": text, "timeout": kwargs.get("timeout", 5) * 1000},
+            {"text": text, **kwargs})
 
     def ocr_click_same_row_text(
         self, anchor_text: str, target_text: str, **kwargs
@@ -470,22 +404,16 @@ class BaseAW:
             offset: 点击偏移量 {"x": 0, "y": 0}。
         """
         action_data = {
-            "action_type": "ocr_click_same_row_text",
             "anchor_text": anchor_text,
             "value": target_text,
-            "anchor_index": kwargs.get("anchor_index", 0),
-            "target_index": kwargs.get("target_index", 0),
-            "row_tolerance": kwargs.get("row_tolerance", 20),
+            **self._same_row_params(kwargs),
             "timeout": kwargs.get("timeout", 5) * 1000,
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
 
-        return self._execute_with_log(
-            "ocr_click_same_row_text",
-            action_data,
-            {"anchor_text": anchor_text, "target_text": target_text, **kwargs},
-        )
+        return self._exec("ocr_click_same_row_text", action_data,
+            {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
 
     def ocr_click_same_row_image(
         self, anchor_text: str, image_path: str, **kwargs
@@ -507,23 +435,17 @@ class BaseAW:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
         action_data = {
-            "action_type": "ocr_click_same_row_image",
             "anchor_text": anchor_text,
             "image_base64": image_base64,
-            "anchor_index": kwargs.get("anchor_index", 0),
-            "target_index": kwargs.get("target_index", 0),
-            "row_tolerance": kwargs.get("row_tolerance", 20),
+            **self._same_row_params(kwargs),
             "threshold": kwargs.get("confidence", 0.8),
             "timeout": kwargs.get("timeout", 5) * 1000,
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
 
-        return self._execute_with_log(
-            "ocr_click_same_row_image",
-            action_data,
-            {"anchor_text": anchor_text, "image_path": image_path, **kwargs},
-        )
+        return self._exec("ocr_click_same_row_image", action_data,
+            {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
 
     def ocr_check_same_row_text(
         self, anchor_text: str, target_text: str, **kwargs
@@ -538,21 +460,14 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
         """
-        action_data = {
-            "action_type": "ocr_check_same_row_text",
-            "anchor_text": anchor_text,
-            "value": target_text,
-            "anchor_index": kwargs.get("anchor_index", 0),
-            "target_index": kwargs.get("target_index", 0),
-            "row_tolerance": kwargs.get("row_tolerance", 20),
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        return self._execute_with_log(
-            "ocr_check_same_row_text",
-            action_data,
-            {"anchor_text": anchor_text, "target_text": target_text, **kwargs},
-        )
+        return self._exec("ocr_check_same_row_text",
+            {
+                "anchor_text": anchor_text,
+                "value": target_text,
+                **self._same_row_params(kwargs),
+                "timeout": kwargs.get("timeout", 5) * 1000,
+            },
+            {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
 
     def ocr_check_same_row_image(
         self, anchor_text: str, image_path: str, **kwargs
@@ -572,22 +487,15 @@ class BaseAW:
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        action_data = {
-            "action_type": "ocr_check_same_row_image",
-            "anchor_text": anchor_text,
-            "image_base64": image_base64,
-            "anchor_index": kwargs.get("anchor_index", 0),
-            "target_index": kwargs.get("target_index", 0),
-            "row_tolerance": kwargs.get("row_tolerance", 20),
-            "threshold": kwargs.get("confidence", 0.8),
-            "timeout": kwargs.get("timeout", 5) * 1000,
-        }
-
-        return self._execute_with_log(
-            "ocr_check_same_row_image",
-            action_data,
-            {"anchor_text": anchor_text, "image_path": image_path, **kwargs},
-        )
+        return self._exec("ocr_check_same_row_image",
+            {
+                "anchor_text": anchor_text,
+                "image_base64": image_base64,
+                **self._same_row_params(kwargs),
+                "threshold": kwargs.get("confidence", 0.8),
+                "timeout": kwargs.get("timeout", 5) * 1000,
+            },
+            {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
 
     # ── 图像识别动作 ─────────────────────────────────────────
 
@@ -774,11 +682,13 @@ class BaseAW:
             action_data: 发给 worker 的完整 action dict
             log_args: 用于日志记录的参数
         """
-        return self._execute_with_log(action_type, action_data, log_args)
+        full_action_data = {"action_type": action_type, **action_data}
+        return self._execute_with_log(action_type, full_action_data, log_args)
 
     def _exec_bool(self, action_type: str, action_data: dict, log_args: dict) -> bool:
         """执行 exist 类 action，返回 bool，不抛异常。"""
-        result = self._execute_exist_check(action_type, action_data, log_args)
+        full_action_data = {"action_type": action_type, **action_data}
+        result = self._execute_exist_check(action_type, full_action_data, log_args)
         return result.get("exists", False)
 
     def _exec_str(
