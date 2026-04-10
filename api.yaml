@@ -268,7 +268,7 @@ components:
           description: "失败重试次数，任务失败后自动重试"
       example:
         timeout: 60000
-        action_timeout: 5000
+        action_timeout: 10000
         screenshot_on_error: true
         slow_motion: 500
         retry_count: 1
@@ -312,6 +312,11 @@ components:
             - start_app
             - stop_app
             - navigate
+            - switched_page
+            - close_page
+            - web_image_upload
+            - ocr_get_position
+            - image_get_position
             - cmd_exec
           description: |
             动作类型，分为以下几类：
@@ -330,6 +335,7 @@ components:
             - ocr_click_same_row_image: 点击锚点文本同一行的目标图片
             - ocr_check_same_row_text: 检查锚点文本同一行的目标文本是否存在
             - ocr_check_same_row_image: 检查锚点文本同一行的目标图片是否存在
+            - ocr_get_position: 获取文字坐标列表，返回 {"positions": [[x1,y1], [x2,y2], ...]}
 
             【图像识别动作】
             - image_click: 点击匹配到的图像位置
@@ -339,6 +345,7 @@ components:
             - image_move: 移动鼠标到匹配的图像位置（仅桌面端）
             - image_double_click: 双击匹配到的图像位置
             - image_exist: 检查图像是否存在，返回 {"exists": true/false}
+            - image_get_position: 获取图片坐标列表，返回 {"positions": [[x1,y1], [x2,y2], ...]}
 
             【坐标动作】
             - click: 点击指定坐标
@@ -354,6 +361,9 @@ components:
             - start_app: 启动应用/浏览器
             - stop_app: 关闭应用/浏览器
             - navigate: 跳转 URL（Web 专用）
+            - switched_page: 切换到指定页面（Web 专用）
+            - close_page: 关闭当前页面（Web 专用）
+            - web_image_upload: 处理文件上传弹窗（Web 专用）
             - cmd_exec: 在宿主机执行 shell/cmd 命令
         value:
           type: string
@@ -373,6 +383,10 @@ components:
               - iOS: Bundle ID，如 "com.example.app"
             - stop_app: 应用包名（可选，不填则关闭当前应用）
             - navigate: 要跳转的 URL
+            - switched_page: 页面索引（从 1 开始），如 "1"、"2"、"3"
+            - close_page: 此字段不使用
+            - web_image_upload: 此字段不使用
+            - ocr_get_position: 要查找的文字内容（支持 reg_ 前缀正则匹配）
             - cmd_exec: 要执行的命令字符串，如 "echo hello" 或 "dir C:\\Users"
         text:
           type: string
@@ -380,9 +394,11 @@ components:
         image_base64:
           type: string
           description: |
-            图像模板 base64 编码，仅 image_* 动作必填：
+            图像模板 base64 编码，仅 image_* 动作和 web_image_upload 必填：
             - image_click/image_wait/image_assert: 要匹配的图像模板
             - image_click_near_text: 要查找的图像模板
+            - image_get_position: 要查找的图像模板
+            - web_image_upload: 要上传的图片
         index:
           type: integer
           default: 0
@@ -582,7 +598,7 @@ components:
   # 示例 3: 点击第二个"确定"按钮（index 从 0 开始）
   # {"action_type": "ocr_click", "value": "确定", "index": 1}
   # 示例 4: 点击"登录"按钮并设置超时
-  # {"action_type": "ocr_click", "value": "登录", "timeout": 5000}
+  # {"action_type": "ocr_click", "value": "登录", "timeout": 10000}
 
   # ocr_input - 在文字附近输入文本
   # 示例 1: 在"用户名"标签右侧输入账号
@@ -592,7 +608,7 @@ components:
 
   # ocr_wait - 等待文字出现
   # 示例: 等待"加载完成"出现，最多等 10 秒
-  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 5000}
+  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 10000}
 
   # ocr_assert - 断言文字存在
   # 示例: 断言"操作成功"文字存在
@@ -770,6 +786,37 @@ components:
   # navigate - 跳转 URL（仅 Web 平台）
   # 示例: 跳转到示例网站
   # {"action_type": "navigate", "value": "https://example.com"}
+
+  # switched_page - 切换到指定页面（仅 Web 平台）
+  # 示例 1: 切换到第 1 个页面（第一个打开的标签页）
+  # {"action_type": "switched_page", "value": "1"}
+  # 示例 2: 切换到第 2 个页面
+  # {"action_type": "switched_page", "value": "2"}
+  # 示例 3: 切换到第 3 个页面
+  # {"action_type": "switched_page", "value": "3"}
+
+  # close_page - 关闭当前页面（仅 Web 平台）
+  # 关闭后会自动切换到浏览器当前显示的页面
+  # 示例: 关闭当前页面
+  # {"action_type": "close_page"}
+
+  # web_image_upload - 处理文件上传弹窗（仅 Web 平台）
+  # 使用 Playwright 文件选择器 API 处理原生文件上传对话框
+  # 示例: 点击上传按钮位置并上传图片
+  # {"action_type": "web_image_upload", "x": 500, "y": 300, "image_base64": "<base64_encoded_image>"}
+
+  # ocr_get_position - 获取文字坐标列表
+  # 返回 {"positions": [[x1, y1], [x2, y2], ...]}
+  # 坐标顺序：精确匹配 → 模糊匹配
+  # 示例 1: 获取"登录"文字的所有坐标
+  # {"action_type": "ocr_get_position", "value": "登录"}
+  # 示例 2: 使用正则匹配获取所有数字坐标
+  # {"action_type": "ocr_get_position", "value": "reg_\\d+"}
+
+  # image_get_position - 获取图片坐标列表
+  # 返回 {"positions": [[x1, y1], [x2, y2], ...]}
+  # 示例: 获取匹配图片的所有坐标
+  # {"action_type": "image_get_position", "image_base64": "<base64_encoded_image>", "threshold": 0.8}
 
   # cmd_exec - 在宿主机执行命令
   # 示例 1: 执行简单命令
