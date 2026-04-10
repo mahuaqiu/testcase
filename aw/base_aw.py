@@ -865,13 +865,7 @@ class BaseAW:
             x: X 坐标。
             y: Y 坐标。
         """
-        action_data = {
-            "action_type": "click",
-            "x": x,
-            "y": y,
-        }
-
-        return self._execute_with_log("click", action_data, {"x": x, "y": y})
+        return self._exec("click", {"x": x, "y": y}, {"x": x, "y": y})
 
     def double_click(self, x: int, y: int, **kwargs) -> dict:
         """坐标双击。
@@ -881,15 +875,10 @@ class BaseAW:
             y: Y 坐标。
             offset: 点击偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "double_click",
-            "x": x,
-            "y": y,
-        }
+        action_data = {"x": x, "y": y}
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
-
-        return self._execute_with_log("double_click", action_data, {"x": x, "y": y, **kwargs})
+        return self._exec("double_click", action_data, {"x": x, "y": y, **kwargs})
 
     def move(self, x: int, y: int, **kwargs) -> dict:
         """移动鼠标到指定坐标（仅桌面端支持）。
@@ -897,14 +886,12 @@ class BaseAW:
         Args:
             x: X 坐标。
             y: Y 坐标。
+            offset: 移动偏移量 {"x": 0, "y": 0}。
         """
-        action_data = {
-            "action_type": "move",
-            "x": x,
-            "y": y,
-        }
-
-        return self._execute_with_log("move", action_data, {"x": x, "y": y, **kwargs})
+        action_data = {"x": x, "y": y}
+        if "offset" in kwargs:
+            action_data["offset"] = kwargs["offset"]
+        return self._exec("move", action_data, {"x": x, "y": y, **kwargs})
 
     def swipe(self, from_x: int, from_y: int, to_x: int, to_y: int, **kwargs) -> dict:
         """滑动操作。
@@ -916,15 +903,11 @@ class BaseAW:
             to_y: 终点 Y 坐标。
             duration: 滑动持续时间（毫秒）。
         """
-        action_data = {
-            "action_type": "swipe",
-            "from": {"x": from_x, "y": from_y},
-            "to": {"x": to_x, "y": to_y},
-        }
+        action_data = {"from": {"x": from_x, "y": from_y}, "to": {"x": to_x, "y": to_y}}
         if "duration" in kwargs:
             action_data["duration"] = kwargs["duration"]
-
-        return self._execute_with_log("swipe", action_data, {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs})
+        return self._exec("swipe", action_data,
+            {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs})
 
     def input_text(self, x: int, y: int, text: str) -> dict:
         """在指定坐标输入文本。
@@ -934,14 +917,7 @@ class BaseAW:
             y: Y 坐标。
             text: 要输入的文本。
         """
-        action_data = {
-            "action_type": "input",
-            "x": x,
-            "y": y,
-            "text": text,
-        }
-
-        return self._execute_with_log("input_text", action_data, {"x": x, "y": y, "text": text})
+        return self._exec("input", {"x": x, "y": y, "text": text}, {"x": x, "y": y, "text": text})
 
     # ── 其他动作 ─────────────────────────────────────────
 
