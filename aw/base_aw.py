@@ -276,6 +276,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         return self._exec("ocr_click",
             {"value": text, **self._ocr_params(kwargs)},
@@ -290,6 +291,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 输入偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         return self._exec("ocr_input",
             {"value": label, "text": content, **self._ocr_params(kwargs)},
@@ -301,10 +303,12 @@ class BaseAW:
         Args:
             text: 要等待的文字。
             timeout: 超时时间（秒），默认 5。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
-        return self._exec("ocr_wait",
-            {"value": text, "timeout": kwargs.get("timeout", 5) * 1000},
-            {"text": text, **kwargs})
+        action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
+        return self._exec("ocr_wait", action_data, {"text": text, **kwargs})
 
     def ocr_assert(self, text: str, **kwargs) -> dict:
         """断言文字存在。
@@ -312,20 +316,27 @@ class BaseAW:
         Args:
             text: 要断言的文字。
             timeout: 超时时间（秒），默认 5。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
-        return self._exec("ocr_assert",
-            {"value": text, "timeout": kwargs.get("timeout", 5) * 1000},
-            {"text": text, **kwargs})
+        action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
+        return self._exec("ocr_assert", action_data, {"text": text, **kwargs})
 
     def ocr_get_text(self, **kwargs) -> str:
         """获取屏幕所有文字。
 
+        Args:
+            timeout: 超时时间（秒），默认 5。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+
         Returns:
             识别到的文字内容。
         """
-        return self._exec_str("ocr_get_text",
-            {"value": "", "timeout": kwargs.get("timeout", 5) * 1000},
-            {**kwargs})
+        action_data = {"value": "", "timeout": kwargs.get("timeout", 5) * 1000}
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
+        return self._exec_str("ocr_get_text", action_data, {**kwargs})
 
     def ocr_paste(self, text: str, content: str, **kwargs) -> dict:
         """OCR 定位后粘贴剪贴板内容。
@@ -336,6 +347,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         return self._exec("ocr_paste",
             {"value": text, "text": content, **self._ocr_params(kwargs)},
@@ -349,6 +361,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         return self._exec("ocr_move",
             {"value": text, **self._ocr_params(kwargs)},
@@ -362,6 +375,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         return self._exec("ocr_double_click",
             {"value": text, **self._ocr_params(kwargs)},
@@ -374,6 +388,7 @@ class BaseAW:
             text: 要检查的文字。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
 
         Returns:
             True 如果文字存在，False 如果不存在。不抛异常。
@@ -388,13 +403,15 @@ class BaseAW:
         Args:
             text: 要查找的文字内容。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
             timeout: 超时时间（秒），默认 5。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
 
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
         """
-        return self._exec_list("ocr_get_position",
-            {"value": text, "timeout": kwargs.get("timeout", 5) * 1000},
-            {"text": text, **kwargs})
+        action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
+        return self._exec_list("ocr_get_position", action_data, {"text": text, **kwargs})
 
     def ocr_click_same_row_text(
         self, anchor_text: str, target_text: str, **kwargs
@@ -409,6 +426,7 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         action_data = {
             "anchor_text": anchor_text,
@@ -418,6 +436,8 @@ class BaseAW:
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
 
         return self._exec("ocr_click_same_row_text", action_data,
             {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
@@ -436,6 +456,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -450,6 +471,8 @@ class BaseAW:
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
 
         return self._exec("ocr_click_same_row_image", action_data,
             {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
@@ -466,14 +489,17 @@ class BaseAW:
             target_index: 目标文本索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
-        return self._exec("ocr_check_same_row_text",
-            {
-                "anchor_text": anchor_text,
-                "value": target_text,
-                **self._same_row_params(kwargs),
-                "timeout": kwargs.get("timeout", 5) * 1000,
-            },
+        action_data = {
+            "anchor_text": anchor_text,
+            "value": target_text,
+            **self._same_row_params(kwargs),
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+        if "region" in kwargs:
+            action_data["region"] = kwargs["region"]
+        return self._exec("ocr_check_same_row_text", action_data,
             {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
 
     def ocr_check_same_row_image(
@@ -489,6 +515,7 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             confidence: 匹置信度（0-1），默认 0.8。
             timeout: 超时时间（秒），默认 5。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -501,6 +528,7 @@ class BaseAW:
                 **self._same_row_params(kwargs),
                 "threshold": kwargs.get("confidence", 0.8),
                 "timeout": kwargs.get("timeout", 5) * 1000,
+                **({"region": kwargs["region"]} if "region" in kwargs else {}),
             },
             {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
 
@@ -645,7 +673,7 @@ class BaseAW:
     def _ocr_params(self, kwargs: dict) -> dict:
         """构建 OCR 类 action 的通用参数。
 
-        包含：timeout(默认5秒转毫秒)、index(默认0)、offset
+        包含：timeout(默认5秒转毫秒)、index(默认0)、offset、region
         """
         params = {
             "timeout": kwargs.get("timeout", 5) * 1000,
@@ -653,12 +681,14 @@ class BaseAW:
         }
         if "offset" in kwargs:
             params["offset"] = kwargs["offset"]
+        if "region" in kwargs:
+            params["region"] = kwargs["region"]
         return params
 
     def _image_params(self, kwargs: dict) -> dict:
         """构建 Image 类 action 的通用参数。
 
-        包含：timeout、threshold(默认0.8)、index、offset
+        包含：timeout、threshold(默认0.8)、index、offset、region
         """
         params = {
             "timeout": kwargs.get("timeout", 5) * 1000,
@@ -668,6 +698,8 @@ class BaseAW:
             params["index"] = kwargs["index"]
         if "offset" in kwargs:
             params["offset"] = kwargs["offset"]
+        if "region" in kwargs:
+            params["region"] = kwargs["region"]
         return params
 
     def _same_row_params(self, kwargs: dict) -> dict:
@@ -746,6 +778,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -761,6 +794,7 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -776,6 +810,7 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -793,6 +828,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             max_distance: 最大搜索距离（像素），默认 500。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -810,6 +846,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 移动偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -827,6 +864,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -843,6 +881,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
 
         Returns:
             True 如果图像存在，False 如果不存在。不抛异常。
@@ -861,6 +900,7 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
+            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
 
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]。
