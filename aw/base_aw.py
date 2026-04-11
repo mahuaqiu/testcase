@@ -276,7 +276,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         return self._exec("ocr_click",
             {"value": text, **self._ocr_params(kwargs)},
@@ -291,7 +291,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 输入偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         return self._exec("ocr_input",
             {"value": label, "text": content, **self._ocr_params(kwargs)},
@@ -303,7 +303,7 @@ class BaseAW:
         Args:
             text: 要等待的文字。
             timeout: 超时时间（秒），默认 5。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
         resolved = self._resolve_region(kwargs.get("region"))
@@ -317,7 +317,7 @@ class BaseAW:
         Args:
             text: 要断言的文字。
             timeout: 超时时间（秒），默认 5。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
         resolved = self._resolve_region(kwargs.get("region"))
@@ -330,7 +330,7 @@ class BaseAW:
 
         Args:
             timeout: 超时时间（秒），默认 5。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
 
         Returns:
             识别到的文字内容。
@@ -350,7 +350,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         return self._exec("ocr_paste",
             {"value": text, "text": content, **self._ocr_params(kwargs)},
@@ -364,7 +364,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         return self._exec("ocr_move",
             {"value": text, **self._ocr_params(kwargs)},
@@ -378,7 +378,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         return self._exec("ocr_double_click",
             {"value": text, **self._ocr_params(kwargs)},
@@ -391,7 +391,7 @@ class BaseAW:
             text: 要检查的文字。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
 
         Returns:
             True 如果文字存在，False 如果不存在。不抛异常。
@@ -406,7 +406,7 @@ class BaseAW:
         Args:
             text: 要查找的文字内容。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
             timeout: 超时时间（秒），默认 5。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
 
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
@@ -430,7 +430,7 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         action_data = {
             "anchor_text": anchor_text,
@@ -461,7 +461,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -495,7 +495,7 @@ class BaseAW:
             target_index: 目标文本索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         action_data = {
             "anchor_text": anchor_text,
@@ -522,7 +522,7 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             confidence: 匹置信度（0-1），默认 0.8。
             timeout: 超时时间（秒），默认 5。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -812,7 +812,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -828,7 +828,7 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -844,7 +844,7 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -862,7 +862,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             max_distance: 最大搜索距离（像素），默认 500。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -880,7 +880,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 移动偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -898,7 +898,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -915,7 +915,7 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
 
         Returns:
             True 如果图像存在，False 如果不存在。不抛异常。
@@ -934,7 +934,7 @@ class BaseAW:
             image_path: 图片路径。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
-            region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
+            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
 
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]。
