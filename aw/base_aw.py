@@ -3,7 +3,7 @@
 import functools
 import inspect
 import time
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient
 from common.report_logger import ReportLogger
@@ -306,8 +306,9 @@ class BaseAW:
             region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
         return self._exec("ocr_wait", action_data, {"text": text, **kwargs})
 
     def ocr_assert(self, text: str, **kwargs) -> dict:
@@ -319,8 +320,9 @@ class BaseAW:
             region: 操作区域 [x1, y1, x2, y2]，限制识别范围。
         """
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
         return self._exec("ocr_assert", action_data, {"text": text, **kwargs})
 
     def ocr_get_text(self, **kwargs) -> str:
@@ -334,8 +336,9 @@ class BaseAW:
             识别到的文字内容。
         """
         action_data = {"value": "", "timeout": kwargs.get("timeout", 5) * 1000}
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
         return self._exec_str("ocr_get_text", action_data, {**kwargs})
 
     def ocr_paste(self, text: str, content: str, **kwargs) -> dict:
@@ -409,8 +412,9 @@ class BaseAW:
             坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
         """
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
         return self._exec_list("ocr_get_position", action_data, {"text": text, **kwargs})
 
     def ocr_click_same_row_text(
@@ -436,8 +440,9 @@ class BaseAW:
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
 
         return self._exec("ocr_click_same_row_text", action_data,
             {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
@@ -471,8 +476,9 @@ class BaseAW:
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
 
         return self._exec("ocr_click_same_row_image", action_data,
             {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
@@ -497,8 +503,9 @@ class BaseAW:
             **self._same_row_params(kwargs),
             "timeout": kwargs.get("timeout", 5) * 1000,
         }
-        if "region" in kwargs:
-            action_data["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
         return self._exec("ocr_check_same_row_text", action_data,
             {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
 
@@ -521,15 +528,18 @@ class BaseAW:
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
 
-        return self._exec("ocr_check_same_row_image",
-            {
-                "anchor_text": anchor_text,
-                "image_base64": image_base64,
-                **self._same_row_params(kwargs),
-                "threshold": kwargs.get("confidence", 0.8),
-                "timeout": kwargs.get("timeout", 5) * 1000,
-                **({"region": kwargs["region"]} if "region" in kwargs else {}),
-            },
+        action_data = {
+            "anchor_text": anchor_text,
+            "image_base64": image_base64,
+            **self._same_row_params(kwargs),
+            "threshold": kwargs.get("confidence", 0.8),
+            "timeout": kwargs.get("timeout", 5) * 1000,
+        }
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            action_data["region"] = resolved
+
+        return self._exec("ocr_check_same_row_image", action_data,
             {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
 
     # ── 图像识别动作 ─────────────────────────────────────────
@@ -670,6 +680,28 @@ class BaseAW:
 
     # ── 参数构建器 ─────────────────────────────────────────
 
+    def _resolve_region(self, region) -> Optional[List[int]]:
+        """解析区域参数，支持字符串名称或坐标数组。
+
+        Args:
+            region: 区域参数，可以是：
+                - None: 不限制区域（全屏）
+                - List[int]: 直接坐标 [x1, y1, x2, y2]
+                - str: 区域名称，自动查找配置
+
+        Returns:
+            区域坐标 [x1, y1, x2, y2]，或 None
+        """
+        if region is None:
+            return None
+        if isinstance(region, list):
+            return region  # 直接传坐标数组
+
+        # 字符串名称 → 查配置
+        from common.region_manager import RegionManager
+        platform = self.user.platform if self.user else ""
+        return RegionManager.get_instance().get_region(platform, region)
+
     def _ocr_params(self, kwargs: dict) -> dict:
         """构建 OCR 类 action 的通用参数。
 
@@ -681,8 +713,9 @@ class BaseAW:
         }
         if "offset" in kwargs:
             params["offset"] = kwargs["offset"]
-        if "region" in kwargs:
-            params["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            params["region"] = resolved
         return params
 
     def _image_params(self, kwargs: dict) -> dict:
@@ -698,8 +731,9 @@ class BaseAW:
             params["index"] = kwargs["index"]
         if "offset" in kwargs:
             params["offset"] = kwargs["offset"]
-        if "region" in kwargs:
-            params["region"] = kwargs["region"]
+        resolved = self._resolve_region(kwargs.get("region"))
+        if resolved:
+            params["region"] = resolved
         return params
 
     def _same_row_params(self, kwargs: dict) -> dict:
