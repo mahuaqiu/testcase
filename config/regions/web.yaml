@@ -1,0 +1,19 @@
+# config/regions/web.yaml
+# Web 平台布局区域配置
+# 格式：区域名称: [x1, y1, x2, y2]
+
+# 2x2 布局
+meeting_main_2x2: [0, 0, 960, 540]
+meeting_sub1_2x2: [960, 0, 1920, 540]
+meeting_sub2_2x2: [0, 540, 960, 1080]
+meeting_sub3_2x2: [960, 540, 1920, 1080]
+
+# 3x3 布局
+meeting_main_3x3: [0, 0, 640, 360]
+meeting_sub1_3x3: [640, 0, 1280, 360]
+
+# 画廊模式（全屏）
+meeting_gallery: [0, 0, 1920, 1080]
+
+# 共享屏幕区域
+share_local: [0, 540, 1920, 1080]
