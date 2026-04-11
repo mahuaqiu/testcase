@@ -18,6 +18,12 @@ class RegionManager:
     _instance: Optional["RegionManager"] = None
     _configs: Dict[str, Dict[str, List[int]]] = {}  # {platform: {name: [x1,y1,x2,y2]}}
 
+    def __new__(cls):
+        """阻止直接实例化，必须通过 get_instance() 获取单例。"""
+        if cls._instance is not None:
+            raise RuntimeError("请使用 RegionManager.get_instance() 获取单例")
+        return super().__new__(cls)
+
     @classmethod
     def get_instance(cls) -> "RegionManager":
         """获取单例实例。"""
@@ -50,15 +56,19 @@ class RegionManager:
 
     def _load_platform(self, platform: str, filepath: str) -> None:
         """加载单个平台的配置文件。"""
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
 
-        # 扁平结构，直接存储，验证坐标格式
-        RegionManager._configs[platform] = {
-            name: coords for name, coords in data.items()
-            if isinstance(coords, list) and len(coords) == 4
-            and all(isinstance(c, int) for c in coords)
-        }
+            # 扁平结构，直接存储，验证坐标格式
+            RegionManager._configs[platform] = {
+                name: coords for name, coords in data.items()
+                if isinstance(coords, list) and len(coords) == 4
+                and all(isinstance(c, int) for c in coords)
+            }
+        except (FileNotFoundError, PermissionError, yaml.YAMLError):
+            # 跳过加载失败的配置文件
+            RegionManager._configs[platform] = {}
 
     def get_region(self, platform: str, name: str) -> Optional[List[int]]:
         """获取指定平台的区域坐标。
