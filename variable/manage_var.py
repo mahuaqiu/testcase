@@ -15,3 +15,7 @@ class ManageVar:
 
     # 会议站点信息接口
     REGION_INFO_URL = f"{BASE_URL}/v1/mmc/management/conferences/region/random"
+
+    # 网络研讨会接口
+    WEBINAR_URL = f"{BASE_URL}/v1/wss/webinar/conferences"
+    WEBINAR_LIST_URL = f"{BASE_URL}/v1/wss/webinar/conferences/list"
