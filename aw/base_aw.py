@@ -357,6 +357,7 @@ class BaseAW:
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         return self._exec("ocr_click",
             {"value": text, **self._ocr_params(kwargs)},
@@ -373,6 +374,7 @@ class BaseAW:
             offset: 输入偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         return self._exec("ocr_input",
             {"value": label, "text": content, **self._ocr_params(kwargs)},
@@ -386,10 +388,13 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
@@ -402,10 +407,13 @@ class BaseAW:
             text: 要断言的文字。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         action_data = {"value": text}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
@@ -417,6 +425,7 @@ class BaseAW:
         Args:
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Returns:
             识别到的文字内容。
@@ -424,6 +433,8 @@ class BaseAW:
         action_data = {"value": ""}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
@@ -439,6 +450,8 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         return self._exec("ocr_paste",
             {"value": text, "text": content, **self._ocr_params(kwargs)},
@@ -453,6 +466,8 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         return self._exec("ocr_move",
             {"value": text, **self._ocr_params(kwargs)},
@@ -467,6 +482,8 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         return self._exec("ocr_double_click",
             {"value": text, **self._ocr_params(kwargs)},
@@ -480,6 +497,8 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Returns:
             True 如果文字存在，False 如果不存在。不抛异常。
@@ -495,6 +514,7 @@ class BaseAW:
             text: 要查找的文字内容。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
@@ -502,6 +522,8 @@ class BaseAW:
         action_data = {"value": text}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
@@ -795,7 +817,7 @@ class BaseAW:
     def _ocr_params(self, kwargs: dict) -> dict:
         """构建 OCR 类 action 的通用参数。
 
-        包含：timeout(默认5秒转毫秒)、index(默认0)、offset、region、level
+        包含：timeout(默认5秒转毫秒)、index(默认0)、offset、region、level、monitor
         """
         params = {
             "timeout": kwargs.get("timeout", 5) * 1000,
@@ -805,6 +827,9 @@ class BaseAW:
             params["offset"] = kwargs["offset"]
         if "level" in kwargs:
             params["level"] = kwargs["level"]  # Web 平台专用，处理原生对话框
+            # monitor 仅在 level: system 时有效，用于多显示器场景
+            if "monitor" in kwargs:
+                params["monitor"] = kwargs["monitor"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             params["region"] = resolved
@@ -813,7 +838,7 @@ class BaseAW:
     def _image_params(self, kwargs: dict) -> dict:
         """构建 Image 类 action 的通用参数。
 
-        包含：timeout、threshold(默认0.8)、index、offset、region、level
+        包含：timeout、threshold(默认0.8)、index、offset、region、level、monitor
         """
         params = {
             "timeout": kwargs.get("timeout", 5) * 1000,
@@ -825,6 +850,9 @@ class BaseAW:
             params["offset"] = kwargs["offset"]
         if "level" in kwargs:
             params["level"] = kwargs["level"]  # Web 平台专用，处理原生对话框
+            # monitor 仅在 level: system 时有效，用于多显示器场景
+            if "monitor" in kwargs:
+                params["monitor"] = kwargs["monitor"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             params["region"] = resolved
@@ -908,6 +936,7 @@ class BaseAW:
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -925,6 +954,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -941,6 +971,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -977,6 +1008,8 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 移动偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -995,6 +1028,8 @@ class BaseAW:
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -1012,6 +1047,8 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Returns:
             True 如果图像存在，False 如果不存在。不抛异常。
@@ -1031,6 +1068,8 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]。
@@ -1049,10 +1088,13 @@ class BaseAW:
             x: X 坐标。
             y: Y 坐标。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         action_data = {"x": x, "y": y}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         return self._exec("click", action_data, {"x": x, "y": y, **kwargs})
 
     def double_click(self, x: int, y: int, **kwargs) -> dict:
@@ -1115,10 +1157,13 @@ class BaseAW:
         Args:
             key: 按键名称，如 Enter、Escape。
             level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         action_data = {"key": key}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         return self._exec("press", action_data, {"key": key, **kwargs})
 
     def wait(self, duration: float) -> dict:
@@ -1158,6 +1203,7 @@ class BaseAW:
 
         Args:
             level: 执行层级（仅 Web），browser 或 system。system 可截取原生对话框。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Returns:
             截图的 base64 编码，失败返回空字符串。
@@ -1174,6 +1220,8 @@ class BaseAW:
         }
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         # 直接调用 execute 以传递 user_id
         result = self.client.execute(platform, [action_data], user_id=user_id)
         if result.get("status") == "success" and result.get("actions"):
