@@ -27,8 +27,8 @@ class AWError(Exception):
 def _auto_log_aw_call(func):
     """自动记录业务方法参数的装饰器。
 
-    用于 do_*/should_* 方法，在执行前记录方法参数。
-    这样业务方法块标题可以显示关键参数。
+    用于 do_*/should_* 方法，在执行后记录方法参数和结果。
+    失败时自动截图并记录错误信息。
     """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -46,22 +46,101 @@ def _auto_log_aw_call(func):
         # 获取 parent_aw（调用栈中上层的业务方法）
         parent_aw = self._find_parent_aw(skip_self=True)
 
-        # 非收集模式下，记录业务方法参数
-        if not is_collecting():
-            logger = ReportLogger.get_current()
+        # 用户信息
+        user_id = self.user.user_id if self.user else ""
+        user_account = self.user.account if self.user else ""
+        user_name = self.user.name if self.user else ""
+        user_ip = self.user.ip if self.user else ""
+
+        # 收集模式下，收集模式也需要捕获异常
+        # 注意：原子操作在收集模式下不抛异常，但业务方法可能直接抛异常
+        if is_collecting():
+            try:
+                return func(self, *args, **kwargs)
+            except Exception as e:
+                # 失败：截图并记录日志
+                error_screenshot = ""
+                try:
+                    error_screenshot = self.screenshot()
+                except Exception:
+                    pass
+
+                error_result = {
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                }
+                if error_screenshot:
+                    error_result["error_screenshot"] = error_screenshot
+
+                logger = ReportLogger.get_current()
+                logger.log_aw_call(
+                    aw_name=self._aw_name,
+                    method=func.__name__,
+                    args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
+                    success=False,
+                    result=error_result,
+                    duration_ms=0,
+                    parent_aw=parent_aw,
+                    is_business_method=True,
+                )
+                raise
+
+        # 同步模式：记录日志
+        logger = ReportLogger.get_current()
+        start_time = time.time()
+
+        try:
+            # 执行原方法
+            result = func(self, *args, **kwargs)
+
+            # 成功：记录日志
+            duration_ms = int((time.time() - start_time) * 1000)
+
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method=func.__name__,
-                args=method_args,
-                success=True,  # 先假设成功，失败时更新
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
+                success=True,
                 result={},
-                duration_ms=0,  # 先记0，实际耗时由子步骤计算
+                duration_ms=duration_ms,
                 parent_aw=parent_aw,
-                is_business_method=True,  # 标记为业务方法日志
+                is_business_method=True,
             )
 
-        # 执行原方法
-        return func(self, *args, **kwargs)
+            return result
+
+        except Exception as e:
+            # 失败：截图并记录日志
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # 失败时截图
+            error_screenshot = ""
+            try:
+                error_screenshot = self.screenshot()
+            except Exception:
+                pass  # 截图失败不影响主流程
+
+            # 记录失败日志
+            error_result = {
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }
+            if error_screenshot:
+                error_result["error_screenshot"] = error_screenshot
+
+            logger.log_aw_call(
+                aw_name=self._aw_name,
+                method=func.__name__,
+                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
+                success=False,
+                result=error_result,
+                duration_ms=duration_ms,
+                parent_aw=parent_aw,
+                is_business_method=True,
+            )
+
+            # 重新抛出异常
+            raise
 
     return wrapper
 

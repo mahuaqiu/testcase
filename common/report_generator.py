@@ -151,7 +151,7 @@ class HTMLReportGenerator:
         Returns:
             块列表，每个块包含业务方法信息和子步骤列表。
         """
-        # 先找出所有业务方法日志（用于提取参数）
+        # 先找出所有业务方法日志（用于提取参数和状态）
         # block_id 格式：{aw_name}.{method}#{user_id}
         business_method_logs: Dict[str, Dict[str, Any]] = {}
         for log in logs:
@@ -204,23 +204,39 @@ class HTMLReportGenerator:
                 continue
             aw_name, method = parts
 
-            # 计算整体状态和耗时
-            total_duration = sum(s.get("duration_ms", 0) for s in steps)
-            all_success = all(s.get("success", True) for s in steps)
-
-            # 从业务方法日志提取参数（如果有）
+            # 从业务方法日志提取参数和状态（优先使用业务方法日志的状态）
             business_log = business_method_logs.get(block_key, {})
             business_args = business_log.get("args", {}) if business_log else {}
+            # 优先使用业务方法日志的成功状态（处理业务方法本身抛异常的情况）
+            if business_log:
+                business_success = business_log.get("success", True)
+                business_duration = business_log.get("duration_ms", 0)
+                business_result = business_log.get("result", {})
+            else:
+                business_success = True
+                business_duration = 0
+                business_result = {}
 
-            # 从第一个步骤获取用户信息
+            # 计算整体状态：如果业务方法失败，整体失败；否则看子步骤
+            if not business_success:
+                all_success = False
+                total_duration = business_duration  # 使用业务方法耗时
+            else:
+                all_success = all(s.get("success", True) for s in steps)
+                total_duration = sum(s.get("duration_ms", 0) for s in steps)
+
+            # 从第一个步骤或业务方法日志获取用户信息
             first_step = steps[0] if steps else {}
-            step_args = first_step.get("args", {})
+            step_args = first_step.get("args", {}) if first_step else {}
             user_info = {
-                "user_id": user_id or step_args.get("user_id", ""),
-                "user_name": step_args.get("user_name", ""),
-                "user_account": step_args.get("user_account", ""),
-                "user_ip": step_args.get("user_ip", ""),
+                "user_id": user_id or step_args.get("user_id", "") or business_args.get("user_id", ""),
+                "user_name": step_args.get("user_name", "") or business_args.get("user_name", ""),
+                "user_account": step_args.get("user_account", "") or business_args.get("user_account", ""),
+                "user_ip": step_args.get("user_ip", "") or business_args.get("user_ip", ""),
             }
+
+            # 时间：优先使用业务方法日志时间，其次使用第一个步骤时间
+            time_str = business_log.get("time", "") if business_log else first_step.get("time", "")
 
             business_blocks[block_key] = {
                 "block_id": block_key,
@@ -231,7 +247,8 @@ class HTMLReportGenerator:
                 "success": all_success,
                 "duration_ms": total_duration,
                 "steps": steps,
-                "time": first_step.get("time", ""),
+                "time": time_str,
+                "business_result": business_result,  # 保存业务方法结果（用于显示错误）
             }
 
         # 构建顶层块列表（parent_aw == "" 的原子操作 + 业务方法块）
@@ -271,6 +288,41 @@ class HTMLReportGenerator:
         # 添加业务方法块
         for block_id, block in business_blocks.items():
             top_blocks.append(block)
+
+        # 添加没有子步骤但失败的业务方法（直接抛异常的情况）
+        # 这些业务方法日志没有被 groups 收集（因为没有子步骤）
+        for block_id, business_log in business_method_logs.items():
+            if block_id in business_blocks:
+                continue  # 已处理
+            if business_log.get("success", True):
+                continue  # 成功的不需要单独处理
+
+            # 失败的业务方法，没有子步骤
+            args = business_log.get("args", {})
+            user_info = {
+                "user_id": args.get("user_id", ""),
+                "user_name": args.get("user_name", ""),
+                "user_account": args.get("user_account", ""),
+                "user_ip": args.get("user_ip", ""),
+            }
+
+            aw_name = business_log.get("aw_name", "")
+            method = business_log.get("method", "")
+
+            top_blocks.append({
+                "block_id": block_id,
+                "aw_name": aw_name,
+                "method": method,
+                "args": args,
+                "user_info": user_info,
+                "success": False,
+                "duration_ms": business_log.get("duration_ms", 0),
+                "steps": [],  # 无子步骤
+                "time": business_log.get("time", ""),
+                "single_step": True,
+                "step_data": business_log,  # 用业务方法日志作为"步骤数据"
+                "business_result": business_log.get("result", {}),
+            })
 
         # 按时间排序
         top_blocks.sort(key=lambda b: b.get("time") or "")
@@ -431,6 +483,10 @@ class HTMLReportGenerator:
         # 单步骤块
         if block.get("single_step"):
             step_data = block.get("step_data", {})
+            # 补充 method 字段（如果缺失，使用块信息）
+            if not step_data.get("method"):
+                step_data = dict(step_data)  # 复制避免修改原始数据
+                step_data["method"] = method
             step_html = HTMLReportGenerator._render_aw_step(step_data)
             return f'''
         <div class="aw-block {item_class} {expanded_class}">
@@ -454,6 +510,25 @@ class HTMLReportGenerator:
         steps_html = ""
         for step in steps:
             steps_html += HTMLReportGenerator._render_aw_step(step)
+
+        # 如果业务方法失败但没有子步骤失败（整体失败），显示错误信息
+        if not success and steps:
+            business_result = block.get("business_result", {})
+            error_msg = business_result.get("error", "")
+            error_screenshot = business_result.get("error_screenshot", "")
+            if error_msg:
+                # 在子步骤前显示业务方法的错误信息
+                error_html = f'<div class="aw-step failed"><div class="step-error">{error_msg}</div>'
+                if error_screenshot and len(error_screenshot) > 100:
+                    error_html += f'''
+                    <div class="step-screenshots">
+                        <div class="step-screenshot-wrapper">
+                            <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
+                            <div class="step-screenshot-label">失败截图</div>
+                        </div>
+                    </div>'''
+                error_html += '</div>'
+                steps_html = error_html + steps_html
 
         return f'''
     <div class="aw-block {item_class} {expanded_class}">
