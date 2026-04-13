@@ -239,7 +239,6 @@ components:
             offset:
               x: 0
               y: 0
-            timeout: 5000
           - action_type: "screenshot"
             value: "result"
 
@@ -314,7 +313,6 @@ components:
             - navigate
             - switched_page
             - close_page
-            - web_image_upload
             - ocr_get_position
             - image_get_position
             - cmd_exec
@@ -363,8 +361,25 @@ components:
             - navigate: 跳转 URL（Web 专用）
             - switched_page: 切换到指定页面（Web 专用）
             - close_page: 关闭当前页面（Web 专用）
-            - web_image_upload: 处理文件上传弹窗（Web 专用）
             - cmd_exec: 在宿主机执行 shell/cmd 命令
+        level:
+          type: string
+          enum: [browser, system]
+          default: browser
+          description: |
+            执行层级，仅 Web 平台支持，用于处理浏览器原生对话框等场景：
+            - browser: 使用 Playwright 操作浏览器内部内容（默认）
+            - system: 使用系统级操作（mss 截屏 + pyautogui 点击），可截取/操作原生对话框
+
+            适用场景：
+            - Web 会议共享桌面弹出的原生选择框（Playwright 无法截取）
+            - 文件上传的原生文件选择器对话框
+            - 浏览器权限请求弹窗等原生 UI
+
+            示例：点击原生共享对话框中的"屏幕 1"
+            {"action_type": "ocr_click", "value": "屏幕 1", "level": "system"}
+
+            注意：system 级别需要安装 mss 和 pyautogui 依赖
         value:
           type: string
           description: |
@@ -385,7 +400,6 @@ components:
             - navigate: 要跳转的 URL
             - switched_page: 页面索引（从 1 开始），如 "1"、"2"、"3"
             - close_page: 此字段不使用
-            - web_image_upload: 此字段不使用
             - ocr_get_position: 要查找的文字内容（支持 reg_ 前缀正则匹配）
             - cmd_exec: 要执行的命令字符串，如 "echo hello" 或 "dir C:\\Users"
         text:
@@ -394,11 +408,10 @@ components:
         image_base64:
           type: string
           description: |
-            图像模板 base64 编码，仅 image_* 动作和 web_image_upload 必填：
+            图像模板 base64 编码，仅 image_* 动作必填：
             - image_click/image_wait/image_assert: 要匹配的图像模板
             - image_click_near_text: 要查找的图像模板
             - image_get_position: 要查找的图像模板
-            - web_image_upload: 要上传的图片
         index:
           type: integer
           default: 0
@@ -472,8 +485,15 @@ components:
           description: "图像匹配阈值（0.0-1.0），仅用于 image_* 动作。值越高匹配越严格，默认 0.8"
         timeout:
           type: integer
-          default: 5000
-          description: "超时时间（毫秒），用于等待类动作。默认 5000ms"
+          default: 30000
+          description: |
+            超时时间（毫秒），仅以下动作使用：
+            - ocr_wait: 轮询等待文字出现的最大时间
+            - image_wait: 轮询等待图像出现的最大时间
+            - navigate: 页面加载超时（Web）
+            - cmd_exec: 命令执行超时
+
+            其他动作（如 ocr_click、ocr_assert、image_click、image_assert 等）不使用此参数。
         x:
           type: integer
           description: "X 坐标（像素），仅 click、move 和 input 动作必填"
@@ -523,12 +543,9 @@ components:
             - 修饰键: Control、Alt、Shift、Meta
             - 组合键示例: Control+A、Control+C、Alt+F4
       example:
-        action_type: "ocr_click"
-        value: "登录"
-        offset:
-          x: 0
-          y: 10
-        timeout: 5000
+        action_type: "ocr_wait"
+        value: "加载完成"
+        timeout: 10000
 
     TaskResult:
       type: object
@@ -612,9 +629,7 @@ components:
   # {"action_type": "ocr_click", "value": "登录", "offset": {"x": 100, "y": 0}}
   # 示例 3: 点击第二个"确定"按钮（index 从 0 开始）
   # {"action_type": "ocr_click", "value": "确定", "index": 1}
-  # 示例 4: 点击"登录"按钮并设置超时
-  # {"action_type": "ocr_click", "value": "登录", "timeout": 5000}
-  # 示例 5: 仅在屏幕右半部分查找并点击"会场名称"
+  # 示例 4: 仅在屏幕右半部分查找并点击"会场名称"
   # {"action_type": "ocr_click", "value": "会场名称", "region": [960, 0, 1920, 540]}
 
   # ocr_input - 在文字附近输入文本
@@ -625,11 +640,11 @@ components:
 
   # ocr_wait - 等待文字出现
   # 示例: 等待"加载完成"出现，最多等 10 秒
-  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 5000}
+  # {"action_type": "ocr_wait", "value": "加载完成", "timeout": 10000}
 
-  # ocr_assert - 断言文字存在
+  # ocr_assert - 断言文字存在（单次截图断言，不使用 timeout）
   # 示例: 断言"操作成功"文字存在
-  # {"action_type": "ocr_assert", "value": "操作成功", "timeout": 5000}
+  # {"action_type": "ocr_assert", "value": "操作成功"}
 
   # ocr_get_text - 获取屏幕所有文字
   # 示例: 获取当前屏幕文字内容
@@ -707,7 +722,7 @@ components:
   # 示例 2: 等待第二个匹配的图像出现
   # {"action_type": "image_wait", "image_base64": "<base64_encoded_image>", "index": 1}
 
-  # image_assert - 断言图像存在
+  # image_assert - 断言图像存在（单次截图断言，不使用 timeout）
   # 示例 1: 断言图像存在
   # {"action_type": "image_assert", "image_base64": "<base64_encoded_image>", "threshold": 0.8}
   # 示例 2: 断言第二个匹配的图像存在
@@ -819,10 +834,31 @@ components:
   # 示例: 关闭当前页面
   # {"action_type": "close_page"}
 
-  # web_image_upload - 处理文件上传弹窗（仅 Web 平台）
-  # 使用 Playwright 文件选择器 API 处理原生文件上传对话框
-  # 示例: 点击上传按钮位置并上传图片
-  # {"action_type": "web_image_upload", "x": 500, "y": 300, "image_base64": "<base64_encoded_image>"}
+  # ---------- 系统级操作示例（仅 Web 平台，level: system） ----------
+  # 使用场景：Web 会议共享桌面弹出的原生选择框、文件上传原生对话框等
+  # Playwright 无法截取浏览器外部的原生对话框，需使用系统级操作
+
+  # 示例 1: 系统级截图（截取整个屏幕，包括原生对话框）
+  # {"action_type": "screenshot", "value": "native_dialog", "level": "system"}
+
+  # 示例 2: 系统级 OCR 点击（点击原生对话框中的文字）
+  # {"action_type": "ocr_click", "value": "屏幕 1", "level": "system"}
+
+  # 示例 3: 系统级坐标点击（点击原生对话框中的坐标）
+  # {"action_type": "click", "x": 500, "y": 300, "level": "system"}
+
+  # 示例 4: 系统级按键（在原生对话框中按键）
+  # {"action_type": "press", "key": "Enter", "level": "system"}
+
+  # 示例 5: 系统级等待文字（等待原生对话框文字出现）
+  # {"action_type": "ocr_wait", "value": "共享", "timeout": 5000, "level": "system"}
+
+  # 示例 6: 处理文件上传原生对话框（点击上传按钮触发对话框后）
+  # 第一步：点击上传按钮（browser 级别，触发原生文件选择器）
+  # {"action_type": "click", "x": 500, "y": 300}
+  # 第二步：等待并操作原生文件选择器（system 级别）
+  # {"action_type": "ocr_click", "value": "选择文件", "level": "system"}
+  # {"action_type": "press", "key": "Enter", "level": "system"}
 
   # ocr_get_position - 获取文字坐标列表
   # 返回 {"positions": [[x1, y1], [x2, y2], ...]}
