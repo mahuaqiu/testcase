@@ -745,12 +745,16 @@ class BaseAW:
         success = action_result.get("status") == "success"
 
         # 解析 output 中的 exists 结果
+        # output 可能是 dict（已解析）或 str（JSON 字串）
         output = action_result.get("output", "")
         exists = False
         if output:
             try:
-                output_data = json.loads(output)
-                exists = output_data.get("exists", False)
+                if isinstance(output, dict):
+                    exists = output.get("exists", False)
+                else:
+                    output_data = json.loads(output)
+                    exists = output_data.get("exists", False)
             except (json.JSONDecodeError, TypeError):
                 exists = False
 
@@ -898,12 +902,17 @@ class BaseAW:
         action_type: str,
         action_data: dict,
         log_args: dict,
-        field: str = "output"
+        key: str = "text"
     ) -> str:
-        """执行 action 并提取 str 返回值。"""
+        """执行 action 并提取 str 返回值（如 ocr_get_text 的 text 字段）。"""
         result = self._exec(action_type, action_data, log_args)
         if result.get("actions"):
-            return result["actions"][0].get(field, "")
+            output = result["actions"][0].get("output", "")
+            if output:
+                # output 可能是 dict（已解析）或 str
+                if isinstance(output, dict):
+                    return output.get(key, "")
+                return str(output)
         return ""
 
     def _exec_list(
@@ -920,6 +929,9 @@ class BaseAW:
             output = result["actions"][0].get("output", "")
             if output:
                 try:
+                    # output 可能是 dict（已解析）或 str（JSON 字串）
+                    if isinstance(output, dict):
+                        return output.get(key, [])
                     return json.loads(output).get(key, [])
                 except json.JSONDecodeError:
                     pass
