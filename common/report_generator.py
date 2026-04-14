@@ -369,11 +369,13 @@ class HTMLReportGenerator:
         return f"{method}({', '.join(parts)})"
 
     @staticmethod
-    def _render_aw_step(step: Dict[str, Any], is_last: bool = False) -> str:
+    def _render_aw_step(step: Dict[str, Any], is_last: bool = False, rendered_screenshot: str = "") -> str:
         """渲染单个原子操作步骤。
 
         Args:
             step: 步骤日志数据。
+            is_last: 是否是最后一个步骤。
+            rendered_screenshot: 已渲染的错误截图（base64），用于避免重复渲染。
 
         Returns:
             HTML 字符串。
@@ -410,7 +412,8 @@ class HTMLReportGenerator:
             error_msg = result.get("error", "")
 
             screenshot_imgs = []
-            if error_screenshot and len(error_screenshot) > 100:
+            # 跳过已渲染的错误截图，避免重复显示
+            if error_screenshot and len(error_screenshot) > 100 and error_screenshot != rendered_screenshot:
                 screenshot_imgs.append(f'''
                 <div class="step-screenshot-wrapper">
                     <img src="data:image/png;base64,{error_screenshot}" class="step-screenshot" onclick="showImage('{error_screenshot}')">
@@ -508,12 +511,16 @@ class HTMLReportGenerator:
         # 业务方法块（多步骤）
         steps = block.get("steps", [])
         steps_html = ""
+
+        # 先提取业务方法的错误截图，用于避免子步骤重复渲染
+        business_result = block.get("business_result", {})
+        business_error_screenshot = business_result.get("error_screenshot", "") if not success else ""
+
         for step in steps:
-            steps_html += HTMLReportGenerator._render_aw_step(step)
+            steps_html += HTMLReportGenerator._render_aw_step(step, rendered_screenshot=business_error_screenshot)
 
         # 如果业务方法失败但没有子步骤失败（整体失败），显示错误信息
         if not success and steps:
-            business_result = block.get("business_result", {})
             error_msg = business_result.get("error", "")
             error_screenshot = business_result.get("error_screenshot", "")
             if error_msg:
