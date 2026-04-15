@@ -90,7 +90,10 @@ class HTMLReportGenerator:
             "duration_ms", "timeout", "index", "confidence",
             # 业务方法常见参数
             "username", "password", "subject", "meeting_id", "name",
-            "title", "message", "file_path", "wait_time"
+            "title", "message", "file_path", "wait_time",
+            # 页面切换、锚点目标、显示器等参数
+            "page_index", "anchor_text", "target_text",
+            "anchor_index", "target_index", "monitor", "command",
         }
 
         # 移除用户信息字段（已在折叠标题中显示）
@@ -343,7 +346,10 @@ class HTMLReportGenerator:
         DISPLAY_ARGS = {
             "text", "label", "content", "image_path", "key", "url",
             "app_id", "x", "y", "from_x", "from_y", "to_x", "to_y",
-            "duration_ms", "timeout", "index", "confidence"
+            "duration_ms", "timeout", "index", "confidence",
+            # 页面切换、锚点目标、显示器等参数
+            "page_index", "anchor_text", "target_text",
+            "anchor_index", "target_index", "monitor", "command",
         }
 
         HIDDEN_ARGS = {
