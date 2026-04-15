@@ -1195,6 +1195,13 @@ class BaseAW:
         """导航到 URL（Web 端专用）。"""
         return self._exec("navigate", {"value": url}, {"url": url})
 
+    def new_page(self) -> dict:
+        """创建新空白标签页（Web 端专用）。
+
+        创建空白新标签页，自动切换焦点到新页面。
+        """
+        return self._exec("new_page", {}, {})
+
     def switched_page(self, page_index: int) -> dict:
         """切换到指定页面（Web 端专用）。"""
         return self._exec("switched_page", {"value": str(page_index)}, {"page_index": page_index})

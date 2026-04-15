@@ -155,6 +155,7 @@
 | `start_app(app_id)` | 启动应用 |
 | `stop_app(app_id)` | 关闭应用 |
 | `navigate(url)` | 导航到 URL（Web 端专用） |
+| `new_page()` | 创建新空白标签页（Web 端专用） |
 | `switched_page(page_index)` | 切换到指定页面（Web 端专用） |
 | `close_page()` | 关闭当前页面（Web 端专用） |
 | `web_image_upload(x, y, image_path)` | 处理文件上传弹窗（Web 端专用） |
