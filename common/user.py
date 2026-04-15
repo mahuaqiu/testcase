@@ -58,6 +58,7 @@ class User:
         self.extra = extra
         self._ui_user_id = _ui_user_id  # 独立属性，不存入 extra
         self._user_instances_ref: Optional[Dict[str, "User"]] = None  # 新增：user_instances 引用
+        self._used = False  # 新增：用户是否被实际使用
 
         # API 平台不需要 TestagentClient
         if platform == "api":
@@ -115,7 +116,11 @@ class User:
         # 1. 查找 AW 方法
         for aw_instance in self._aw_instances.values():
             if hasattr(aw_instance, name):
-                return getattr(aw_instance, name)
+                attr = getattr(aw_instance, name)
+                # 如果是可调用方法，标记用户已使用
+                if callable(attr):
+                    self._used = True
+                return attr
 
         # 2. 查找 extra 字段（支持动态扩展）
         # 使用 object.__getattribute__ 安全访问 extra

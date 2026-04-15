@@ -226,11 +226,15 @@ def users(request) -> Dict[str, User]:
 
         yield user_instances
 
-        # 执行 teardown hooks
+        # 执行 teardown hooks - 只对实际使用过的用户
         teardown_failed = False
         teardown_error = None
 
         for user_id, user in user_instances.items():
+            # 过滤：跳过未被使用的用户
+            if not user._used:
+                continue
+
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
             try:
                 _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
