@@ -79,14 +79,23 @@ class HooksResolver:
                         if not (h == item or (isinstance(h, dict) and item in h))
                     ]
                 for item in to_add:
-                    # 添加新 hook
-                    hook_name = next(iter(item.keys()))[1:] if isinstance(item, dict) else item[1:]
+                    # 添加新 hook（去除前缀）
+                    if isinstance(item, dict):
+                        # 字典格式：{"+hook_name": arg} → {"hook_name": arg}
+                        original_key = next(iter(item.keys()))
+                        clean_key = original_key[1:]  # 去除前缀
+                        clean_item = {clean_key: item[original_key]}
+                    else:
+                        # 字符串格式："+hook_name" → "hook_name"
+                        clean_item = item[1:]  # 去除前缀
+
                     # 检查是否已存在
+                    hook_name = clean_item if isinstance(clean_item, str) else next(iter(clean_item.keys()))
                     exists = any(
                         h == hook_name or (isinstance(h, dict) and hook_name in h)
                         for h in result[hook_type]
                     )
                     if not exists:
-                        result[hook_type].append(item)
+                        result[hook_type].append(clean_item)
 
         return result
