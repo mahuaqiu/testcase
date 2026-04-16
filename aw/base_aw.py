@@ -597,7 +597,7 @@ class BaseAW:
 
     def ocr_check_same_row_text(
         self, anchor_text: str, target_text: str, **kwargs
-    ) -> dict:
+    ) -> bool:
         """检查锚点文本同一行的目标文本是否存在。
 
         Args:
@@ -608,6 +608,9 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+
+        Returns:
+            True 如果存在，False 如果不存在。不抛异常。
         """
         action_data = {
             "anchor_text": anchor_text,
@@ -618,12 +621,12 @@ class BaseAW:
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
-        return self._exec("ocr_check_same_row_text", action_data,
+        return self._exec_bool("ocr_check_same_row_text", action_data,
             {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
 
     def ocr_check_same_row_image(
         self, anchor_text: str, image_path: str, **kwargs
-    ) -> dict:
+    ) -> bool:
         """检查锚点文本同一行的目标图片是否存在。
 
         Args:
@@ -635,6 +638,9 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             timeout: 超时时间（秒），默认 5。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
+
+        Returns:
+            True 如果存在，False 如果不存在。不抛异常。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
@@ -651,7 +657,7 @@ class BaseAW:
         if resolved:
             action_data["region"] = resolved
 
-        return self._exec("ocr_check_same_row_image", action_data,
+        return self._exec_bool("ocr_check_same_row_image", action_data,
             {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
 
     # ── 图像识别动作 ─────────────────────────────────────────
