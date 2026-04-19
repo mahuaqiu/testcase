@@ -140,6 +140,7 @@ def users(request) -> Dict[str, User]:
                 platform=resource.platform,
                 ip=resource.ip,
                 port=resource.port,
+                device_id=resource.device_id,  # iOS/Android 设备 ID
                 account=resource.account,
                 password=resource.password,
                 name=resource.name,
@@ -154,6 +155,7 @@ def users(request) -> Dict[str, User]:
                 platform="api",
                 ip=resource.ip,
                 port=resource.port,
+                device_id=resource.device_id,  # API 用户也保留设备信息
                 account=resource.account,
                 password=resource.password,
                 name=resource.name,

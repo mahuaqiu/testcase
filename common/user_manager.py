@@ -28,6 +28,7 @@ class UserResource:
         platform: 平台类型，如 web、windows、mac、ios、android。
         ip: 机器 IP 地址。
         port: Worker 端口。
+        device_id: 设备 ID（iOS/Android 设备的 UDID/序列号）。
         account: 登录账号。
         password: 登录密码。
         name: 与会者姓名。
@@ -40,8 +41,9 @@ class UserResource:
     platform: str
     ip: str
     port: int
-    account: str
-    password: str
+    device_id: str = ""  # iOS/Android 设备 ID（device_sn）
+    account: str = ""
+    password: str = ""
     name: str = ""
     user_type: str = "normal"
     machine_id: Optional[str] = None
@@ -261,6 +263,7 @@ class UserManager:
                 platform=user_data.get("device_type", users.get(user_id, "")),
                 ip=user_data.get("ip", ""),
                 port=user_data.get("port", 8080),
+                device_id=user_data.get("device_sn", ""),  # iOS/Android 设备 ID
                 account=user_data.get("account", ""),
                 password=user_data.get("password", ""),
                 name=user_data.get("name", ""),

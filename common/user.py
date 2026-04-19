@@ -17,6 +17,7 @@ class User:
         platform: 平台类型，如 web、windows。
         ip: Worker IP 地址。
         port: Worker 端口。
+        device_id: 设备 ID（iOS/Android 设备的 UDID/序列号）。
         account: 登录账号。
         password: 登录密码。
         name: 与会者姓名。
@@ -29,8 +30,9 @@ class User:
         platform: str,
         ip: str,
         port: int,
-        account: str,
-        password: str,
+        device_id: str = "",  # iOS/Android 设备 ID
+        account: str = "",
+        password: str = "",
         name: str = "",
         _ui_user_id: Optional[str] = None,  # 新增：API User 关联的 UI User ID
         **extra: Any
@@ -42,6 +44,7 @@ class User:
             platform: 平台类型。
             ip: Worker IP 地址。
             port: Worker 端口。
+            device_id: 设备 ID（iOS/Android 设备的 UDID/序列号）。
             account: 登录账号。
             password: 登录密码。
             name: 与会者姓名。
@@ -52,6 +55,7 @@ class User:
         self.platform = platform
         self.ip = ip
         self.port = port
+        self.device_id = device_id
         self.account = account
         self.password = password
         self.name = name
@@ -144,7 +148,9 @@ class User:
         if self.platform == "api" or self.client is None:
             return ""
 
-        result = self.client.screenshot(self.platform)
+        # iOS/Android 需要传递 device_id
+        device_id = self.device_id if self.platform in ("ios", "android") else None
+        result = self.client.screenshot(self.platform, device_id=device_id)
         # 从结果中提取 base64 数据
         if result.get("status") == "success" and result.get("actions"):
             action = result["actions"][0]

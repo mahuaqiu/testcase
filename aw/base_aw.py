@@ -265,7 +265,11 @@ class BaseAW:
 
         try:
             # 调用 client.execute（批量接口，传入单个 action）
-            result = self.client.execute(platform, [action_data])
+            # iOS/Android 平台需要 device_id
+            device_id = None
+            if platform in ("ios", "android") and self.user:
+                device_id = self.user.device_id
+            result = self.client.execute(platform, [action_data], device_id=device_id)
         except Exception as e:
             # 记录异常
             duration_ms = int((time.time() - start_time) * 1000)
@@ -729,8 +733,13 @@ class BaseAW:
         logger = ReportLogger.get_current()
         start_time = time.time()
 
+        # iOS/Android 需要传递 device_id
+        device_id = None
+        if platform in ("ios", "android") and self.user:
+            device_id = self.user.device_id
+
         try:
-            result = self.client.execute(platform, [action_data])
+            result = self.client.execute(platform, [action_data], device_id=device_id)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.log_aw_call(
@@ -1239,6 +1248,11 @@ class BaseAW:
             platform = self.user.platform
 
         user_id = self.user.user_id if self.user else None
+        # iOS/Android 需要传递 device_id
+        device_id = None
+        if platform in ("ios", "android") and self.user:
+            device_id = self.user.device_id
+
         action_data = {
             "action_type": "screenshot",
             "value": f"screenshot_{int(time.time() * 1000)}",
@@ -1247,8 +1261,8 @@ class BaseAW:
             action_data["level"] = kwargs["level"]
             if "monitor" in kwargs:
                 action_data["monitor"] = kwargs["monitor"]
-        # 直接调用 execute 以传递 user_id
-        result = self.client.execute(platform, [action_data], user_id=user_id)
+        # 直接调用 execute 以传递 user_id 和 device_id
+        result = self.client.execute(platform, [action_data], user_id=user_id, device_id=device_id)
         if result.get("status") == "success" and result.get("actions"):
             action = result["actions"][0]
             # 优先取 screenshot 字段，其次取 output 字段
