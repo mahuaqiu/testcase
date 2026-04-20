@@ -229,6 +229,7 @@ class TestagentClient:
         offset: Optional[Dict[str, int]] = None,
         timeout: int = 5000,
         index: int = 0,
+        click_duration: Optional[int] = None,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """OCR 文字识别点击。
@@ -239,6 +240,7 @@ class TestagentClient:
             offset: 点击偏移量 {"x": 0, "y": 0}。
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             device_id: 设备 ID。
 
         Returns:
@@ -252,6 +254,8 @@ class TestagentClient:
         }
         if offset:
             action["offset"] = offset
+        if click_duration is not None:
+            action["click_duration"] = click_duration
 
         return self.execute(platform, [action], device_id)
 
@@ -450,6 +454,7 @@ class TestagentClient:
         threshold: float = 0.8,
         timeout: int = 5000,
         index: int = 0,
+        click_duration: Optional[int] = None,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """图像识别点击。
@@ -460,6 +465,7 @@ class TestagentClient:
             threshold: 匹配阈值（0-1）。
             timeout: 超时时间（毫秒）。
             index: 选择第几个匹配结果（从 0 开始）。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             device_id: 设备 ID。
 
         Returns:
@@ -472,6 +478,8 @@ class TestagentClient:
             "timeout": timeout,
             "index": index,
         }
+        if click_duration is not None:
+            action["click_duration"] = click_duration
         return self.execute(platform, [action], device_id)
 
     def image_wait(
@@ -613,6 +621,7 @@ class TestagentClient:
         platform: str,
         x: int,
         y: int,
+        click_duration: Optional[int] = None,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """坐标点击。
@@ -621,6 +630,7 @@ class TestagentClient:
             platform: 平台类型。
             x: X 坐标。
             y: Y 坐标。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             device_id: 设备 ID。
 
         Returns:
@@ -631,6 +641,8 @@ class TestagentClient:
             "x": x,
             "y": y,
         }
+        if click_duration is not None:
+            action["click_duration"] = click_duration
         return self.execute(platform, [action], device_id)
 
     def move(
@@ -672,7 +684,8 @@ class TestagentClient:
         from_y: int,
         to_x: int,
         to_y: int,
-        duration: int = 500,
+        duration: Optional[int] = None,
+        steps: Optional[int] = None,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """滑动操作。
@@ -683,7 +696,8 @@ class TestagentClient:
             from_y: 起点 Y 坐标。
             to_x: 终点 X 坐标。
             to_y: 终点 Y 坐标。
-            duration: 滑动持续时间（毫秒），默认 500ms。
+            duration: 滑动持续时间（毫秒），默认使用 steps 参数控制。
+            steps: 滑动步数，控制轨迹平滑度。默认 5 实现平滑滑动。
             device_id: 设备 ID。
 
         Returns:
@@ -693,8 +707,11 @@ class TestagentClient:
             "action_type": "swipe",
             "from": {"x": from_x, "y": from_y},
             "to": {"x": to_x, "y": to_y},
-            "duration": duration,
         }
+        if duration is not None:
+            action["duration"] = duration
+        if steps is not None:
+            action["steps"] = steps
         return self.execute(platform, [action], device_id)
 
     def input_text(

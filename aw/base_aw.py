@@ -359,12 +359,16 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        params = self._ocr_params(kwargs)
+        if "click_duration" in kwargs:
+            params["click_duration"] = kwargs["click_duration"]
         return self._exec("ocr_click",
-            {"value": text, **self._ocr_params(kwargs)},
+            {"value": text, **params},
             {"text": text, **kwargs})
 
     def ocr_input(self, label: str, content: str, **kwargs) -> dict:
@@ -376,12 +380,16 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 输入偏移量 {"x": 0, "y": 0}。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        params = self._ocr_params(kwargs)
+        if "click_duration" in kwargs:
+            params["click_duration"] = kwargs["click_duration"]
         return self._exec("ocr_input",
-            {"value": label, "text": content, **self._ocr_params(kwargs)},
+            {"value": label, "text": content, **params},
             {"label": label, "content": content, **kwargs})
 
     def ocr_wait(self, text: str, **kwargs) -> dict:
@@ -453,12 +461,16 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        params = self._ocr_params(kwargs)
+        if "click_duration" in kwargs:
+            params["click_duration"] = kwargs["click_duration"]
         return self._exec("ocr_paste",
-            {"value": text, "text": content, **self._ocr_params(kwargs)},
+            {"value": text, "text": content, **params},
             {"text": text, "content": content, **kwargs})
 
     def ocr_move(self, text: str, **kwargs) -> dict:
@@ -546,6 +558,7 @@ class BaseAW:
             row_tolerance: 水平带范围（像素），默认 20。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         action_data = {
@@ -556,6 +569,8 @@ class BaseAW:
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
+        if "click_duration" in kwargs:
+            action_data["click_duration"] = kwargs["click_duration"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
@@ -577,6 +592,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
@@ -592,6 +608,8 @@ class BaseAW:
         }
         if "offset" in kwargs:
             action_data["offset"] = kwargs["offset"]
+        if "click_duration" in kwargs:
+            action_data["click_duration"] = kwargs["click_duration"]
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
@@ -961,6 +979,7 @@ class BaseAW:
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
@@ -968,8 +987,11 @@ class BaseAW:
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        params = self._image_params(kwargs)
+        if "click_duration" in kwargs:
+            params["click_duration"] = kwargs["click_duration"]
         return self._exec("image_click",
-            {"image_base64": image_base64, **self._image_params(kwargs)},
+            {"image_base64": image_base64, **params},
             {"image_path": image_path, **kwargs})
 
     def image_wait(self, image_path: str, **kwargs) -> dict:
@@ -1016,13 +1038,17 @@ class BaseAW:
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             max_distance: 最大搜索距离（像素），默认 500。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        params = self._image_params(kwargs)
+        if "click_duration" in kwargs:
+            params["click_duration"] = kwargs["click_duration"]
         return self._exec("image_click_near_text",
-            {"image_base64": image_base64, "value": text, "end_x": kwargs.get("max_distance", 500), **self._image_params(kwargs)},
+            {"image_base64": image_base64, "value": text, "end_x": kwargs.get("max_distance", 500), **params},
             {"image_path": image_path, "text": text, **kwargs})
 
     def image_move(self, image_path: str, **kwargs) -> dict:
@@ -1114,10 +1140,13 @@ class BaseAW:
         Args:
             x: X 坐标。
             y: Y 坐标。
+            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         action_data = {"x": x, "y": y}
+        if "click_duration" in kwargs:
+            action_data["click_duration"] = kwargs["click_duration"]
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
             if "monitor" in kwargs:
@@ -1158,11 +1187,17 @@ class BaseAW:
             from_y: 起点 Y 坐标。
             to_x: 终点 X 坐标。
             to_y: 终点 Y 坐标。
-            duration: 滑动持续时间（毫秒）。
+            duration: 滑动持续时间（毫秒），默认使用 steps 参数控制。
+            steps: 滑动步数，控制轨迹平滑度。默认 5 实现平滑滑动。
+                - steps 越大，轨迹越平滑，接近真实手指滑动
+                - Android: 1 步约 5ms，steps=10 总耗时约 50ms
+                - iOS: WDA 不支持 steps 参数，始终使用 duration
         """
         action_data = {"from": {"x": from_x, "y": from_y}, "to": {"x": to_x, "y": to_y}}
         if "duration" in kwargs:
             action_data["duration"] = kwargs["duration"]
+        if "steps" in kwargs:
+            action_data["steps"] = kwargs["steps"]
         return self._exec("swipe", action_data,
             {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs})
 
