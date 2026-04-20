@@ -260,7 +260,7 @@ components:
         screenshot_on_error:
           type: boolean
           default: true
-          description: "任务失败时是否自动截图，截图将以 base64 编码返回"ss
+          description: "任务失败时是否自动截图，截图将以 base64 编码返回"
         slow_motion:
           type: integer
           default: 0
@@ -321,6 +321,7 @@ components:
             - ocr_get_position
             - image_get_position
             - cmd_exec
+            - unlock_screen
           description: |
             动作类型，分为以下几类：
 
@@ -368,6 +369,7 @@ components:
             - switched_page: 切换到指定页面（Web 专用）
             - close_page: 关闭当前页面（Web 专用）
             - cmd_exec: 在宿主机执行 shell/cmd 命令
+            - unlock_screen: 解锁屏幕（iOS/Android 专用）
         level:
           type: string
           enum: [browser, system]
@@ -421,6 +423,7 @@ components:
             - close_page: 此字段不使用
             - ocr_get_position: 要查找的文字内容（支持 reg_ 前缀正则匹配）
             - cmd_exec: 要执行的命令字符串，如 "echo hello" 或 "dir C:\\Users"
+            - unlock_screen: 解锁密码（数字密码，如 "123456"）
         text:
           type: string
           description: "输入/粘贴的文本内容，仅 ocr_input、input、ocr_paste 动作必填"
@@ -553,14 +556,49 @@ components:
         duration:
           type: integer
           description: "滑动持续时间（毫秒），仅 swipe 动作可选，默认 500ms"
+        click_duration:
+          type: integer
+          description: |
+            点击持续时间（毫秒），用于实现长按效果：
+            - 0: 普通点击（默认）
+            - >0: 长按指定时间，如 2000 表示长按 2 秒
+            适用动作：ocr_click、image_click、click、ocr_input、ocr_paste、ocr_click_same_row_text、ocr_click_same_row_image、image_click_near_text
+            示例：长按 2 秒 {"action_type": "ocr_click", "value": "确认", "click_duration": 2000}
+        steps:
+          type: integer
+          description: |
+            滑动步数，控制轨迹平滑度。默认使用 5 实现平滑滑动：
+            - steps 越大，轨迹越平滑，接近真实手指滑动
+            - Android: 1 步约 5ms，steps=10 总耗时约 50ms
+            - iOS: WDA 不支持 steps 参数，始终使用 duration
+            适用动作：swipe、drag
+            示例：平滑滑动 {"action_type": "swipe", "x": 100, "y": 500, "end_x": 100, "end_y": 100, "steps": 10}
         key:
           type: string
           description: |
-            按键名称，仅 press 动作必填。常用按键：
+            按键名称，仅 press 动作必填。不同平台支持的按键不同：
+
+            【Web/Windows/Mac 桌面端】支持所有标准键盘按键：
             - 功能键: Enter、Escape、Tab、Backspace、Delete
             - 方向键: ArrowUp、ArrowDown、ArrowLeft、ArrowRight
             - 修饰键: Control、Alt、Shift、Meta
             - 组合键示例: Control+A、Control+C、Alt+F4
+
+            【Android 移动端】支持的按键：
+            - 导航键: Home（主屏幕）、Back（返回）、Menu（菜单）、Search（搜索）
+            - 功能键: Enter、Escape、Tab、Backspace、Delete
+            - 方向键: ArrowUp、ArrowDown、ArrowLeft、ArrowRight
+            - 音量键: Volume_Up、Volume_Down
+            - 电源键: Power、Lock（锁屏）
+            - 媒体键: Media_Play_Pause、Media_Stop、Media_Next、Media_Previous
+            - 数字 KeyCode: 直接传入数字，如 "26" 表示电源键
+
+            【iOS 移动端】支持的按键（取决于设备型号）：
+            - iPhone 8 (Touch ID): Home、Volume_Up、Volume_Down
+            - iPhone X+ (Face ID): 可能支持更多按键
+            - 不支持的按键: Back、Enter、Escape、Lock 等（iOS 无物理键）
+              → Back: 请使用 OCR 点击导航栏返回按钮
+              → Enter: 请使用 OCR 点击键盘上的完成/搜索按钮
       example:
         action_type: "ocr_wait"
         value: "加载完成"
@@ -667,6 +705,8 @@ components:
   # {"action_type": "ocr_click", "value": "确定", "index": 1}
   # 示例 4: 仅在屏幕右半部分查找并点击"会场名称"
   # {"action_type": "ocr_click", "value": "会场名称", "region": [960, 0, 1920, 540]}
+  # 示例 5: 长按"确认"按钮 2 秒
+  # {"action_type": "ocr_click", "value": "确认", "click_duration": 2000}
 
   # ocr_input - 在文字附近输入文本
   # 示例 1: 在"用户名"标签右侧输入账号
@@ -753,6 +793,8 @@ components:
   # {"action_type": "image_click", "image_base64": "<base64_encoded_image>", "index": 1}
   # 示例 3: 仅在屏幕左上四分之一区域查找并点击图像
   # {"action_type": "image_click", "image_base64": "<base64_encoded_image>", "region": [0, 0, 960, 540]}
+  # 示例 4: 长按图像 2 秒
+  # {"action_type": "image_click", "image_base64": "<base64_encoded_image>", "click_duration": 2000}
 
   # image_wait - 等待图像出现
   # 示例 1: 等待图像出现，最多等 8 秒
@@ -795,8 +837,10 @@ components:
 
   # ---------- 坐标动作 ----------
   # click - 点击指定坐标
-  # 示例: 点击屏幕坐标 (500, 300)
+  # 示例 1: 点击屏幕坐标 (500, 300)
   # {"action_type": "click", "x": 500, "y": 300}
+  # 示例 2: 长按屏幕坐标 (500, 300) 2 秒
+  # {"action_type": "click", "x": 500, "y": 300, "click_duration": 2000}
 
   # double_click - 双击指定坐标
   # 示例 1: 双击屏幕坐标 (500, 300)
@@ -811,10 +855,12 @@ components:
   # {"action_type": "move", "x": 500, "y": 300, "offset": {"x": 10, "y": 5}}
 
   # swipe - 滑动手势
-  # 示例 1: 从 (500, 1000) 滑动到 (500, 500)，耗时 500ms
-  # {"action_type": "swipe", "from": {"x": 500, "y": 1000}, "to": {"x": 500, "y": 500}, "duration": 500}
-  # 示例 2: 向左滑动（翻页）
-  # {"action_type": "swipe", "from": {"x": 800, "y": 500}, "to": {"x": 200, "y": 500}, "duration": 300}
+  # 示例 1: 从 (500, 1000) 滑动到 (500, 500)，默认平滑滑动（steps=5）
+  # {"action_type": "swipe", "from": {"x": 500, "y": 1000}, "to": {"x": 500, "y": 500}}
+  # 示例 2: 使用指定 duration 滑动（不使用默认 steps）
+  # {"action_type": "swipe", "from": {"x": 500, "y": 1000}, "to": {"x": 500, "y": 500}, "duration": 300, "steps": null}
+  # 示例 3: 更平滑的滑动（steps=10）
+  # {"action_type": "swipe", "from": {"x": 800, "y": 500}, "to": {"x": 200, "y": 500}, "steps": 10}
 
   # input - 在指定坐标输入文本
   # 示例: 在 (300, 400) 位置输入 "hello world"
@@ -822,14 +868,31 @@ components:
 
   # ---------- 其他动作 ----------
   # press - 按键操作
-  # 示例 1: 按回车键
+  # 示例 1: 按回车键（桌面端）
   # {"action_type": "press", "key": "Enter"}
-  # 示例 2: 按 Escape 键
+  # 示例 2: 按 Escape 键（桌面端）
   # {"action_type": "press", "key": "Escape"}
-  # 示例 3: 按下箭头键
+  # 示例 3: 按下箭头键（桌面端）
   # {"action_type": "press", "key": "ArrowDown"}
-  # 示例 4: Ctrl+A 全选（组合键）
+  # 示例 4: Ctrl+A 全选（桌面端组合键）
   # {"action_type": "press", "key": "Control+A"}
+
+  # 移动端按键示例（Android）:
+  # 示例 5: 返回键
+  # {"action_type": "press", "key": "Back"}
+  # 示例 6: 主屏幕键
+  # {"action_type": "press", "key": "Home"}
+  # 示例 7: 音量增加
+  # {"action_type": "press", "key": "Volume_Up"}
+  # 示例 8: 电源键/锁屏
+  # {"action_type": "press", "key": "Power"}
+
+  # 移动端按键示例（iOS）:
+  # 示例 9: 主屏幕键
+  # {"action_type": "press", "key": "Home"}
+  # 示例 10: 音量增加
+  # {"action_type": "press", "key": "Volume_Up"}
+  # 注意: iOS 不支持 Back、Enter、Lock 等按键
 
   # screenshot - 截图
   # 示例: 截取当前屏幕，命名为 "result"
@@ -945,3 +1008,15 @@ components:
   # 启动PPT幻灯片放映，启动成功后立即返回（不等待播放完成）
   # 示例 6: 仅打开PPT编辑模式（不进入放映）
   # {"action_type": "cmd_exec", "value": "powershell -ExecutionPolicy Bypass -File \"@tools/play_ppt.ps1\" -FilePath \"C:\\demo.pptx\" -AutoPlay false"}
+
+  # ---------- 移动端解锁动作 ----------
+  # unlock_screen - 解锁屏幕（仅 iOS/Android 平台）
+  # 检测设备锁屏状态并自动解锁，使用固定坐标点击密码键盘
+  # 配置：密码键盘坐标在 config/worker.yaml 的 unlock 配置中设置
+  # iOS 锁屏检测：GET /wda/locked
+  # Android 锁屏检测：device.info['screenOn']
+  # 执行流程：检测锁屏 → 唤醒屏幕 → 滑动解锁 → 输入密码 → 验证解锁
+  # 示例 1: 解锁 iOS 设备，密码 123456
+  # {"action_type": "unlock_screen", "value": "123456"}
+  # 示例 2: 解锁 Android 设备，密码 123456
+  # {"action_type": "unlock_screen", "value": "123456"}
