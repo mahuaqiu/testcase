@@ -144,7 +144,10 @@
 | `double_click(x, y, **kwargs)` | 坐标双击 |
 | `move(x, y, **kwargs)` | 移动鼠标到指定坐标（仅桌面端） |
 | `swipe(from_x, from_y, to_x, to_y, **kwargs)` | 滑动操作 |
+| `drag(from_x, from_y, to_x, to_y, **kwargs)` | 拖拽操作（参数与 swipe 一致） |
 | `input_text(x, y, text)` | 在指定坐标输入文本 |
+
+> **注**：`swipe` 和 `drag` 参数完全一致，功能相同，可根据语义选用。
 
 **其他动作：**
 

@@ -1201,6 +1201,22 @@ class BaseAW:
         return self._exec("swipe", action_data,
             {"from_x": from_x, "from_y": from_y, "to_x": to_x, "to_y": to_y, **kwargs})
 
+    def drag(self, from_x: int, from_y: int, to_x: int, to_y: int, **kwargs) -> dict:
+        """拖拽操作。
+
+        Args:
+            from_x: 起点 X 坐标。
+            from_y: 起点 Y 坐标。
+            to_x: 终点 X 坐标。
+            to_y: 终点 Y 坐标。
+            duration: 拖拽持续时间（毫秒）。
+            steps: 拖拽步数，控制轨迹平滑度。
+
+        Note:
+            参数与 swipe 完全一致，可根据语义选用。
+        """
+        return self.swipe(from_x, from_y, to_x, to_y, **kwargs)
+
     def input_text(self, x: int, y: int, text: str) -> dict:
         """在指定坐标输入文本。
 
