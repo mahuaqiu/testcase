@@ -82,6 +82,7 @@ def _auto_log_aw_call(func):
                     duration_ms=0,
                     parent_aw=parent_aw,
                     is_business_method=True,
+                    request_id="",  # 业务方法没有直接的 request_id
                 )
                 raise
 
@@ -105,6 +106,7 @@ def _auto_log_aw_call(func):
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
                 is_business_method=True,
+                request_id="",  # 业务方法没有直接的 request_id
             )
 
             return result
@@ -137,6 +139,7 @@ def _auto_log_aw_call(func):
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
                 is_business_method=True,
+                request_id="",  # 业务方法没有直接的 request_id
             )
 
             # 重新抛出异常
@@ -281,6 +284,7 @@ class BaseAW:
                 result={"error": str(e)},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
+                request_id="",  # 异常时无 request_id
             )
             raise
 
@@ -289,6 +293,8 @@ class BaseAW:
         # 从 actions 列表中取第一个结果
         action_result = result.get("actions", [{}])[0] if result.get("actions") else {}
         success = action_result.get("status") == "success"
+        # 提取 request_id（用于问题定位）
+        request_id = action_result.get("request_id", "")
 
         # 失败时立即截图，并读取目标图片（仅 image_* 操作）
         target_image_base64 = ""
@@ -332,6 +338,7 @@ class BaseAW:
             target_image=target_image_base64,
             target_image_path=target_image_path,
             parent_aw=parent_aw,
+            request_id=request_id,
         )
 
         # 记录 worker 调用日志（用于调试，报告中不显示）
@@ -768,6 +775,7 @@ class BaseAW:
                 result={"error": str(e)},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
+                request_id="",  # 异常时无 request_id
             )
             # exist 方法不抛异常，返回 False
             return {"exists": False}
@@ -776,6 +784,8 @@ class BaseAW:
 
         action_result = result.get("actions", [{}])[0] if result.get("actions") else {}
         success = action_result.get("status") == "success"
+        # 提取 request_id（用于问题定位）
+        request_id = action_result.get("request_id", "")
 
         # 解析 output 中的 exists 结果
         # output 可能是 dict（已解析）或 str（JSON 字串）
@@ -814,6 +824,7 @@ class BaseAW:
             result=full_result,
             duration_ms=duration_ms,
             parent_aw=parent_aw,
+            request_id=request_id,
         )
 
         logger.log_worker_call(

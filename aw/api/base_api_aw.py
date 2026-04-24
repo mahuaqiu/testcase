@@ -92,6 +92,7 @@ class BaseApiAW(BaseAW):
                 result={"error": "client is None"},
                 duration_ms=0,
                 parent_aw=parent_aw,
+                request_id="",  # API AW 无 worker request_id
             )
             return None
 
@@ -105,6 +106,7 @@ class BaseApiAW(BaseAW):
                 result={"error": "ui_platform is None"},
                 duration_ms=0,
                 parent_aw=parent_aw,
+                request_id="",  # API AW 无 worker request_id
             )
             return None
 
@@ -127,6 +129,7 @@ class BaseApiAW(BaseAW):
                             result={"raw_result": result, "token_keys": list(token_dict.keys())},
                             duration_ms=0,
                             parent_aw=parent_aw,
+                            request_id="",  # API AW 无 worker request_id
                         )
                         return token_dict
                     except json.JSONDecodeError as e:
@@ -138,6 +141,7 @@ class BaseApiAW(BaseAW):
                             result={"raw_result": result, "error": f"JSON parse failed: {e}", "output": output[:100]},
                             duration_ms=0,
                             parent_aw=parent_aw,
+                            request_id="",  # API AW 无 worker request_id
                         )
                         return None
                 else:
@@ -149,6 +153,7 @@ class BaseApiAW(BaseAW):
                         result={"raw_result": result, "error": "output is empty"},
                         duration_ms=0,
                         parent_aw=parent_aw,
+                        request_id="",  # API AW 无 worker request_id
                     )
                     return None
             else:
@@ -160,6 +165,7 @@ class BaseApiAW(BaseAW):
                     result={"raw_result": result, "error": "status not success or no actions", "status": result.get("status")},
                     duration_ms=0,
                     parent_aw=parent_aw,
+                    request_id="",  # API AW 无 worker request_id
                 )
                 return None
         except Exception as e:
@@ -171,6 +177,7 @@ class BaseApiAW(BaseAW):
                 result={"error": str(e)},
                 duration_ms=0,
                 parent_aw=parent_aw,
+                request_id="",  # API AW 无 worker request_id
             )
             return None
 
@@ -423,6 +430,7 @@ class BaseApiAW(BaseAW):
                     result={"status_code": response.status_code, "body": response.text[:500]},
                     duration_ms=duration_ms,
                     parent_aw=parent_aw,
+                    request_id="",  # API AW 无 worker request_id
                 )
 
                 if not success:
@@ -445,6 +453,7 @@ class BaseApiAW(BaseAW):
                 result={"status_code": response.status_code, "body": response.text[:500]},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
+                request_id="",  # API AW 无 worker request_id
             )
 
             if not success:
@@ -464,6 +473,7 @@ class BaseApiAW(BaseAW):
                 result={"error": str(e)},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
+                request_id="",  # API AW 无 worker request_id
             )
             raise ApiError(method, 0, str(e)) from e
 

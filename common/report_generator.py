@@ -240,6 +240,8 @@ class HTMLReportGenerator:
 
             # 时间：优先使用业务方法日志时间，其次使用第一个步骤时间
             time_str = business_log.get("time", "") if business_log else first_step.get("time", "")
+            # request_id：优先使用业务方法日志的 request_id，其次使用第一个步骤的 request_id
+            request_id = business_log.get("request_id", "") if business_log else first_step.get("request_id", "")
 
             business_blocks[block_key] = {
                 "block_id": block_key,
@@ -252,6 +254,7 @@ class HTMLReportGenerator:
                 "steps": steps,
                 "time": time_str,
                 "business_result": business_result,  # 保存业务方法结果（用于显示错误）
+                "request_id": request_id,  # 新增：用于问题定位
             }
 
         # 构建顶层块列表（parent_aw == "" 的原子操作 + 业务方法块）
@@ -286,6 +289,7 @@ class HTMLReportGenerator:
                 "time": log.get("time", ""),
                 "single_step": True,  # 标记为单步骤块
                 "step_data": log,  # 保存原始日志数据
+                "request_id": log.get("request_id", ""),  # 新增：用于问题定位
             })
 
         # 添加业务方法块
@@ -325,6 +329,7 @@ class HTMLReportGenerator:
                 "single_step": True,
                 "step_data": business_log,  # 用业务方法日志作为"步骤数据"
                 "business_result": business_log.get("result", {}),
+                "request_id": business_log.get("request_id", ""),  # 新增：用于问题定位
             })
 
         # 按时间排序
@@ -488,6 +493,11 @@ class HTMLReportGenerator:
         if user_account_display:
             user_parts.append(user_account_display)
         user_line = " · ".join(user_parts)
+
+        # request_id：用于问题定位
+        request_id = block.get("request_id", "")
+        if request_id:
+            user_line = f"{user_line} · {request_id}"
 
         # 单步骤块
         if block.get("single_step"):

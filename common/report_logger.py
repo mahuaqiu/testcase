@@ -109,7 +109,8 @@ class ReportLogger:
         target_image: str = "",
         target_image_path: str = "",
         parent_aw: str = "",  # 父级 AW 标识
-        is_business_method: bool = False  # 是否是业务方法日志
+        is_business_method: bool = False,  # 是否是业务方法日志
+        request_id: str = ""  # worker action 的 request_id
     ) -> None:
         """记录 AW 方法调用。
 
@@ -124,6 +125,7 @@ class ReportLogger:
             target_image_path: 目标图片路径（仅 image_* 操作失败时有值）。
             parent_aw: 父级 AW 标识，格式为 "LoginAW.do_login"，表示该原子操作属于哪个业务方法。
             is_business_method: 是否是业务方法日志（用于区分业务方法和原子操作）。
+            request_id: worker action 的请求 ID，用于定位问题。
         """
         with self._lock:
             log_entry = {
@@ -138,7 +140,8 @@ class ReportLogger:
                 "target_image": target_image,
                 "target_image_path": target_image_path,
                 "parent_aw": parent_aw,
-                "is_business_method": is_business_method  # 新增
+                "is_business_method": is_business_method,  # 新增
+                "request_id": request_id  # 新增
             }
             self._logs.append(log_entry)
             # 追踪失败的 AW 调用

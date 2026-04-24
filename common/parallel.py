@@ -398,6 +398,7 @@ class ParallelContext:
             target_image=target_image_base64,
             target_image_path=target_image_path,
             parent_aw=action.parent_aw,  # 传递 parent_aw 以支持日志聚合
+            request_id=action_result.get("request_id", ""),  # 新增：用于问题定位
         )
 
 
