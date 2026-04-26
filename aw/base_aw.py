@@ -1177,6 +1177,25 @@ class BaseAW:
             action_data["offset"] = kwargs["offset"]
         return self._exec("double_click", action_data, {"x": x, "y": y, **kwargs})
 
+    def right_click(self, x: int, y: int, **kwargs) -> dict:
+        """右键点击指定坐标（仅桌面端）。
+
+        Args:
+            x: X 坐标。
+            y: Y 坐标。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
+
+        Note:
+            仅 Windows/Mac 桌面端支持，移动端不支持右键操作。
+        """
+        action_data = {"x": x, "y": y}
+        if "level" in kwargs:
+            action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
+        return self._exec("right_click", action_data, {"x": x, "y": y, **kwargs})
+
     def move(self, x: int, y: int, **kwargs) -> dict:
         """移动鼠标到指定坐标（仅桌面端支持）。
 

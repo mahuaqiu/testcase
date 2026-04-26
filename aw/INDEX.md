@@ -141,6 +141,7 @@
 | 方法 | 说明 |
 |------|------|
 | `click(x, y)` | 坐标点击 |
+| `right_click(x, y, **kwargs)` | 右键点击指定坐标（仅桌面端） |
 | `double_click(x, y, **kwargs)` | 坐标双击 |
 | `move(x, y, **kwargs)` | 移动鼠标到指定坐标（仅桌面端） |
 | `swipe(from_x, from_y, to_x, to_y, **kwargs)` | 滑动操作 |
@@ -161,7 +162,6 @@
 | `new_page()` | 创建新空白标签页（Web 端专用） |
 | `switched_page(page_index)` | 切换到指定页面（Web 端专用） |
 | `close_page()` | 关闭当前页面（Web 端专用） |
-| `web_image_upload(x, y, image_path)` | 处理文件上传弹窗（Web 端专用） |
 | `cmd_exec(command, **kwargs)` | 在宿主机执行命令 |
 | `screenshot()` | 截图并返回 base64 |
 
