@@ -332,9 +332,19 @@ class ParallelContext:
                         self._log_action_result(action_objs[i], action_result, logger, worker_error_screenshot=worker_screenshot)
 
                 # 找到失败的 action（最后一个是失败的）
+                failed_index = len(action_results) - 1
                 failed_action_result = action_results[-1] if action_results else {}
                 failed_error = failed_action_result.get("error", "未知错误")
-                raise AWError(failed_error, {
+
+                # 从 action_objs 获取失败 action 的方法名
+                if failed_index >= 0 and failed_index < len(action_objs):
+                    failed_action_obj = action_objs[failed_index]
+                    method_name = f"{failed_action_obj.aw_name}.{failed_action_obj.method}"
+                else:
+                    method_name = failed_error  # 兜底：使用错误消息作为方法名
+
+                raise AWError(method_name, {
+                    "error": failed_error,  # 将错误信息放入 result，让 AWError 正确提取
                     "task_id": task_id,
                     "failed_action": failed_action_result,
                     "actions": action_results,
