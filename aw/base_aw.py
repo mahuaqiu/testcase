@@ -58,12 +58,15 @@ def _auto_log_aw_call(func):
             try:
                 return func(self, *args, **kwargs)
             except Exception as e:
-                # 失败：截图并记录日志
+                # 失败：从异常中提取 error_screenshot（如果已有）
                 error_screenshot = ""
-                try:
-                    error_screenshot = self.screenshot()
-                except Exception:
-                    pass
+                if isinstance(e, AWError) and "error_screenshot" in e.result:
+                    error_screenshot = e.result.get("error_screenshot", "")
+                if not error_screenshot:
+                    try:
+                        error_screenshot = self.screenshot()
+                    except Exception:
+                        pass
 
                 error_result = {
                     "error": str(e),
@@ -115,12 +118,19 @@ def _auto_log_aw_call(func):
             # 失败：截图并记录日志
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # 失败时截图
+            # 失败时截图：优先从异常中提取已有的 error_screenshot（如果是 AWError）
             error_screenshot = ""
-            try:
-                error_screenshot = self.screenshot()
-            except Exception:
-                pass  # 截图失败不影响主流程
+            if isinstance(e, AWError) and "error_screenshot" in e.result:
+                error_screenshot = e.result.get("error_screenshot", "")
+            if not error_screenshot:
+                try:
+                    # Web 平台需要 system 级别截图
+                    screenshot_kwargs = {}
+                    if self.PLATFORM == "web" or (self.PLATFORM == "common" and self.user and self.user.platform == "web"):
+                        screenshot_kwargs["level"] = "system"
+                    error_screenshot = self.screenshot(**screenshot_kwargs)
+                except Exception:
+                    pass  # 截图失败不影响主流程
 
             # 记录失败日志
             error_result = {
@@ -296,12 +306,19 @@ class BaseAW:
         # 提取 request_id（用于问题定位）
         request_id = action_result.get("request_id", "")
 
-        # 失败时立即截图，并读取目标图片（仅 image_* 操作）
+        # 失败时获取截图，优先使用 Worker 返回的 error_screenshot
         target_image_base64 = ""
         target_image_path = ""
         if not success:
-            # 立即截图当前屏幕
-            error_screenshot = self.screenshot()
+            # 优先使用 Worker 返回的 error_screenshot（失败瞬间的截图）
+            error_screenshot = result.get("error_screenshot", "")
+            if not error_screenshot:
+                # Worker 没返回，手动截图
+                # Web 平台需要 system 级别截图（截取原生对话框）
+                screenshot_kwargs = {}
+                if platform == "web":
+                    screenshot_kwargs["level"] = "system"
+                error_screenshot = self.screenshot(**screenshot_kwargs)
             if error_screenshot:
                 action_result["error_screenshot"] = error_screenshot
 

@@ -322,9 +322,14 @@ class ParallelContext:
             if status == "failed":
                 # 中间有失败，只记录已执行的 action 日志（未执行的不记录）
                 action_results = task_result.get("actions", [])
+                # Worker 返回的 error_screenshot（失败瞬间的截图）
+                worker_error_screenshot = task_result.get("error_screenshot", "")
                 for i, action_result in enumerate(action_results):
                     if i < len(action_objs):
-                        self._log_action_result(action_objs[i], action_result, logger)
+                        # 最后一个失败的 action 传入 Worker 的 error_screenshot
+                        is_last_failed = (i == len(action_results) - 1)
+                        worker_screenshot = worker_error_screenshot if is_last_failed else ""
+                        self._log_action_result(action_objs[i], action_result, logger, worker_error_screenshot=worker_screenshot)
 
                 # 找到失败的 action（最后一个是失败的）
                 failed_action_result = action_results[-1] if action_results else {}
@@ -333,6 +338,7 @@ class ParallelContext:
                     "task_id": task_id,
                     "failed_action": failed_action_result,
                     "actions": action_results,
+                    "error_screenshot": worker_error_screenshot,  # 传递 Worker 的截图
                 })
 
             # 继续轮询（pending/running 状态）
@@ -347,6 +353,7 @@ class ParallelContext:
         action: Action,
         action_result: Dict[str, Any],
         logger: ReportLogger,
+        worker_error_screenshot: str = "",
     ) -> None:
         """记录单个 action 的执行结果日志。
 
@@ -354,6 +361,7 @@ class ParallelContext:
             action: Action 对象。
             action_result: 服务端返回的 action 结果。
             logger: 日志记录器。
+            worker_error_screenshot: Worker 返回的失败截图（base64）。
         """
         success = action_result.get("status") == "success"
 
@@ -366,13 +374,18 @@ class ParallelContext:
         }
 
         # 如果有错误截图，添加到 result
-        error_screenshot = action_result.get("error_screenshot") or action_result.get("screenshot")
+        # 优先使用 Worker 返回的 error_screenshot（失败瞬间的截图）
+        error_screenshot = worker_error_screenshot or action_result.get("error_screenshot") or action_result.get("screenshot")
         if error_screenshot:
             result["error_screenshot"] = error_screenshot
         elif not success and action.client:
-            # 失败时主动截图（Worker 没有返回截图时）
+            # Worker 没有返回截图时，手动截图
+            # Web 平台需要 system 级别截图（截取原生对话框）
             try:
-                screenshot_result = action.client.screenshot(action.platform)
+                screenshot_kwargs = {}
+                if action.platform == "web":
+                    screenshot_kwargs["level"] = "system"
+                screenshot_result = action.client.screenshot(action.platform, **screenshot_kwargs)
                 if screenshot_result.get("status") == "success" and screenshot_result.get("actions"):
                     screenshot_data = screenshot_result["actions"][0].get("screenshot") or screenshot_result["actions"][0].get("output", "")
                     if screenshot_data:

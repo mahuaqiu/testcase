@@ -278,28 +278,36 @@ def pytest_runtest_makereport(item, call):
         if report.failed and "users" in item.funcargs:
             users = item.funcargs["users"]
 
-            if logger.is_api_failure():
-                # API AW 失败：截所有非 API 用户，放在底部
-                for user_id, user in users.items():
-                    if user_id.endswith("_api"):
-                        continue
-                    try:
-                        base64_data = user.screenshot()
-                        if base64_data:
-                            logger.log_screenshot(user_id, base64_data)
-                    except Exception:
-                        pass
-            else:
-                # 非 API AW 失败：截所有用户
-                for user_id, user in users.items():
-                    if user_id.endswith("_api"):
-                        continue
-                    try:
-                        base64_data = user.screenshot()
-                        if base64_data:
-                            logger.log_screenshot(user_id, base64_data)
-                    except Exception:
-                        pass
+            # 获取已记录截图的用户（避免重复截图）
+            users_with_screenshot = set()
+            for log_entry in logger.get_logs():
+                if log_entry.get("type") == "aw_call" and not log_entry.get("success"):
+                    # 检查 result 中的 error_screenshot
+                    result = log_entry.get("result", {})
+                    error_screenshot = result.get("error_screenshot", "")
+                    if error_screenshot and len(error_screenshot) > 100:
+                        args = log_entry.get("args", {})
+                        user_id = args.get("user_id", "")
+                        if user_id:
+                            users_with_screenshot.add(user_id)
+
+            # 只对没有截图的用户补充截图
+            for user_id, user in users.items():
+                if user_id.endswith("_api"):
+                    continue
+                if user_id in users_with_screenshot:
+                    continue  # 已有失败截图，跳过
+
+                try:
+                    # Web 平台需要 system 级别截图
+                    screenshot_kwargs = {}
+                    if user.platform == "web":
+                        screenshot_kwargs["level"] = "system"
+                    base64_data = user.screenshot(**screenshot_kwargs)
+                    if base64_data:
+                        logger.log_screenshot(user_id, base64_data)
+                except Exception:
+                    pass
 
             # 记录错误
             logger.log_error(str(report.longrepr))
