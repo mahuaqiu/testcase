@@ -240,7 +240,7 @@ class BaseApiAW(BaseAW):
 
         return self._token_info
 
-    def _ensure_token(self) -> str:
+    def _ensure_token(self, skip_worker_token: bool = False) -> str:
         """确保 token 有效，返回 access_token。
 
         如果 token 不存在或已过期：
@@ -248,16 +248,23 @@ class BaseApiAW(BaseAW):
         2. 如果获取成功则直接使用
         3. 如果获取失败则执行原有 API 登录
 
+        Args:
+            skip_worker_token: 是否跳过从 worker 获取 token（用于重试场景）。
+
         Returns:
             access_token 字符串。
         """
         if self._token_info and time.time() < self._token_info.expire_time:
             return self._token_info.access_token
 
+        # 重试场景或没有 UI User 时，直接使用 API 登录
+        if skip_worker_token or not (self.user and self.user._ui_user_id):
+            token_info = self._login()
+            return token_info.access_token
+
         # 优先尝试从 worker 获取 UI User 的 token
-        if self.user and self.user._ui_user_id:
-            token_dict = self._get_token_from_worker()
-            if token_dict:
+        token_dict = self._get_token_from_worker()
+        if token_dict:
                 # 使用从 worker 获取的 token
                 access_token = token_dict.get("X-Auth-Token")
                 if access_token:
@@ -371,9 +378,9 @@ class BaseApiAW(BaseAW):
                             verify=False
                         )
 
-                        # worker token 也返回 401/403，则执行 API login
+                        # worker token 也返回 401/403，则跳过 worker token 直接执行 API login
                         if response.status_code in (401, 403):
-                            token = self._ensure_token()
+                            token = self._ensure_token(skip_worker_token=True)
                             final_headers["x-auth-token"] = token
                             final_headers["x-access-token"] = token
                             response = self._session.request(
@@ -386,8 +393,8 @@ class BaseApiAW(BaseAW):
                                 verify=False
                             )
                     else:
-                        # worker_token 没有 X-Auth-Token，执行 API login 重试
-                        token = self._ensure_token()
+                        # worker_token 没有 X-Auth-Token，跳过 worker token 执行 API login 重试
+                        token = self._ensure_token(skip_worker_token=True)
                         final_headers["x-auth-token"] = token
                         final_headers["x-access-token"] = token
                         response = self._session.request(

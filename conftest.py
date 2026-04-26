@@ -444,18 +444,46 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
 
         method_name = f"do_{hook_name}"
         if hasattr(user, method_name):
-            try:
-                logger.log_step(f"执行 hook: {hook_name}" + (f"({hook_arg})" if hook_arg else ""))
-                method = getattr(user, method_name)
-                if hook_arg is not None:
-                    method(hook_arg)
-                else:
-                    method()
-            except Exception as e:
-                # 忽略连接关闭错误（不影响实际功能）
-                import errno
-                if isinstance(e, OSError) and e.errno == errno.EPIPE:
-                    pass  # Broken pipe，不影响功能
-                else:
-                    logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}")
-                    raise HookFailureError(hook_name, e, hook_type)
+            logger.log_step(f"执行 hook: {hook_name}" + (f"({hook_arg})" if hook_arg else ""))
+            method = getattr(user, method_name)
+
+            # 执行 hook，最多重试 1 次（连接关闭时）
+            max_retries = 1
+            last_error = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    if hook_arg is not None:
+                        method(hook_arg)
+                    else:
+                        method()
+                    break  # 成功则跳出循环
+                except Exception as e:
+                    import errno
+                    error_msg = str(e)
+                    last_error = e
+
+                    # Broken pipe - 不影响功能，不重试
+                    if isinstance(e, OSError) and e.errno == errno.EPIPE:
+                        break
+
+                    # Connection aborted/RemoteDisconnected - 重试一次
+                    is_connection_closed = any(keyword in error_msg for keyword in [
+                        "Connection aborted",
+                        "RemoteDisconnected",
+                        "Remote end closed connection"
+                    ])
+
+                    if is_connection_closed and attempt < max_retries:
+                        # 重试一次，打印日志便于排查
+                        logger.log_error(f"Hook [{hook_name}] 连接关闭，正在重试 (attempt {attempt + 1}/{max_retries}): {e}")
+                        continue
+
+                    # 重试失败或其他错误
+                    if is_connection_closed:
+                        # 重试后仍失败，记录但不算失障（worker 可能已关闭）
+                        logger.log_error(f"Hook [{hook_name}] 连接重试失败: {e}")
+                        break
+                    else:
+                        logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}")
+                        raise HookFailureError(hook_name, e, hook_type)
