@@ -1330,6 +1330,25 @@ class BaseAW:
             {"value": command, "timeout": timeout_ms},
             {"command": command, **kwargs})
 
+    def activate_window(self, value: str, match_by: str = "title") -> dict:
+        """激活窗口（仅 Windows/Mac 桌面端支持）。
+
+        将指定窗口带到前台并获取焦点。
+
+        Args:
+            value: 窗口标题或进程名。
+                - title 模式：窗口标题包含匹配（如 "计算器"）
+                - process 模式：进程名（如 "notepad.exe"、"Calculator"）
+            match_by: 窗口定位方式，默认 title。
+                - title: 按窗口标题匹配（包含匹配）
+                - process: 按进程名匹配
+
+        Note:
+            仅 Windows/Mac 桌面端支持，移动端不支持。
+        """
+        action_data = {"value": value, "match_by": match_by}
+        return self._exec("activate_window", action_data, {"value": value, "match_by": match_by})
+
     def screenshot(self, **kwargs) -> str:
         """截图并返回 base64。
 

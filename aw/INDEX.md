@@ -164,6 +164,7 @@
 | `close_page()` | 关闭当前页面（Web 端专用） |
 | `cmd_exec(command, **kwargs)` | 在宿主机执行命令 |
 | `screenshot()` | 截图并返回 base64 |
+| `activate_window(value, match_by="title")` | 激活窗口（仅桌面端） |
 
 ### CheckAW
 
