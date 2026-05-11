@@ -164,7 +164,15 @@
 | `close_page()` | 关闭当前页面（Web 端专用） |
 | `cmd_exec(command, **kwargs)` | 在宿主机执行命令 |
 | `screenshot()` | 截图并返回 base64 |
-| `activate_window(value, match_by="title")` | 激活窗口（仅桌面端） |
+| `activate_window(value, match_by="title")` | 激活窗口（Windows/Mac/Web），match_by 支持 title/class |
+
+**Windows 系统控制动作：**
+
+| 方法 | 说明 |
+|------|------|
+| `set_resolution(width, height, monitor_index=0)` | 设置显示器分辨率（仅 Windows） |
+| `set_volume(value)` | 设置系统音量（仅 Windows，value 为 0-100） |
+| `audio_device(device, state)` | 启用/停用音频设备（仅 Windows，state 为 enable/disabled） |
 
 ### CheckAW
 

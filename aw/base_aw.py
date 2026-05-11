@@ -1331,20 +1331,22 @@ class BaseAW:
             {"command": command, **kwargs})
 
     def activate_window(self, value: str, match_by: str = "title") -> dict:
-        """激活窗口（仅 Windows/Mac 桌面端支持）。
+        """激活窗口（Windows/Mac/Web 平台支持）。
 
         将指定窗口带到前台并获取焦点。
 
         Args:
-            value: 窗口标题或进程名。
+            value: 窗口标题或窗口类名。
                 - title 模式：窗口标题包含匹配（如 "计算器"）
-                - process 模式：进程名（如 "notepad.exe"、"Calculator"）
+                - class 模式：窗口类名（如 "Chrome_WidgetWin_1"、"Notepad"）
             match_by: 窗口定位方式，默认 title。
                 - title: 按窗口标题匹配（包含匹配）
-                - process: 按进程名匹配
+                - class: 按窗口类名匹配（精确匹配）
 
         Note:
-            仅 Windows/Mac 桌面端支持，移动端不支持。
+            平台支持：
+            - Windows/Web: 支持 title 和 class 模式
+            - Mac: 仅支持 class 模式（通过应用名激活）
         """
         action_data = {"value": value, "match_by": match_by}
         return self._exec("activate_window", action_data, {"value": value, "match_by": match_by})
@@ -1385,3 +1387,56 @@ class BaseAW:
             # 优先取 screenshot 字段，其次取 output 字段
             return action.get("screenshot") or action.get("output", "")
         return ""
+
+    # ── Windows 系统控制动作 ────────────────────────────────────────
+
+    def set_resolution(self, width: int, height: int, monitor_index: int = 0) -> dict:
+        """设置显示器分辨率（仅 Windows 平台）。
+
+        用于测试不同分辨率下的 UI 表现。
+
+        Args:
+            width: 分辨率宽度，如 1920、1280。
+            height: 分辨率高度，如 1080、720。
+            monitor_index: 显示器索引，默认 0（主显示器）。
+                - 0: 主显示器
+                - 1: 第二个显示器
+                - 2: 第三个显示器
+
+        Note:
+            仅 Windows 平台支持。
+        """
+        action_data = {
+            "width": width,
+            "height": height,
+            "monitor_index": monitor_index,
+        }
+        return self._exec("set_resolution", action_data,
+            {"width": width, "height": height, "monitor_index": monitor_index})
+
+    def set_volume(self, value: int) -> dict:
+        """设置系统音量（仅 Windows 平台）。
+
+        Args:
+            value: 音量百分比（0-100）。
+
+        Note:
+            仅 Windows 平台支持。
+        """
+        return self._exec("set_volume", {"value": value}, {"value": value})
+
+    def audio_device(self, device: str, state: str) -> dict:
+        """启用/停用音频设备（仅 Windows 平台）。
+
+        Args:
+            device: 音频设备名称（支持包含匹配），如 "扬声器"、"Realtek Audio"。
+                也可传入完整设备 ID。
+            state: 设备状态。
+                - enable: 启用音频设备
+                - disabled: 停用音频设备
+
+        Note:
+            仅 Windows 平台支持。
+        """
+        action_data = {"device": device, "state": state}
+        return self._exec("audio_device", action_data, {"device": device, "state": state})
