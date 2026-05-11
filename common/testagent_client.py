@@ -114,6 +114,7 @@ class TestagentClient:
         device_id: Optional[str] = None,
         user_id: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        level: Optional[str] = None,
     ) -> Dict[str, Any]:
         """同步执行任务。
 
@@ -123,6 +124,7 @@ class TestagentClient:
             device_id: 设备 ID（移动端必填）。
             user_id: 用户标识。
             config: 任务配置。
+            level: 执行层级（仅 Web 平台，browser/system）。
 
         Returns:
             任务执行结果。
@@ -145,6 +147,8 @@ class TestagentClient:
             task_request["user_id"] = user_id
         if config:
             task_request["config"] = config
+        if level:
+            task_request["level"] = level
 
         return self._request("POST", "/task/execute", data=task_request)
 
@@ -769,6 +773,7 @@ class TestagentClient:
         platform: str,
         name: Optional[str] = None,
         device_id: Optional[str] = None,
+        level: Optional[str] = None,
     ) -> Dict[str, Any]:
         """截图。
 
@@ -776,6 +781,7 @@ class TestagentClient:
             platform: 平台类型。
             name: 截图名称（可选）。
             device_id: 设备 ID。
+            level: 执行层级（仅 Web 平台，browser/system）。
 
         Returns:
             执行结果，包含截图数据。
@@ -784,7 +790,7 @@ class TestagentClient:
             "action_type": "screenshot",
             "value": name or f"screenshot_{int(time.time())}",
         }
-        return self.execute(platform, [action], device_id)
+        return self.execute(platform, [action], device_id, level=level)
 
     def wait(
         self,

@@ -139,8 +139,11 @@ class User:
             f"'{type(self).__name__}' 对象没有属性 '{name}'"
         )
 
-    def screenshot(self) -> str:
+    def screenshot(self, level: Optional[str] = None) -> str:
         """截图并返回 base64。
+
+        Args:
+            level: 执行层级（仅 Web 平台，browser/system）。
 
         Returns:
             截图的 base64 编码。API 平台返回空字符串。
@@ -150,7 +153,7 @@ class User:
 
         # iOS/Android 需要传递 device_id
         device_id = self.device_id if self.platform in ("ios", "android") else None
-        result = self.client.screenshot(self.platform, device_id=device_id)
+        result = self.client.screenshot(self.platform, device_id=device_id, level=level)
         # 从结果中提取 base64 数据
         if result.get("status") == "success" and result.get("actions"):
             action = result["actions"][0]
