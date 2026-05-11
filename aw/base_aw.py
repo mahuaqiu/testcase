@@ -1330,7 +1330,7 @@ class BaseAW:
             {"value": command, "timeout": timeout_ms},
             {"command": command, **kwargs})
 
-    def activate_window(self, value: str, match_by: str = "title") -> dict:
+    def activate_window(self, value: str, match_by: str = "title", name: Optional[str] = None) -> dict:
         """激活窗口（Windows/Mac/Web 平台支持）。
 
         将指定窗口带到前台并获取焦点。
@@ -1342,6 +1342,10 @@ class BaseAW:
             match_by: 窗口定位方式，默认 title。
                 - title: 按窗口标题匹配（包含匹配）
                 - class: 按窗口类名匹配（精确匹配）
+            name: 进程 exe 名称过滤（可选），用于区分同名窗口类但不同进程的窗口。
+                - 如 "chrome.exe"、"msedge.exe"、"notepad.exe"
+                - 使用场景：Chrome_WidgetWin_1 是 Chrome 和 Edge 共用的窗口类名，
+                  传 name="chrome.exe" 可确保只激活 Chrome 窗口。
 
         Note:
             平台支持：
@@ -1349,7 +1353,9 @@ class BaseAW:
             - Mac: 仅支持 class 模式（通过应用名激活）
         """
         action_data = {"value": value, "match_by": match_by}
-        return self._exec("activate_window", action_data, {"value": value, "match_by": match_by})
+        if name:
+            action_data["name"] = name
+        return self._exec("activate_window", action_data, {"value": value, "match_by": match_by, "name": name})
 
     def screenshot(self, **kwargs) -> str:
         """截图并返回 base64。

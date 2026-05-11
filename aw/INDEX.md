@@ -164,7 +164,7 @@
 | `close_page()` | 关闭当前页面（Web 端专用） |
 | `cmd_exec(command, **kwargs)` | 在宿主机执行命令 |
 | `screenshot()` | 截图并返回 base64 |
-| `activate_window(value, match_by="title")` | 激活窗口（Windows/Mac/Web），match_by 支持 title/class |
+| `activate_window(value, match_by="title", name=None)` | 激活窗口（Windows/Mac/Web），match_by 支持 title/class，name 可过滤进程 exe |
 
 **Windows 系统控制动作：**
 
