@@ -275,14 +275,14 @@ class HTMLReportGenerator:
         detail_html = "".join(detail_parts)
 
         # CSS 类
-        step_class = "timeline-step"
+        step_class = "timeline-step success"
         if not success:
-            step_class += " failed-step"
+            step_class = "timeline-step failed-step"
 
         return f'''
     <div class="{step_class}">
         <div class="step-header" onclick="toggleStep(this)">
-            <span class="step-status" style="color:{status_color}">{status_icon}</span>
+            <div class="step-icon">{status_icon}</div>
             <span class="step-user" style="background:{user_color}">{user_id}</span>
             <span class="step-time">{time_str}</span>
             <span class="step-duration" style="color:{status_color}">{duration_str}</span>
@@ -411,20 +411,45 @@ class HTMLReportGenerator:
         }}
 
         .timeline-step {{
-            border-bottom: 1px solid #f3f4f6;
+            margin: 8px 0;
+            border-radius: 10px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }}
-        .timeline-step:last-child {{ border-bottom: none; }}
-        .timeline-step.failed-step {{ background: #fef2f2; }}
+        .timeline-step:last-child {{ margin-bottom: 0; }}
+        .timeline-step.success {{ border-color: #bbf7d0; }}
+        .timeline-step.failed-step {{
+            border-color: #fecaca;
+            background: linear-gradient(to right, #fef2f2, white);
+        }}
 
         .step-header {{
-            padding: 10px 12px;
+            padding: 12px 14px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
             font-size: 12px;
+            transition: background 0.15s;
         }}
-        .step-header:hover {{ background: #f9fafb; }}
+        .timeline-step.success .step-header {{ background: linear-gradient(to right, #f0fdf4, white); }}
+        .timeline-step.failed-step .step-header {{ background: linear-gradient(to right, #fef2f2, white); }}
+        .step-header:hover {{ filter: brightness(0.98); }}
+
+        .step-icon {{
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }}
+        .timeline-step.success .step-icon {{ background: #dcfce7; color: #22c55e; }}
+        .timeline-step.failed-step .step-icon {{ background: #fee2e2; color: #ef4444; }}
 
         .step-status {{ font-size: 14px; font-weight: 600; }}
         .step-user {{
@@ -454,10 +479,10 @@ class HTMLReportGenerator:
         .step-detail {{
             display: none;
             padding: 10px 12px;
-            background: #f9fafb;
             border-top: 1px solid #e5e7eb;
         }}
         .step-detail.expanded {{ display: block; }}
+        .timeline-step.success .step-detail {{ background: #f0fdf4; }}
         .timeline-step.failed-step .step-detail {{ background: #fef2f2; border-top-color: #fecaca; }}
 
         .detail-item {{ font-size: 10px; color: #6b7280; margin-bottom: 6px; }}
@@ -635,7 +660,7 @@ class HTMLReportGenerator:
         # 过滤 aw_call 类型日志，按时间排序
         aw_logs = [
             log for log in logs
-            if log.get("type") == "aw_call" and not log.get("is_business_method", False)
+            if log.get("type") == "aw_call"
         ]
         aw_logs.sort(key=lambda x: x.get("time") or "")
 
