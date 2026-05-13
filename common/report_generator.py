@@ -674,13 +674,16 @@ class HTMLReportGenerator:
             html = HTMLReportGenerator._render_timeline_step(log)
             log_items.append((time_str, html))
 
-        # 处理 step 类型日志（如"申请用户资源"、"执行 hook"）
+        # 处理 step 类型日志（如"申请用户资源"，排除 hook 日志避免重复）
         for log in logs:
             log_type = log.get("type", "")
             time_str = log.get("time", "")
 
             if log_type == "step":
                 step_name = log.get('step', '')
+                # 排除 hook 日志（aw_call 中已有对应操作）
+                if step_name.startswith('执行 hook:'):
+                    continue
                 detail = log.get('detail', '')
                 clean_detail = HTMLReportGenerator._clean_text_for_display(detail) if detail else ""
 
