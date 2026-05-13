@@ -450,6 +450,12 @@ class HTMLReportGenerator:
         }}
         .timeline-step.success .step-icon {{ background: #dcfce7; color: #22c55e; }}
         .timeline-step.failed-step .step-icon {{ background: #fee2e2; color: #ef4444; }}
+        .step-icon-blue {{ background: #dbeafe; color: #1d4ed8; }}
+
+        /* 步骤卡片样式（step 类型日志） */
+        .timeline-step.step-block {{ border-color: #dbeafe; }}
+        .timeline-step.step-block .step-header {{ background: linear-gradient(to right, #eff6ff, white); }}
+        .timeline-step.step-block .step-detail {{ background: #eff6ff; }}
 
         .step-status {{ font-size: 14px; font-weight: 600; }}
         .step-user {{
@@ -657,21 +663,45 @@ class HTMLReportGenerator:
         Returns:
             HTML 字符串。
         """
-        # 过滤 aw_call 类型日志，按时间排序
-        aw_logs = [
-            log for log in logs
-            if log.get("type") == "aw_call"
-        ]
-        aw_logs.sort(key=lambda x: x.get("time") or "")
+        # 构建所有日志项，统一按时间排序
+        log_items: List[tuple] = []  # (time_str, html)
 
-        if not aw_logs:
+        # 处理 aw_call 类型日志
+        for log in logs:
+            if log.get("type") != "aw_call":
+                continue
+            time_str = log.get("time", "")
+            html = HTMLReportGenerator._render_timeline_step(log)
+            log_items.append((time_str, html))
+
+        # 处理 step 类型日志（如"申请用户资源"、"执行 hook"）
+        for log in logs:
+            log_type = log.get("type", "")
+            time_str = log.get("time", "")
+
+            if log_type == "step":
+                step_name = log.get('step', '')
+                detail = log.get('detail', '')
+                clean_detail = HTMLReportGenerator._clean_text_for_display(detail) if detail else ""
+
+                html = f'''
+    <div class="timeline-step step-block">
+        <div class="step-header" onclick="toggleStep(this)">
+            <div class="step-icon step-icon-blue">▶</div>
+            <span class="step-title">{step_name}</span>
+            <span class="step-time">{time_str}</span>
+        </div>
+        {f'<div class="step-detail"><div class="detail-content">{clean_detail}</div></div>' if clean_detail else ''}
+    </div>'''
+                log_items.append((time_str, html))
+
+        # 按时间排序
+        log_items.sort(key=lambda x: x[0] or "")
+
+        if not log_items:
             return '<div class="empty-logs">暂无执行步骤</div>'
 
-        steps_html = ""
-        for log in aw_logs:
-            steps_html += HTMLReportGenerator._render_timeline_step(log)
-
-        return steps_html
+        return "\n".join(item[1] for item in log_items)
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
