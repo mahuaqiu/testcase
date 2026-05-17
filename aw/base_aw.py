@@ -284,18 +284,29 @@ class BaseAW:
                 device_id = self.user.device_id
             result = self.client.execute(platform, [action_data], device_id=device_id)
         except Exception as e:
-            # 记录异常
             duration_ms = int((time.time() - start_time) * 1000)
-            logger.log_aw_call(
-                aw_name=self._aw_name,
-                method=method,
-                args=log_args,
-                success=False,
-                result={"error": str(e)},
-                duration_ms=duration_ms,
-                parent_aw=parent_aw,
-                request_id="",  # 异常时无 request_id
-            )
+
+            # 检测是否是连接关闭错误（上层可能重试）
+            # 连接类错误不记录失败日志，避免重试成功后出现重复失败日志
+            error_msg = str(e)
+            is_connection_closed = any(keyword in error_msg for keyword in [
+                "Connection aborted",
+                "RemoteDisconnected",
+                "Remote end closed connection",
+            ])
+
+            if not is_connection_closed:
+                # 非连接类错误：记录失败日志
+                logger.log_aw_call(
+                    aw_name=self._aw_name,
+                    method=method,
+                    args=log_args,
+                    success=False,
+                    result={"error": str(e)},
+                    duration_ms=duration_ms,
+                    parent_aw=parent_aw,
+                    request_id="",  # 异常时无 request_id
+                )
             raise
 
         duration_ms = int((time.time() - start_time) * 1000)

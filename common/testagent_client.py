@@ -85,6 +85,32 @@ class TestagentClient:
         except requests.exceptions.Timeout:
             raise TestagentError(f"请求超时: {url}")
         except requests.exceptions.RequestException as e:
+            # 检测连接关闭错误，重建 Session 并重试一次
+            error_msg = str(e)
+            is_connection_closed = any(keyword in error_msg for keyword in [
+                "Connection aborted",
+                "RemoteDisconnected",
+                "Remote end closed connection",
+                "ConnectionReset",
+            ])
+
+            if is_connection_closed:
+                # 重建 Session（清除已关闭的连接）
+                self.session = requests.Session()
+                self.session.headers.update({"Content-Type": "application/json"})
+                try:
+                    response = self.session.request(
+                        method=method,
+                        url=url,
+                        json=data,
+                        params=params,
+                        timeout=timeout,
+                    )
+                    response.raise_for_status()
+                    return response.json()
+                except requests.exceptions.RequestException as retry_e:
+                    raise TestagentError(f"请求失败（重试后）: {retry_e}") from retry_e
+
             raise TestagentError(f"请求失败: {e}") from e
 
     # ── Worker 状态与设备 ─────────────────────────────────────────────
