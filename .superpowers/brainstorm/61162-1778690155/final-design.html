@@ -1,0 +1,212 @@
+<h2>时间线报告设计 v5</h2>
+<p class="subtitle">调整布局：姓名/手机/IP 和耗时放左边</p>
+
+<div class="mockup">
+  <div class="mockup-header">报告预览 v5</div>
+  <div class="mockup-body" style="font-size:13px;background:#f8fafc;padding:16px;max-height:500px;overflow:auto">
+
+    <!-- 头部信息区 -->
+    <div style="background:white;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h2 style="margin:0;color:#ef4444;font-size:18px">test_waitingroom_001</h2>
+          <p style="margin:4px 0 0 0;color:#6b7280;font-size:12px">会议等候室功能</p>
+        </div>
+        <div style="text-align:right">
+          <span style="background:#ef4444;color:white;padding:8px 16px;border-radius:20px;font-weight:600">✗ 失败</span>
+          <div style="margin-top:8px;color:#6b7280;font-size:12px">总耗时: 45.2s · 2026-05-14 00:09</div>
+        </div>
+      </div>
+
+      <!-- 失败步骤提示 -->
+      <div style="margin-top:12px;padding:12px;background:#fef2f2;border-radius:8px;border-left:4px solid #ef4444">
+        <div style="font-weight:600;color:#dc2626;font-size:13px;margin-bottom:6px">❌ 失败步骤</div>
+        <ul style="margin:0;padding-left:20px;color:#7f1d1d;font-size:12px">
+          <li>userA: 激活窗口失败 (00:08:33)</li>
+        </ul>
+      </div>
+
+      <!-- 错误堆栈 -->
+      <div style="margin-top:12px;padding:12px;background:#fef2f2;border-radius:8px;border-left:4px solid #ef4444;font-family:Consolas,monospace;font-size:11px;color:#dc2626;white-space:pre-wrap;word-break:break-all;max-height:100px;overflow:auto">
+Connection reset by peer (54)
+  at base_aw.activate_window() line 345
+  at init_aw.do_stop_app() line 30
+  ...</div>
+    </div>
+
+    <!-- 时间线步骤列表（紧凑版） -->
+    <div style="background:white;border-radius:12px;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <div style="font-size:11px;color:#6b7280;padding:6px 8px;font-weight:600;border-bottom:1px solid #e5e7eb">执行步骤</div>
+
+      <!-- 步骤1：成功，展开状态 -->
+      <div style="border-bottom:1px solid #f3f4f6">
+        <div style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <span style="color:#22c55e">✓</span>
+          <span style="background:#3b82f6;color:white;padding:1px 6px;border-radius:3px;font-weight:600">userA</span>
+          <span style="color:#6b7280;width:65px;font-size:11px">00:01:02</span>
+          <span style="color:#22c55e;font-size:11px">2.3s</span>
+          <span style="color:#9ca3af;font-size:11px;border-left:1px solid #d1d5db;padding-left:8px">张三 · 13800138000 · 192.168.0.102</span>
+          <span style="flex:1;font-weight:500;padding-left:12px">登录系统</span>
+        </div>
+        <!-- 展开详情 -->
+        <div style="padding:8px 10px;background:#f9fafb;border-top:1px solid #e5e7eb;display:block">
+          <div style="font-size:10px;color:#6b7280;margin-bottom:6px"><strong>request_id:</strong> abc123</div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">请求</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                POST /ocr/wait {"text": "登录", "timeout": 30}
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">响应</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                {"status": "success", "output": "找到登录按钮"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤2：成功，折叠状态 -->
+      <div style="border-bottom:1px solid #f3f4f6">
+        <div style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <span style="color:#22c55e">✓</span>
+          <span style="background:#22c55e;color:white;padding:1px 6px;border-radius:3px;font-weight:600">userB</span>
+          <span style="color:#6b7280;width:65px;font-size:11px">00:01:02</span>
+          <span style="color:#22c55e;font-size:11px">2.1s</span>
+          <span style="color:#9ca3af;font-size:11px;border-left:1px solid #d1d5db;padding-left:8px">李四 · 13900139000 · 192.168.0.103</span>
+          <span style="flex:1;font-weight:500;padding-left:12px">登录系统</span>
+        </div>
+        <div style="padding:8px 10px;background:#f9fafb;border-top:1px solid #e5e7eb;display:none">
+          <div style="font-size:10px;color:#6b7280;margin-bottom:6px"><strong>request_id:</strong> def456</div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">请求</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                POST /ocr/wait {"text": "登录", "timeout": 30}
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">响应</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                {"status": "success"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤3：成功 -->
+      <div style="border-bottom:1px solid #f3f4f6">
+        <div style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <span style="color:#22c55e">✓</span>
+          <span style="background:#3b82f6;color:white;padding:1px 6px;border-radius:3px;font-weight:600">userA</span>
+          <span style="color:#6b7280;width:65px;font-size:11px">00:05:18</span>
+          <span style="color:#22c55e;font-size:11px">0.1s</span>
+          <span style="color:#9ca3af;font-size:11px;border-left:1px solid #d1d5db;padding-left:8px">张三 · 13800138000 · 192.168.0.102</span>
+          <span style="flex:1;font-weight:500;padding-left:12px">激活Chrome窗口</span>
+        </div>
+        <div style="padding:8px 10px;background:#f9fafb;border-top:1px solid #e5e7eb;display:none">
+          <div style="font-size:10px;color:#6b7280;margin-bottom:6px"><strong>request_id:</strong> ghi789</div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">请求</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                POST /window/activate {"name": "chrome.exe"}
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">响应</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                {"status": "success"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤4：失败，高亮显示，自动展开 -->
+      <div style="border-bottom:1px solid #f3f4f6;background:#fef2f2">
+        <div style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <span style="color:#ef4444">✗</span>
+          <span style="background:#3b82f6;color:white;padding:1px 6px;border-radius:3px;font-weight:600">userA</span>
+          <span style="color:#6b7280;width:65px;font-size:11px">00:08:33</span>
+          <span style="color:#ef4444;font-size:11px">3ms</span>
+          <span style="color:#7f1d1d;font-size:11px;border-left:1px solid #fecaca;padding-left:8px">张三 · 13800138000 · 192.168.0.102</span>
+          <span style="flex:1;font-weight:500;color:#dc2626;padding-left:12px">激活窗口失败</span>
+        </div>
+        <!-- 展开详情 -->
+        <div style="padding:8px 10px;background:#fef2f2;border-top:1px solid #fecaca;display:block">
+          <div style="font-size:10px;color:#6b7280;margin-bottom:6px"><strong>request_id:</strong> jkl012</div>
+          <div style="margin-bottom:8px">
+            <div style="font-size:9px;color:#dc2626;font-weight:600;margin-bottom:2px">错误信息</div>
+            <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#dc2626">
+              Connection reset by peer (54)
+            </div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">请求</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                POST /window/activate {"value": "Chrome_WidgetWin_1", "name": "chrome.exe"}
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">响应</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#dc2626">
+                {"error": "Connection reset by peer"}
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px">
+            <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:4px">失败截图</div>
+            <div style="display:flex;gap:8px">
+              <div style="width:100px;height:60px;background:#e5e7eb;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:9px;border:1px solid #fecaca">当前屏幕</div>
+              <div style="width:100px;height:60px;background:#e5e7eb;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:9px;border:1px solid #fecaca">目标图片</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步骤5 -->
+      <div>
+        <div style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <span style="color:#22c55e">✓</span>
+          <span style="background:#22c55e;color:white;padding:1px 6px;border-radius:3px;font-weight:600">userB</span>
+          <span style="color:#6b7280;width:65px;font-size:11px">00:10:45</span>
+          <span style="color:#22c55e;font-size:11px">1.2s</span>
+          <span style="color:#9ca3af;font-size:11px;border-left:1px solid #d1d5db;padding-left:8px">李四 · 13900139000 · 192.168.0.103</span>
+          <span style="flex:1;font-weight:500;padding-left:12px">入会（进入等候室）</span>
+        </div>
+        <div style="padding:8px 10px;background:#f9fafb;border-top:1px solid #e5e7eb;display:none">
+          <div style="font-size:10px;color:#6b7280;margin-bottom:6px"><strong>request_id:</strong> mno345</div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">请求</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                POST /join {"meeting_id": "xxx"}
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:9px;color:#6b7280;font-weight:600;margin-bottom:2px">响应</div>
+              <div style="background:white;padding:6px;border-radius:3px;font-size:10px;font-family:Consolas,monospace;color:#4b5563">
+                {"status": "success", "in_waitingroom": true}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<p style="margin-top:16px;color:#6b7280;font-size:12px">
+  最终布局：<br>
+  状态 + 用户标签 + 时间 + 耗时 + 姓名/手机/IP + 操作名<br>
+  <br>
+  例如：✓ userA 00:01:02 2.3s | 张三 · 13800138000 · 192.168.0.102 登录系统
+</p>
+
+<p style="margin-top:8px;font-weight:600">这个布局 OK 吗？</p>
