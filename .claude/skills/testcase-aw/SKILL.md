@@ -14,8 +14,8 @@ description: "AW新增/扩展/修改。与用户确认平台和操作步骤，�
 ### 步骤 1：读取可用资源
 
 **必须先读取**：
-- `aw/INDEX.md` — 已有 AW 及方法
-- `aw/base_aw.py` — BaseAW 基础方法
+- `aw/INDEX.md` — 功能速查表（确认功能归属）
+- `aw/{平台}/INDEX.md` — 平台已有 AW 及方法
 
 ### 步骤 2：确认平台和步骤
 
@@ -42,13 +42,16 @@ description: "AW新增/扩展/修改。与用户确认平台和操作步骤，�
 - 使用 AskUserQuestion 让用户确认是否继续
 - 用户确认后再执行代码生成
 
-### 步骤 6：生成代码 + 更新INDEX.md
+### 步骤 6：生成代码 + 更新索引
+
+1. 新增 AW：更新 `aw/{平台}/INDEX.md` 详细记录
+2. 新增功能类型：更新 `aw/INDEX.md` 功能速查表
 
 ---
 
 ## 核心规则
 
-1. **先读清单再写代码**：步骤中的方法必须在 INDEX.md 或 base_aw.py 中存在
+1. **先读清单再写代码**：步骤中的方法必须在平台索引或主索引的公共 AW 中存在
 2. **不确定就问**：方法不存在时，询问用户而非编造
 3. **便捷方法**：用 `self.ocr_click()` 而非 `self.client.ocr_click()`
 4. **禁止使用 time.sleep**：AW 中必须使用 `self.wait(seconds)` 而非 `time.sleep()`，单位为秒（与 time.sleep 一致），否则在 `with parallel()` 并行执行时 sleep 会提前执行导致时序错乱

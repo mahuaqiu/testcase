@@ -36,7 +36,8 @@ description: "自动化测试用例生成。单Skill直接执行全流程，生�
 | 文件 | 读取目的 |
 |------|----------|
 | `AGENTS.md` | 架构、命名规范、编码约定、并行执行模式 |
-| `aw/INDEX.md` | 已有AW资源索引 |
+| `aw/INDEX.md` | 功能速查表 |
+| `aw/{平台}/INDEX.md` | 平台已有AW资源详情 |
 | `config.yaml` | hooks配置（setup/teardown自动处理） |
 
 ---
@@ -327,21 +328,11 @@ class TestClass:
 1. 先调用 testcase-aw Skill 完成AW生成
 2. 再生成测试用例引用
 
-#### 6.4 更新INDEX.md
+#### 6.4 更新索引
 
-新增/扩展AW后，更新 `aw/INDEX.md`：
-
-```markdown
-### XxxAW
-
-> 文件路径：`aw/{平台}/xxx_aw.py`
-> 功能概述：{业务概述}
-
-| 方法 | 说明 |
-|------|------|
-| `do_xxx()` | 执行xxx操作 |
-| `should_xxx_success()` | 断言xxx成功 |
-```
+新增/扩展AW后：
+1. 更新 `aw/{平台}/INDEX.md` 添加详细记录
+2. 新功能类型时更新 `aw/INDEX.md` 功能速查表
 
 ---
 
@@ -376,11 +367,12 @@ class TestClass:
 | AW引用 | from aw.{平台}.{业务}_aw import XxxAW | 检查路径正确 |
 | Docstring | 中文注释 | 缺失则补充 |
 
-#### 7.3 INDEX.md同步验证
+#### 7.3 索引同步验证
 
 检查：
-- 新增AW是否已添加到INDEX.md
+- 新增AW是否已添加到平台索引 `aw/{平台}/INDEX.md`
 - 方法列表是否完整
+- 新功能类型是否已添加到主索引速查表
 
 #### 7.4 复查结果输出
 
@@ -390,7 +382,7 @@ class TestClass:
 - 步骤覆盖：{N}/{N} 用户STEP全部覆盖
 - hooks冲突：无重复清理操作
 - 编码规范：命名、格式符合AGENTS.md
-- INDEX.md：已同步更新
+- 平台索引：已同步更新
 ```
 
 **发现问题**：
@@ -399,16 +391,16 @@ class TestClass:
 - 遗漏STEP 3断言 → 已补充 should_xxx_success()
 - hooks冲突：user.stop_app() 与 teardown.stop_app 重复 → 已移除
 - 文件命名不规范 → 已修正为 test_xxx_001.py
-- INDEX.md未更新 → 已补充XxxAW记录
+- 平台索引未更新 → 已补充XxxAW记录
 ```
 
 ---
 
 ## 核心原则
 
-1**优先复用相似用例**：查INDEX.md前先查同目录用例
+1**优先复用相似用例**：查平台索引前先查同目录用例
 2**用户评审前置**：生成代码前必须让用户确认计划
-3**生成后复查**：步骤覆盖、编码规范、INDEX.md同步
+3**生成后复查**：步骤覆盖、编码规范、平台索引同步
 4**需要AW时调用 testcase-aw**：AW操作专用Skill
 5**遵循命名规范**：详见AGENTS.md
 
