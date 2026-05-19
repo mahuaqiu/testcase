@@ -92,6 +92,12 @@ def pytest_configure(config):
         print(f"[警告] exeParam 参数解析失败，将使用空字典: {e}")
         _exe_param = {}
 
+    # exeParam 参数更新全局配置（如 env 参数覆盖 config.yaml 的默认值）
+    if _exe_param:
+        cfg = get_config()  # 先加载配置
+        for key, value in _exe_param.items():
+            cfg[key] = value
+
 
 # ── 用户资源 Fixture ─────────────────────────────────
 

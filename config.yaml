@@ -1,5 +1,8 @@
 # testcase 工程配置文件
 
+# 运行环境配置（可通过 --exeParam='{"env":"prod"}' 覆盖）
+env: "test"
+
 # 资源管理服务配置
 resource_manager:
   # 资源管理服务地址，为空时使用 mock_users 本地调试
