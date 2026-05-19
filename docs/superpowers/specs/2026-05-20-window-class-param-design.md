@@ -94,7 +94,7 @@ def _build_window(self, window_class: str | None) -> dict | None:
     return {"class": window_class}
 ```
 
-### 2.3 修改 Action 类（并行执行支持）
+### 2.2 修改 Action 类（并行执行支持）
 
 `Action` 类添加 `window` 属性：
 
@@ -116,7 +116,7 @@ class Action:
     window: Optional[Dict[str, Any]] = None  # 新增：窗口定位参数
 ```
 
-### 2.4 修改 execute_async() 方法
+### 2.3 修改 execute_async() 方法
 
 `execute_async()` 添加 `window` 参数：
 
@@ -146,7 +146,7 @@ def execute_async(
     return self._request("POST", "/task/execute_async", data=task_request)
 ```
 
-### 2.5 修改 `_execute_with_log()` 签名
+### 2.4 修改 `_execute_with_log()` 签名
 
 添加 `window` 参数，收集模式下传递给 Action 对象：
 
@@ -177,7 +177,7 @@ def _execute_with_log(
     result = self.client.execute(platform, [action_data], device_id=device_id, window=window)  # 新增
 ```
 
-### 2.6 修改 `_execute_batch_async()` 方法
+### 2.5 修改 `_execute_batch_async()` 方法
 
 将 `window` 传递给 `execute_async()`：
 
@@ -194,7 +194,7 @@ def _execute_batch_async(self, batch: Dict[str, Any], logger: ReportLogger) -> L
     ...
 ```
 
-### 2.7 修改分组逻辑
+### 2.6 修改分组逻辑
 
 按用户分组时，`window` 参数需要从 Action 对象提取。由于同一用户的多个 Action 可能使用不同的 `window` 参数，需要特殊处理：
 
@@ -228,7 +228,7 @@ key = (action.user_id, action.platform, id(action.client), action.window)
 
 本次采用方案 A，更简单且符合实际使用场景（同一用户的并行操作通常绑定同一窗口）。
 
-### 2.8 修改 `_execute_exist_check()` 签名
+### 2.7 修改 `_execute_exist_check()` 签名
 
 同样添加 `window` 参数：
 
@@ -249,7 +249,7 @@ def _execute_exist_check(
     result = self.client.execute(platform, [action_data], device_id=device_id, window=window)  # 新增
 ```
 
-### 2.9 修改 `_exec()` 签名
+### 2.8 修改 `_exec()` 签名
 
 ```python
 def _exec(
@@ -263,7 +263,7 @@ def _exec(
     return self._execute_with_log(action_type, full_action_data, log_args, window=window)
 ```
 
-### 2.10 修改 `_exec_bool()`、`_exec_str()` 和 `_exec_list()`
+### 2.9 修改 `_exec_bool()`、`_exec_str()` 和 `_exec_list()`
 
 ```python
 def _exec_bool(self, action_type: str, action_data: dict, log_args: dict, window: dict | None = None) -> bool:
@@ -382,7 +382,7 @@ class TestClass:
    - 修改 `_exec()`、`_exec_bool()`、`_exec_str()`、`_exec_list()` 签名
 
 4. **ParallelContext 修改**：
-   - `_execute_parallel()` 分组时提取 `window` 参数
+   - `_execute_parallel()` 分组时提取 `window` 参数（采用方案 A：取第一个 Action 的 window）
    - `_execute_batch_async()` 将 `window` 传递给 `execute_async()`
 
 5. **OCR 方法修改**：14 个方法添加 `window_class` 参数
