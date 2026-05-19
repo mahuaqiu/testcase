@@ -383,6 +383,11 @@ class ParallelContext:
             "error": action_result.get("error", ""),
         }
 
+        # 如果有 OCR 信息，添加到 result
+        ocr_info = action_result.get("ocr_info")
+        if ocr_info:
+            result["ocr_info"] = ocr_info
+
         # 如果有错误截图，添加到 result
         # 优先使用 Worker 返回的 error_screenshot（失败瞬间的截图）
         error_screenshot = worker_error_screenshot or action_result.get("error_screenshot") or action_result.get("screenshot")
