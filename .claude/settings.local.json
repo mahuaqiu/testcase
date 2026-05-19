@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(open *)",
+      "Bash(git show *)",
+      "Bash(grep *)",
+      "Bash(python3 -m pytest testcases/web/waitingroom/test_room_001.py -v --tb=short)"
     ]
   }
 }
