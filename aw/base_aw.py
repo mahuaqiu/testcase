@@ -355,6 +355,8 @@ class BaseAW:
         }
         if "error_screenshot" in action_result:
             full_result["error_screenshot"] = action_result["error_screenshot"]
+        if "ocr_info" in action_result:
+            full_result["ocr_info"] = action_result["ocr_info"]
 
         logger.log_aw_call(
             aw_name=self._aw_name,

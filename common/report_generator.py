@@ -229,6 +229,24 @@ class HTMLReportGenerator:
                 <div class="step-error-text">{HTMLReportGenerator._clean_text_for_display(error_msg)}</div>
             </div>''')
 
+            # OCR 信息（失败时有 OCR 数据时显示）
+            ocr_info = result.get("ocr_info", [])
+            if ocr_info and isinstance(ocr_info, list) and len(ocr_info) > 0:
+                ocr_items = []
+                for item in ocr_info:
+                    text = item.get("text", "")
+                    center = item.get("center", {})
+                    x = center.get("x", "-")
+                    y = center.get("y", "-")
+                    if text:
+                        ocr_items.append(f'<span class="ocr-text-item">"{text}" ({x}, {y})</span>')
+                if ocr_items:
+                    detail_parts.append(f'''
+            <div class="step-ocr-box">
+                <div class="step-ocr-label">OCR 识别结果</div>
+                <div class="step-ocr-content">{"".join(ocr_items)}</div>
+            </div>''')
+
         # 请求和响应
         if clean_args or clean_result:
             detail_parts.append('<div class="detail-row">')
@@ -512,6 +530,26 @@ class HTMLReportGenerator:
             color: #dc2626;
         }}
         .step-error-box {{ margin-bottom: 8px; }}
+
+        /* OCR 信息样式 */
+        .step-ocr-box {{ margin-bottom: 8px; }}
+        .step-ocr-label {{ font-size: 9px; color: #6b7280; font-weight: 600; margin-bottom: 2px; }}
+        .step-ocr-content {{
+            background: white;
+            padding: 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+            font-size: 10px;
+            color: #4b5563;
+            line-height: 1.6;
+        }}
+        .ocr-text-item {{
+            display: inline-block;
+            margin: 2px 4px;
+            padding: 2px 6px;
+            background: #f3f4f6;
+            border-radius: 3px;
+        }}
 
         .detail-row {{ display: flex; gap: 12px; margin-bottom: 8px; }}
         .detail-half {{ flex: 1; }}
