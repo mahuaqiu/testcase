@@ -350,16 +350,16 @@ class HTMLReportGenerator:
             background: #f8fafc;
             min-height: 100vh;
             margin: 0;
-            padding: 24px;
+            padding: 24px 16px;
         }}
-        .container {{ max-width: 1000px; margin: 0 auto; }}
+        .container {{ max-width: 1400px; margin: 0 auto; }}
 
         /* 报告头部 */
         .header {{
             background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
             border-radius: 16px;
-            padding: 20px 24px;
-            margin-bottom: 20px;
+            padding: 24px 28px;
+            margin-bottom: 24px;
             box-shadow: 0 4px 20px rgba(34,197,94,0.1);
         }}
         .header.failed {{
@@ -368,69 +368,69 @@ class HTMLReportGenerator:
         }}
         .header-content {{ display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }}
         .header-left {{ flex: 1; }}
-        .header h1 {{ margin: 0 0 4px 0; font-size: 20px; color: #166534; font-weight: 700; }}
+        .header h1 {{ margin: 0 0 6px 0; font-size: 24px; color: #166534; font-weight: 700; }}
         .header.failed h1 {{ color: #dc2626; }}
-        .header h2 {{ margin: 0; font-size: 13px; color: #15803d; font-weight: 400; }}
+        .header h2 {{ margin: 0; font-size: 15px; color: #15803d; font-weight: 400; }}
         .header.failed h2 {{ color: #b91c1c; }}
         .header-right {{ display: flex; align-items: center; gap: 20px; }}
         .status-badge {{
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 24px;
             font-weight: 600;
-            font-size: 14px;
+            font-size: 16px;
         }}
         .status-passed {{ background: #22c55e; color: white; }}
         .status-failed {{ background: #ef4444; color: white; }}
         .header-meta {{ text-align: right; }}
-        .header-meta .duration {{ font-size: 18px; font-weight: 700; color: #166534; }}
+        .header-meta .duration {{ font-size: 22px; font-weight: 700; color: #166534; }}
         .header.failed .header-meta .duration {{ color: #dc2626; }}
-        .header-meta .time {{ font-size: 12px; color: #6b7280; margin-top: 2px; }}
+        .header-meta .time {{ font-size: 13px; color: #6b7280; margin-top: 4px; }}
 
         /* 失败提示 */
         .failed-steps {{
-            margin-top: 12px;
-            padding: 10px 14px;
+            margin-top: 14px;
+            padding: 12px 16px;
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             border-left: 4px solid #ef4444;
         }}
-        .failed-steps-title {{ font-weight: 600; color: #dc2626; margin-bottom: 6px; font-size: 13px; }}
-        .failed-steps-list {{ margin: 0; padding-left: 20px; color: #7f1d1d; font-size: 12px; }}
-        .failed-steps-list li {{ margin: 4px 0; }}
+        .failed-steps-title {{ font-weight: 600; color: #dc2626; margin-bottom: 8px; font-size: 14px; }}
+        .failed-steps-list {{ margin: 0; padding-left: 20px; color: #7f1d1d; font-size: 13px; }}
+        .failed-steps-list li {{ margin: 6px 0; }}
 
         .error-box {{
-            margin-top: 12px;
-            padding: 10px 14px;
+            margin-top: 14px;
+            padding: 12px 16px;
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             border-left: 4px solid #ef4444;
             font-family: 'Consolas', monospace;
-            font-size: 11px;
+            font-size: 12px;
             color: #dc2626;
             white-space: pre-wrap;
             word-break: break-all;
-            max-height: 120px;
+            max-height: 150px;
             overflow: auto;
         }}
 
         /* 时间线步骤 */
         .timeline-card {{
             background: white;
-            border-radius: 12px;
-            padding: 12px;
+            border-radius: 16px;
+            padding: 16px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }}
         .timeline-title {{
-            font-size: 11px;
-            color: #6b7280;
-            padding: 6px 8px;
+            font-size: 14px;
+            color: #374151;
+            padding: 8px 12px;
             font-weight: 600;
             border-bottom: 1px solid #e5e7eb;
         }}
 
         .timeline-step {{
-            margin: 8px 0;
-            border-radius: 10px;
+            margin: 10px 0;
+            border-radius: 12px;
             background: white;
             border: 1px solid #e5e7eb;
             overflow: hidden;
@@ -444,12 +444,12 @@ class HTMLReportGenerator:
         }}
 
         .step-header {{
-            padding: 12px 14px;
+            padding: 14px 16px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 12px;
+            gap: 10px;
+            font-size: 14px;
             transition: background 0.15s;
         }}
         .timeline-step.success .step-header {{ background: linear-gradient(to right, #f0fdf4, white); }}
@@ -457,13 +457,13 @@ class HTMLReportGenerator:
         .step-header:hover {{ filter: brightness(0.98); }}
 
         .step-icon {{
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 16px;
             flex-shrink: 0;
         }}
         .timeline-step.success .step-icon {{ background: #dcfce7; color: #22c55e; }}
@@ -475,93 +475,93 @@ class HTMLReportGenerator:
         .timeline-step.step-block .step-header {{ background: linear-gradient(to right, #eff6ff, white); }}
         .timeline-step.step-block .step-detail {{ background: #eff6ff; }}
 
-        .step-status {{ font-size: 14px; font-weight: 600; }}
+        .step-status {{ font-size: 16px; font-weight: 600; }}
         .step-user {{
             color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
+            padding: 3px 10px;
+            border-radius: 6px;
             font-weight: 600;
-            font-size: 11px;
+            font-size: 13px;
         }}
-        .step-time {{ color: #6b7280; font-size: 11px; width: 65px; }}
-        .step-duration {{ font-size: 11px; }}
+        .step-time {{ color: #6b7280; font-size: 13px; width: 70px; }}
+        .step-duration {{ font-size: 13px; }}
         .step-divider {{
             width: 1px;
-            height: 14px;
+            height: 18px;
             background: #d1d5db;
             margin-left: 4px;
         }}
-        .step-user-info {{ font-size: 11px; }}
+        .step-user-info {{ font-size: 13px; }}
         .step-title {{
             flex: 1;
             font-weight: 500;
-            padding-left: 12px;
+            padding-left: 14px;
         }}
         .step-title.failed-text {{ color: #dc2626; }}
 
         /* 展开详情 */
         .step-detail {{
             display: none;
-            padding: 10px 12px;
+            padding: 12px 14px;
             border-top: 1px solid #e5e7eb;
         }}
         .step-detail.expanded {{ display: block; }}
         .timeline-step.success .step-detail {{ background: #f0fdf4; }}
         .timeline-step.failed-step .step-detail {{ background: #fef2f2; border-top-color: #fecaca; }}
 
-        .detail-item {{ font-size: 10px; color: #6b7280; margin-bottom: 6px; }}
-        .detail-label {{ font-size: 9px; color: #6b7280; font-weight: 600; margin-bottom: 2px; }}
+        .detail-item {{ font-size: 12px; color: #6b7280; margin-bottom: 8px; }}
+        .detail-label {{ font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 4px; }}
         .detail-content {{
             background: white;
-            padding: 6px;
-            border-radius: 3px;
+            padding: 8px;
+            border-radius: 6px;
             font-family: 'Consolas', monospace;
-            font-size: 10px;
+            font-size: 12px;
             color: #4b5563;
         }}
 
-        .step-error-label {{ font-size: 9px; color: #dc2626; font-weight: 600; margin-bottom: 2px; }}
+        .step-error-label {{ font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px; }}
         .step-error-text {{
             background: white;
-            padding: 6px;
-            border-radius: 3px;
+            padding: 8px;
+            border-radius: 6px;
             font-family: 'Consolas', monospace;
-            font-size: 10px;
+            font-size: 12px;
             color: #dc2626;
         }}
-        .step-error-box {{ margin-bottom: 8px; }}
+        .step-error-box {{ margin-bottom: 10px; }}
 
         /* OCR 信息样式 */
-        .step-ocr-box {{ margin-bottom: 8px; }}
-        .step-ocr-label {{ font-size: 9px; color: #6b7280; font-weight: 600; margin-bottom: 2px; }}
+        .step-ocr-box {{ margin-bottom: 10px; }}
+        .step-ocr-label {{ font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 4px; }}
         .step-ocr-content {{
             background: white;
-            padding: 6px;
-            border-radius: 3px;
+            padding: 8px;
+            border-radius: 6px;
             font-family: 'Consolas', monospace;
-            font-size: 10px;
+            font-size: 12px;
             color: #4b5563;
             line-height: 1.6;
         }}
         .ocr-text-item {{
             display: inline-block;
-            margin: 2px 4px;
-            padding: 2px 6px;
+            margin: 3px 5px;
+            padding: 3px 8px;
             background: #f3f4f6;
-            border-radius: 3px;
+            border-radius: 4px;
         }}
 
-        .detail-row {{ display: flex; gap: 12px; margin-bottom: 8px; }}
+        .detail-row {{ display: flex; gap: 14px; margin-bottom: 10px; }}
         .detail-half {{ flex: 1; }}
 
-        .screenshots-row {{ margin-top: 8px; }}
-        .screenshots-label {{ font-size: 9px; color: #6b7280; font-weight: 600; margin-bottom: 4px; }}
-        .screenshots-grid {{ display: flex; gap: 8px; }}
+        .screenshots-row {{ margin-top: 10px; }}
+        .screenshots-label {{ font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 6px; }}
+        .screenshots-grid {{ display: flex; gap: 10px; }}
         .step-screenshot-item {{
-            width: 100px;
-            height: 60px;
+            width: 120px;
+            height: 80px;
             background: #e5e7eb;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             position: relative;
             border: 1px solid #fecaca;
@@ -570,7 +570,7 @@ class HTMLReportGenerator:
             width: 100%;
             height: 100%;
             object-fit: cover;
-            border-radius: 4px;
+            border-radius: 6px;
         }}
         .step-screenshot-label {{
             position: absolute;
@@ -579,30 +579,30 @@ class HTMLReportGenerator:
             right: 0;
             background: rgba(0,0,0,0.6);
             color: white;
-            font-size: 9px;
-            padding: 2px 4px;
+            font-size: 10px;
+            padding: 3px 6px;
             text-align: center;
-            border-radius: 0 0 4px 4px;
+            border-radius: 0 0 6px 6px;
         }}
 
         /* 截图卡片 */
         .screenshots-card {{
             background: white;
             border-radius: 16px;
-            padding: 20px;
-            margin-top: 20px;
+            padding: 24px;
+            margin-top: 24px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }}
-        .screenshots-card h3 {{ margin: 0 0 12px 0; font-size: 14px; color: #374151; font-weight: 600; }}
+        .screenshots-card h3 {{ margin: 0 0 16px 0; font-size: 16px; color: #374151; font-weight: 600; }}
         .screenshot-item-large {{ cursor: pointer; text-align: center; display: inline-block; }}
         .screenshot-item-large img {{
-            width: 200px;
-            height: 130px;
+            width: 240px;
+            height: 160px;
             object-fit: cover;
-            border-radius: 8px;
+            border-radius: 10px;
             border: 2px solid #e5e7eb;
         }}
-        .screenshot-item-large .user-id {{ margin-top: 6px; font-size: 12px; color: #6b7280; }}
+        .screenshot-item-large .user-id {{ margin-top: 8px; font-size: 14px; color: #6b7280; }}
 
         /* 弹窗 */
         .modal {{
@@ -620,7 +620,7 @@ class HTMLReportGenerator:
         .modal img {{ max-width: 95%; max-height: 95%; border-radius: 8px; }}
         .modal-close {{ position: fixed; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }}
 
-        .empty-logs {{ padding: 20px; text-align: center; color: #868e96; }}
+        .empty-logs {{ padding: 24px; text-align: center; color: #868e96; font-size: 14px; }}
     </style>
 </head>
 <body>
