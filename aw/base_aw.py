@@ -311,8 +311,10 @@ class BaseAW:
 
         duration_ms = int((time.time() - start_time) * 1000)
 
-        # 从 actions 列表中取第一个结果
-        action_result = result.get("actions", [{}])[0] if result.get("actions") else {}
+        # 从 actions 列表中优先提取失败的结果（包含错误信息和 OCR 数据）
+        actions = result.get("actions", [])
+        failed_actions = [a for a in actions if a.get("status") == "failed"]
+        action_result = failed_actions[0] if failed_actions else (actions[0] if actions else {})
         success = action_result.get("status") == "success"
         # 提取 request_id（用于问题定位）
         request_id = action_result.get("request_id", "")
