@@ -6,7 +6,9 @@
       "Bash(open *)",
       "Bash(git show *)",
       "Bash(grep *)",
-      "Bash(python3 -m pytest testcases/web/waitingroom/test_room_001.py -v --tb=short)"
+      "Bash(python3 -m pytest testcases/web/waitingroom/test_room_001.py -v --tb=short)",
+      "Bash(python3 *)",
+      "Bash(xargs ls -lt)"
     ]
   }
 }
