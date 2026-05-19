@@ -91,6 +91,7 @@ class Action:
         log_args: 用于日志记录的参数字典。
         client: TestagentClient 实例（用于发送请求）。
         parent_aw: 父级 AW 标识（如 LoginAW.do_login），用于日志聚合。
+        window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
     """
 
     action_data: Dict[str, Any]
@@ -104,6 +105,7 @@ class Action:
     log_args: Dict[str, Any] = field(default_factory=dict)
     client: Optional["TestagentClient"] = None
     parent_aw: str = ""  # 父级 AW 标识，用于日志聚合
+    window: Optional[Dict[str, Any]] = None  # 窗口定位参数（仅 Windows 平台）
 
 
 # ── 异常类 ───────────────────────────────────────────────────────
@@ -213,6 +215,7 @@ class ParallelContext:
                     "user_id": action.user_id,
                     "actions": [],      # action_data 列表
                     "action_objs": [],  # Action 对象列表（用于日志）
+                    "window": action.window,  # 窗口定位参数（取第一个 Action 的 window）
                 }
             user_batches[key]["actions"].append(action.action_data)
             user_batches[key]["action_objs"].append(action)
@@ -285,12 +288,13 @@ class ParallelContext:
         platform = batch["platform"]
         actions = batch["actions"]
         action_objs = batch["action_objs"]
+        window = batch.get("window")  # 窗口定位参数
 
         if client is None:
             raise ValueError("client 未设置")
 
         # 发送异步请求
-        async_result = client.execute_async(platform, actions)
+        async_result = client.execute_async(platform, actions, window=window)
         task_id = async_result.get("task_id")
 
         if not task_id:

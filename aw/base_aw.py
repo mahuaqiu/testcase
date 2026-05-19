@@ -2,6 +2,7 @@
 
 import functools
 import inspect
+import logging
 import time
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
@@ -12,6 +13,8 @@ from common.utils import load_image_as_base64
 
 if TYPE_CHECKING:
     from common.user import User
+
+logger = logging.getLogger(__name__)
 
 
 class AWError(Exception):
@@ -222,6 +225,7 @@ class BaseAW:
         method: str,
         action_data: Dict[str, Any],
         log_args: Dict[str, Any],
+        window: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """执行操作并记录日志，失败时抛出异常。
 
@@ -231,6 +235,7 @@ class BaseAW:
             method: 方法名。
             action_data: 原始 action 数据（发给服务端）。
             log_args: 用于日志记录的参数。
+            window: 窗口定位参数（仅 Windows 平台）。
 
         Returns:
             执行结果（收集模式下返回空字典）。
@@ -266,6 +271,7 @@ class BaseAW:
                     log_args=log_args,
                     client=self.client,
                     parent_aw=parent_aw,  # 传递 parent_aw 以支持日志聚合
+                    window=window,
                 )
                 queue.append(action_obj)
                 return {}  # 收集模式返回空字典
@@ -282,7 +288,7 @@ class BaseAW:
             device_id = None
             if platform in ("ios", "android") and self.user:
                 device_id = self.user.device_id
-            result = self.client.execute(platform, [action_data], device_id=device_id)
+            result = self.client.execute(platform, [action_data], device_id=device_id, window=window)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
 
@@ -390,11 +396,12 @@ class BaseAW:
 
     # ── OCR 动作 ─────────────────────────────────────────
 
-    def ocr_click(self, text: str, **kwargs) -> dict:
+    def ocr_click(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """OCR 识别并点击。
 
         Args:
             text: 要识别并点击的文字。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配），如 "HwmMainWndClass"。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
@@ -403,19 +410,22 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         params = self._ocr_params(kwargs)
         if "click_duration" in kwargs:
             params["click_duration"] = kwargs["click_duration"]
         return self._exec("ocr_click",
             {"value": text, **params},
-            {"text": text, **kwargs})
+            {"text": text, **kwargs},
+            window=window)
 
-    def ocr_input(self, label: str, content: str, **kwargs) -> dict:
+    def ocr_input(self, label: str, content: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """OCR 定位后输入。
 
         Args:
             label: 要定位的文字标签。
             content: 要输入的内容。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 输入偏移量 {"x": 0, "y": 0}。
@@ -424,23 +434,27 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         params = self._ocr_params(kwargs)
         if "click_duration" in kwargs:
             params["click_duration"] = kwargs["click_duration"]
         return self._exec("ocr_input",
             {"value": label, "text": content, **params},
-            {"label": label, "content": content, **kwargs})
+            {"label": label, "content": content, **kwargs},
+            window=window)
 
-    def ocr_wait(self, text: str, **kwargs) -> dict:
+    def ocr_wait(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """等待文字出现。
 
         Args:
             text: 要等待的文字。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         action_data = {"value": text, "timeout": kwargs.get("timeout", 5) * 1000}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
@@ -449,17 +463,19 @@ class BaseAW:
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
-        return self._exec("ocr_wait", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_wait", action_data, {"text": text, **kwargs}, window=window)
 
-    def ocr_assert(self, text: str, **kwargs) -> dict:
+    def ocr_assert(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """断言文字存在。
 
         Args:
             text: 要断言的文字。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         action_data = {"value": text}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
@@ -468,12 +484,13 @@ class BaseAW:
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
-        return self._exec("ocr_assert", action_data, {"text": text, **kwargs})
+        return self._exec("ocr_assert", action_data, {"text": text, **kwargs}, window=window)
 
-    def ocr_get_text(self, **kwargs) -> str:
+    def ocr_get_text(self, window_class: Optional[str] = None, **kwargs) -> str:
         """获取屏幕所有文字。
 
         Args:
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
@@ -481,6 +498,7 @@ class BaseAW:
         Returns:
             识别到的文字内容。
         """
+        window = self._build_window(window_class)
         action_data = {"value": ""}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
@@ -489,14 +507,15 @@ class BaseAW:
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
-        return self._exec_str("ocr_get_text", action_data, {**kwargs})
+        return self._exec_str("ocr_get_text", action_data, {**kwargs}, window=window)
 
-    def ocr_paste(self, text: str, content: str, **kwargs) -> dict:
+    def ocr_paste(self, text: str, content: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """OCR 定位后粘贴剪贴板内容。
 
         Args:
             text: 要定位的文字。
             content: 剪贴板内容。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
@@ -505,18 +524,21 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         params = self._ocr_params(kwargs)
         if "click_duration" in kwargs:
             params["click_duration"] = kwargs["click_duration"]
         return self._exec("ocr_paste",
             {"value": text, "text": content, **params},
-            {"text": text, "content": content, **kwargs})
+            {"text": text, "content": content, **kwargs},
+            window=window)
 
-    def ocr_move(self, text: str, **kwargs) -> dict:
+    def ocr_move(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """OCR 定位后移动鼠标（仅桌面端支持）。
 
         Args:
             text: 要定位的文字。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
@@ -524,15 +546,18 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         return self._exec("ocr_move",
             {"value": text, **self._ocr_params(kwargs)},
-            {"text": text, **kwargs})
+            {"text": text, **kwargs},
+            window=window)
 
-    def ocr_double_click(self, text: str, **kwargs) -> dict:
+    def ocr_double_click(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """OCR 定位后双击。
 
         Args:
             text: 要识别并双击的文字。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
@@ -540,15 +565,18 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         return self._exec("ocr_double_click",
             {"value": text, **self._ocr_params(kwargs)},
-            {"text": text, **kwargs})
+            {"text": text, **kwargs},
+            window=window)
 
-    def ocr_exist(self, text: str, **kwargs) -> bool:
+    def ocr_exist(self, text: str, window_class: Optional[str] = None, **kwargs) -> bool:
         """检查文字是否存在。
 
         Args:
             text: 要检查的文字。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
@@ -558,15 +586,18 @@ class BaseAW:
         Returns:
             True 如果文字存在，False 如果不存在。不抛异常。
         """
+        window = self._build_window(window_class)
         return self._exec_bool("ocr_exist",
             {"value": text, **self._ocr_params(kwargs)},
-            {"text": text, **kwargs})
+            {"text": text, **kwargs},
+            window=window)
 
-    def ocr_get_position(self, text: str, **kwargs) -> list:
+    def ocr_get_position(self, text: str, window_class: Optional[str] = None, **kwargs) -> list:
         """获取文字坐标列表。
 
         Args:
             text: 要查找的文字内容。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
@@ -574,6 +605,7 @@ class BaseAW:
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]，坐标顺序：精确匹配 → 模糊匹配。
         """
+        window = self._build_window(window_class)
         action_data = {"value": text}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
@@ -582,16 +614,17 @@ class BaseAW:
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
-        return self._exec_list("ocr_get_position", action_data, {"text": text, **kwargs})
+        return self._exec_list("ocr_get_position", action_data, {"text": text, **kwargs}, window=window)
 
     def ocr_click_same_row_text(
-        self, anchor_text: str, target_text: str, **kwargs
+        self, anchor_text: str, target_text: str, window_class: Optional[str] = None, **kwargs
     ) -> dict:
         """点击锚点文本同一行的目标文本。
 
         Args:
             anchor_text: 锚点文本内容。
             target_text: 目标文本内容。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             anchor_index: 锚点文本索引（从 0 开始），默认 0。
             target_index: 目标文本索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
@@ -600,6 +633,7 @@ class BaseAW:
             click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
+        window = self._build_window(window_class)
         action_data = {
             "anchor_text": anchor_text,
             "value": target_text,
@@ -615,16 +649,17 @@ class BaseAW:
             action_data["region"] = resolved
 
         return self._exec("ocr_click_same_row_text", action_data,
-            {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
+            {"anchor_text": anchor_text, "target_text": target_text, **kwargs}, window=window)
 
     def ocr_click_same_row_image(
-        self, anchor_text: str, image_path: str, **kwargs
+        self, anchor_text: str, image_path: str, window_class: Optional[str] = None, **kwargs
     ) -> dict:
         """点击锚点文本同一行的目标图片。
 
         Args:
             anchor_text: 锚点文本内容。
             image_path: 目标图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             anchor_index: 锚点文本索引（从 0 开始），默认 0。
             target_index: 目标图片索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
@@ -634,6 +669,7 @@ class BaseAW:
             click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
@@ -654,16 +690,17 @@ class BaseAW:
             action_data["region"] = resolved
 
         return self._exec("ocr_click_same_row_image", action_data,
-            {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
+            {"anchor_text": anchor_text, "image_path": image_path, **kwargs}, window=window)
 
     def ocr_check_same_row_text(
-        self, anchor_text: str, target_text: str, **kwargs
+        self, anchor_text: str, target_text: str, window_class: Optional[str] = None, **kwargs
     ) -> bool:
         """检查锚点文本同一行的目标文本是否存在。
 
         Args:
             anchor_text: 锚点文本内容。
             target_text: 目标文本内容。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             anchor_index: 锚点文本索引（从 0 开始），默认 0。
             target_index: 目标文本索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
@@ -673,6 +710,7 @@ class BaseAW:
         Returns:
             True 如果存在，False 如果不存在。不抛异常。
         """
+        window = self._build_window(window_class)
         action_data = {
             "anchor_text": anchor_text,
             "value": target_text,
@@ -683,16 +721,17 @@ class BaseAW:
         if resolved:
             action_data["region"] = resolved
         return self._exec_bool("ocr_check_same_row_text", action_data,
-            {"anchor_text": anchor_text, "target_text": target_text, **kwargs})
+            {"anchor_text": anchor_text, "target_text": target_text, **kwargs}, window=window)
 
     def ocr_check_same_row_image(
-        self, anchor_text: str, image_path: str, **kwargs
+        self, anchor_text: str, image_path: str, window_class: Optional[str] = None, **kwargs
     ) -> bool:
         """检查锚点文本同一行的目标图片是否存在。
 
         Args:
             anchor_text: 锚点文本内容。
             image_path: 目标图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             anchor_index: 锚点文本索引（从 0 开始），默认 0。
             target_index: 目标图片索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
@@ -703,6 +742,7 @@ class BaseAW:
         Returns:
             True 如果存在，False 如果不存在。不抛异常。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
@@ -719,7 +759,7 @@ class BaseAW:
             action_data["region"] = resolved
 
         return self._exec_bool("ocr_check_same_row_image", action_data,
-            {"anchor_text": anchor_text, "image_path": image_path, **kwargs})
+            {"anchor_text": anchor_text, "image_path": image_path, **kwargs}, window=window)
 
     # ── 图像识别动作 ─────────────────────────────────────────
 
@@ -739,6 +779,7 @@ class BaseAW:
         method: str,
         action_data: Dict[str, Any],
         log_args: Dict[str, Any],
+        window: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """执行 exist 类型操作，不抛异常，返回 exists 结果。
 
@@ -749,6 +790,7 @@ class BaseAW:
             method: 方法名。
             action_data: 原始 action 数据。
             log_args: 用于日志记录的参数。
+            window: 窗口定位参数（仅 Windows 平台）。
 
         Returns:
             包含 exists 字段的结果字典。
@@ -781,6 +823,7 @@ class BaseAW:
                     log_args=log_args,
                     client=self.client,
                     parent_aw=parent_aw,
+                    window=window,
                 )
                 queue.append(action_obj)
                 return {"exists": False}  # 收集模式返回默认值
@@ -796,7 +839,7 @@ class BaseAW:
             device_id = self.user.device_id
 
         try:
-            result = self.client.execute(platform, [action_data], device_id=device_id)
+            result = self.client.execute(platform, [action_data], device_id=device_id, window=window)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.log_aw_call(
@@ -871,6 +914,30 @@ class BaseAW:
         return {"exists": exists}
 
     # ── 参数构建器 ─────────────────────────────────────────
+
+    def _build_window(self, window_class: Optional[str]) -> Optional[Dict[str, Any]]:
+        """构建 window 参数（仅 Windows 平台）。
+
+        Args:
+            window_class: 窗口类名（精确匹配）。
+
+        Returns:
+            {"class": window_class} 或 None。
+        """
+        if not window_class:
+            return None
+
+        # 公共 AW 继承 User 的平台
+        platform = self.PLATFORM
+        if platform == "common" and self.user:
+            platform = self.user.platform
+
+        # 仅 Windows 平台生效
+        if platform != "windows":
+            logger.warning(f"window_class only works on Windows, current: {platform}")
+            return None
+
+        return {"class": window_class}
 
     def _resolve_region(self, region) -> Optional[List[int]]:
         """解析区域参数，支持字符串名称或坐标数组。
@@ -956,6 +1023,7 @@ class BaseAW:
         action_type: str,
         action_data: dict,
         log_args: dict,
+        window: Optional[Dict[str, Any]] = None,
     ) -> dict:
         """执行 action 并记录日志，失败时抛 AWError。
 
@@ -963,14 +1031,15 @@ class BaseAW:
             action_type: 动作类型，如 "ocr_click"
             action_data: 发给 worker 的完整 action dict
             log_args: 用于日志记录的参数
+            window: 窗口定位参数（仅 Windows 平台）
         """
         full_action_data = {"action_type": action_type, **action_data}
-        return self._execute_with_log(action_type, full_action_data, log_args)
+        return self._execute_with_log(action_type, full_action_data, log_args, window=window)
 
-    def _exec_bool(self, action_type: str, action_data: dict, log_args: dict) -> bool:
+    def _exec_bool(self, action_type: str, action_data: dict, log_args: dict, window: Optional[Dict[str, Any]] = None) -> bool:
         """执行 exist 类 action，返回 bool，不抛异常。"""
         full_action_data = {"action_type": action_type, **action_data}
-        result = self._execute_exist_check(action_type, full_action_data, log_args)
+        result = self._execute_exist_check(action_type, full_action_data, log_args, window=window)
         return result.get("exists", False)
 
     def _exec_str(
@@ -978,10 +1047,11 @@ class BaseAW:
         action_type: str,
         action_data: dict,
         log_args: dict,
-        key: str = "text"
+        key: str = "text",
+        window: Optional[Dict[str, Any]] = None,
     ) -> str:
         """执行 action 并提取 str 返回值（如 ocr_get_text 的 text 字段）。"""
-        result = self._exec(action_type, action_data, log_args)
+        result = self._exec(action_type, action_data, log_args, window=window)
         if result.get("actions"):
             output = result["actions"][0].get("output", "")
             if output:
@@ -996,11 +1066,12 @@ class BaseAW:
         action_type: str,
         action_data: dict,
         log_args: dict,
-        key: str = "positions"
+        key: str = "positions",
+        window: Optional[Dict[str, Any]] = None,
     ) -> list:
         """执行 action 并解析 list 返回值（如 positions）。"""
         import json
-        result = self._exec(action_type, action_data, log_args)
+        result = self._exec(action_type, action_data, log_args, window=window)
         if result.get("actions"):
             output = result["actions"][0].get("output", "")
             if output:
@@ -1013,11 +1084,12 @@ class BaseAW:
                     pass
         return []
 
-    def image_click(self, image_path: str, **kwargs) -> dict:
+    def image_click(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """图像识别点击。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
@@ -1027,6 +1099,7 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
@@ -1035,55 +1108,64 @@ class BaseAW:
             params["click_duration"] = kwargs["click_duration"]
         return self._exec("image_click",
             {"image_base64": image_base64, **params},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
-    def image_wait(self, image_path: str, **kwargs) -> dict:
+    def image_wait(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """等待图像出现。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec("image_wait",
             {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
-    def image_assert(self, image_path: str, **kwargs) -> dict:
+    def image_assert(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """断言图像存在。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec("image_assert",
             {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
-    def image_click_near_text(self, image_path: str, text: str, **kwargs) -> dict:
+    def image_click_near_text(self, image_path: str, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """点击文本附近最近的图像。
 
         Args:
             image_path: 图片路径。
             text: 文本内容。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             max_distance: 最大搜索距离（像素），默认 500。
             click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
@@ -1092,13 +1174,15 @@ class BaseAW:
             params["click_duration"] = kwargs["click_duration"]
         return self._exec("image_click_near_text",
             {"image_base64": image_base64, "value": text, "end_x": kwargs.get("max_distance", 500), **params},
-            {"image_path": image_path, "text": text, **kwargs})
+            {"image_path": image_path, "text": text, **kwargs},
+            window=window)
 
-    def image_move(self, image_path: str, **kwargs) -> dict:
+    def image_move(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """图像识别后移动鼠标（仅桌面端支持）。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
@@ -1107,18 +1191,21 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec("image_move",
             {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
-    def image_double_click(self, image_path: str, **kwargs) -> dict:
+    def image_double_click(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """图像识别后双击。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
@@ -1127,18 +1214,21 @@ class BaseAW:
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec("image_double_click",
             {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
-    def image_exist(self, image_path: str, **kwargs) -> bool:
+    def image_exist(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> bool:
         """检查图像是否存在。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             index: 选择第几个匹配结果（从 0 开始）。
@@ -1149,18 +1239,21 @@ class BaseAW:
         Returns:
             True 如果图像存在，False 如果不存在。不抛异常。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec_bool("image_exist",
             {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
-    def image_get_position(self, image_path: str, **kwargs) -> list:
+    def image_get_position(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> list:
         """获取图像坐标列表。
 
         Args:
             image_path: 图片路径。
+            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
@@ -1170,12 +1263,14 @@ class BaseAW:
         Returns:
             坐标列表 [[x1, y1], [x2, y2], ...]。
         """
+        window = self._build_window(window_class)
         image_base64 = self._load_image_as_base64(image_path)
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec_list("image_get_position",
             {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs})
+            {"image_path": image_path, **kwargs},
+            window=window)
 
     def click(self, x: int, y: int, **kwargs) -> dict:
         """坐标点击。

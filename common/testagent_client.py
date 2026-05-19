@@ -141,6 +141,7 @@ class TestagentClient:
         user_id: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         level: Optional[str] = None,
+        window: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """同步执行任务。
 
@@ -151,6 +152,7 @@ class TestagentClient:
             user_id: 用户标识。
             config: 任务配置。
             level: 执行层级（仅 Web 平台，browser/system）。
+            window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
 
         Returns:
             任务执行结果。
@@ -175,6 +177,8 @@ class TestagentClient:
             task_request["config"] = config
         if level:
             task_request["level"] = level
+        if window:
+            task_request["window"] = window
 
         return self._request("POST", "/task/execute", data=task_request)
 
@@ -185,6 +189,7 @@ class TestagentClient:
         device_id: Optional[str] = None,
         user_id: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        window: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """异步执行任务。
 
@@ -196,6 +201,7 @@ class TestagentClient:
             device_id: 设备 ID（移动端必填）。
             user_id: 用户标识。
             config: 任务配置。
+            window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
 
         Returns:
             包含 task_id 和 status 的响应。
@@ -214,6 +220,8 @@ class TestagentClient:
             task_request["user_id"] = user_id
         if config:
             task_request["config"] = config
+        if window:
+            task_request["window"] = window
 
         return self._request("POST", "/task/execute_async", data=task_request)
 
