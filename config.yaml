@@ -9,6 +9,8 @@ resource_manager:
   base_url: "http://192.168.0.102:8000"
   # namespace: 机器分类名称（用于申请执行机）
   namespace: "meeting_public"
+  # 鉴权 key（用于请求 header X-Env-Auth）
+  env_auth: "key"
   timeout: 30
   # 重试配置
   retry:
@@ -35,8 +37,8 @@ hooks:
     setup: ["start_app"]
     teardown: ["stop_app"]
   web:
-    setup: ["start_app"]
-    teardown: ["stop_app"]
+    setup: []
+    teardown: []
   ios:
     setup: ["start_app"]
     teardown: ["stop_app"]

@@ -195,6 +195,9 @@ class UserManager:
 
         # 设置请求 header
         headers = {}
+        # 鉴权 header
+        env_auth = self.config.get("resource_manager", {}).get("env_auth", "key")
+        headers["X-Env-Auth"] = env_auth
         if testcase_id:
             headers["X-TestCase-Id"] = testcase_id
 
