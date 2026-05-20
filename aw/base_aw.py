@@ -27,6 +27,55 @@ class AWError(Exception):
         super().__init__(f"{method} 执行失败: {error_msg}")
 
 
+class ParallelModeError(Exception):
+    """并行模式下非法使用原子操作返回值的异常。"""
+
+    def __init__(self, method: str, usage: str):
+        msg = (
+            f"不能在并行模式下使用 {method} 返回值做 {usage}。\n"
+            f"原因：收集模式下原子操作未执行，返回值无效。\n"
+            f"解决：\n"
+            f"  1) 将该操作移到 parallel() 上下文外执行\n"
+            f"  2) 使用不依赖返回值的原子操作（如 ocr_assert 替代 ocr_exist）\n"
+            f"  3) 如必须依赖返回值，请在该用户单独的 parallel() 中处理"
+        )
+        super().__init__(msg)
+
+
+class PendingResult:
+    """并行收集模式下的待定返回值。
+
+    当原子操作在 parallel() 上下文中被调用时，返回此对象。
+    实际使用（条件判断、迭代等）时会抛异常，提醒用户不能在并行模式下依赖原子操作返回值。
+    """
+
+    def __init__(self, method: str, return_type: str = "bool"):
+        self._method = method
+        self._return_type = return_type
+
+    def __bool__(self):
+        raise ParallelModeError(self._method, "条件判断")
+
+    def __str__(self):
+        raise ParallelModeError(self._method, "字符串操作")
+
+    def __repr__(self):
+        return f"<PendingResult[{self._return_type}]: {self._method}>"
+
+    def __len__(self):
+        raise ParallelModeError(self._method, "列表操作")
+
+    def __iter__(self):
+        raise ParallelModeError(self._method, "迭代操作")
+
+    def __getitem__(self, key):
+        raise ParallelModeError(self._method, "索引访问")
+
+    def get(self, key, default=None):
+        """dict-like get 方法，触发异常提示。"""
+        raise ParallelModeError(self._method, "数据访问")
+
+
 def _auto_log_aw_call(func):
     """自动记录业务方法参数的装饰器。
 
@@ -274,7 +323,7 @@ class BaseAW:
                     window=window,
                 )
                 queue.append(action_obj)
-                return {}  # 收集模式返回空字典
+                return None  # 收集模式标记
 
         # 同步执行模式
         # 自动识别 parent_aw
@@ -826,7 +875,7 @@ class BaseAW:
                     window=window,
                 )
                 queue.append(action_obj)
-                return {"exists": False}  # 收集模式返回默认值
+                return None  # 收集模式标记
 
         # 同步执行模式
         parent_aw = self._find_parent_aw()
@@ -1027,19 +1076,25 @@ class BaseAW:
     ) -> dict:
         """执行 action 并记录日志，失败时抛 AWError。
 
-        Args:
-            action_type: 动作类型，如 "ocr_click"
-            action_data: 发给 worker 的完整 action dict
-            log_args: 用于日志记录的参数
-            window: 窗口定位参数（仅 Windows 平台）
+        收集模式下返回 PendingResult，使用时会抛 ParallelModeError。
         """
         full_action_data = {"action_type": action_type, **action_data}
-        return self._execute_with_log(action_type, full_action_data, log_args, window=window)
+        result = self._execute_with_log(action_type, full_action_data, log_args, window=window)
+        # 收集模式下返回 PendingResult（伪装成 dict）
+        if result is None:
+            return PendingResult(action_type, "dict")
+        return result
 
     def _exec_bool(self, action_type: str, action_data: dict, log_args: dict, window: Optional[Dict[str, Any]] = None) -> bool:
-        """执行 exist 类 action，返回 bool，不抛异常。"""
+        """执行 exist 类 action，返回 bool，不抛异常。
+
+        收集模式下返回 PendingResult，使用时会抛 ParallelModeError。
+        """
         full_action_data = {"action_type": action_type, **action_data}
         result = self._execute_exist_check(action_type, full_action_data, log_args, window=window)
+        # 收集模式下返回 PendingResult
+        if result is None:
+            return PendingResult(action_type, "bool")
         return result.get("exists", False)
 
     def _exec_str(
