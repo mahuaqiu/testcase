@@ -104,7 +104,7 @@
 | 方法 | 说明 |
 |------|------|
 | `should_toast_exists(text)` | 断言 toast 提示文字存在 |
-| `should_window_class_exist(window_class)` | 检查窗口类是否存在（仅 Windows） |
+| `should_window_class_exist(window_class, process=None)` | 检查窗口类是否存在（仅 Windows） |
 
 ---
 

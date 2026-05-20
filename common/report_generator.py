@@ -594,15 +594,6 @@ class HTMLReportGenerator:
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }}
         .screenshots-card h3 {{ margin: 0 0 16px 0; font-size: 16px; color: #374151; font-weight: 600; }}
-        .screenshot-item-large {{ cursor: pointer; text-align: center; display: inline-block; }}
-        .screenshot-item-large img {{
-            width: 240px;
-            height: 160px;
-            object-fit: cover;
-            border-radius: 10px;
-            border: 2px solid #e5e7eb;
-        }}
-        .screenshot-item-large .user-id {{ margin-top: 8px; font-size: 14px; color: #6b7280; }}
 
         /* 弹窗 */
         .modal {{
@@ -805,9 +796,9 @@ class HTMLReportGenerator:
             base64_data = shot.get("base64", "")
             user_id = shot.get("user_id", "")
             items.append(f"""
-                <div class="screenshot-item" onclick="showImage('{base64_data}')">
+                <div class="step-screenshot-item" onclick="showImage('{base64_data}')">
                     <img src="data:image/png;base64,{base64_data}" alt="{user_id}">
-                    <div class="user-id">📷 {user_id}</div>
+                    <div class="step-screenshot-label">📷 {user_id}</div>
                 </div>""")
 
         # 根据失败来源决定标题
