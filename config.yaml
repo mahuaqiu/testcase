@@ -37,8 +37,8 @@ hooks:
     setup: ["start_app"]
     teardown: ["stop_app"]
   web:
-    setup: []
-    teardown: []
+    setup: ["start_app"]
+    teardown: ["stop_app"]
   ios:
     setup: ["start_app"]
     teardown: ["stop_app"]
