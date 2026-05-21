@@ -5,6 +5,29 @@ from pathlib import Path
 from typing import Dict, List, Any
 
 
+# OCR 相关方法集合（需要显示 ocr_info）
+OCR_METHODS = {
+    # OCR 方法
+    "ocr_click", "ocr_input", "ocr_wait", "ocr_assert", "ocr_find",
+    "ocr_exists", "ocr_get_text", "ocr_paste", "ocr_move", "ocr_double_click",
+    "ocr_click_same_row_text", "ocr_check_same_row_text",
+    # OCR 相关 Image 方法
+    "image_click_near_text", "ocr_click_same_row_image", "ocr_check_same_row_image",
+}
+
+
+def should_show_ocr_info(method: str) -> bool:
+    """判断是否需要显示 OCR 信息。
+
+    Args:
+        method: 方法名。
+
+    Returns:
+        True 如果需要显示 OCR 信息。
+    """
+    return method in OCR_METHODS
+
+
 class HTMLReportGenerator:
     """HTML 报告生成器。"""
 
@@ -229,9 +252,11 @@ class HTMLReportGenerator:
                 <div class="step-error-text">{HTMLReportGenerator._clean_text_for_display(error_msg)}</div>
             </div>''')
 
-            # OCR 信息（失败时有 OCR 数据时显示）
-            ocr_info = result.get("ocr_info", [])
-            if ocr_info and isinstance(ocr_info, list) and len(ocr_info) > 0:
+        # OCR 信息（OCR 相关方法时显示）
+        ocr_info = result.get("ocr_info", [])
+        if ocr_info and isinstance(ocr_info, list) and len(ocr_info) > 0:
+            # 判断是否是 OCR 相关方法
+            if should_show_ocr_info(method):
                 ocr_items = []
                 for item in ocr_info:
                     text = item.get("text", "")
