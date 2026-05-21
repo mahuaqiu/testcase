@@ -112,8 +112,11 @@ def _auto_log_aw_call(func):
             except Exception as e:
                 # 失败：从异常中提取 error_screenshot（如果已有）
                 error_screenshot = ""
+                has_atomic_screenshot = False  # 标记截图是否来自原子操作
+
                 if isinstance(e, AWError) and "error_screenshot" in e.result:
                     error_screenshot = e.result.get("error_screenshot", "")
+                    has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
                 if not error_screenshot:
                     try:
                         error_screenshot = self.screenshot()
@@ -124,7 +127,8 @@ def _auto_log_aw_call(func):
                     "error": str(e),
                     "error_type": type(e).__name__,
                 }
-                if error_screenshot:
+                # 只有截图来自业务方法自身时才记录到业务方法日志
+                if error_screenshot and not has_atomic_screenshot:
                     error_result["error_screenshot"] = error_screenshot
 
                 logger = ReportLogger.get_current()
@@ -172,8 +176,11 @@ def _auto_log_aw_call(func):
 
             # 失败时截图：优先从异常中提取已有的 error_screenshot（如果是 AWError）
             error_screenshot = ""
+            has_atomic_screenshot = False  # 标记截图是否来自原子操作
+
             if isinstance(e, AWError) and "error_screenshot" in e.result:
                 error_screenshot = e.result.get("error_screenshot", "")
+                has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
             if not error_screenshot:
                 try:
                     # Web 平台需要 system 级别截图
@@ -189,7 +196,8 @@ def _auto_log_aw_call(func):
                 "error": str(e),
                 "error_type": type(e).__name__,
             }
-            if error_screenshot:
+            # 只有截图来自业务方法自身时才记录到业务方法日志
+            if error_screenshot and not has_atomic_screenshot:
                 error_result["error_screenshot"] = error_screenshot
 
             logger.log_aw_call(
