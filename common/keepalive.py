@@ -1,10 +1,15 @@
 """保活线程管理器。"""
 
+import json
+import logging
+import sys
 import threading
 import time
 from typing import Dict, Any
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class KeepAliveManager:
@@ -40,6 +45,20 @@ class KeepAliveManager:
 
         self._resources = resources
         self._stop_event.clear()
+
+        # 打印控制中的机器信息
+        machine_info = {}
+        for user_id, user_data in resources.items():
+            machine_info[user_id] = {
+                "id": user_data.get("id"),
+                "ip": user_data.get("ip"),
+                "device_type": user_data.get("device_type"),
+                "account": user_data.get("account")
+            }
+        time_str = time.strftime('%H:%M:%S')
+        sys.stderr.write(f"{time_str} 机器控制中:\n{json.dumps(machine_info, indent=2, ensure_ascii=False)}\n")
+        sys.stderr.flush()
+
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 

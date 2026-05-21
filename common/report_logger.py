@@ -95,7 +95,12 @@ class ReportLogger:
                 "detail": detail
             })
         # 控制台输出（使用 stderr 绕过 pytest 输出捕获，实时显示）
-        sys.stderr.write(f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]} 步骤: {step}\n")
+        time_str = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        if detail:
+            # 有详情时，打印详情（如资源申请的 JSON）
+            sys.stderr.write(f"{time_str} 步骤: {step}\n{detail}\n")
+        else:
+            sys.stderr.write(f"{time_str} 步骤: {step}\n")
         sys.stderr.flush()
 
     def log_aw_call(
