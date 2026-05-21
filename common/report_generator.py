@@ -519,6 +519,18 @@ class HTMLReportGenerator:
             font-size: 12px;
             color: #4b5563;
         }}
+        .detail-json {{
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            color: #4b5563;
+            white-space: pre;
+            overflow-x: auto;
+            margin: 0;
+            line-height: 1.5;
+        }}
 
         .step-error-label {{ font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px; }}
         .step-error-text {{
@@ -716,6 +728,14 @@ class HTMLReportGenerator:
                 detail = log.get('detail', '')
                 clean_detail = HTMLReportGenerator._clean_text_for_display(detail) if detail else ""
 
+                # 判断是否是 JSON 格式（包含换行和缩进），使用 pre 标签保留格式
+                if clean_detail and ('\n' in clean_detail or clean_detail.startswith('{') or clean_detail.startswith('[')):
+                    detail_html = f'<div class="step-detail"><pre class="detail-json">{clean_detail}</pre></div>'
+                elif clean_detail:
+                    detail_html = f'<div class="step-detail"><div class="detail-content">{clean_detail}</div></div>'
+                else:
+                    detail_html = ''
+
                 html = f'''
     <div class="timeline-step step-block">
         <div class="step-header" onclick="toggleStep(this)">
@@ -723,7 +743,7 @@ class HTMLReportGenerator:
             <span class="step-title">{step_name}</span>
             <span class="step-time">{time_str}</span>
         </div>
-        {f'<div class="step-detail"><div class="detail-content">{clean_detail}</div></div>' if clean_detail else ''}
+        {detail_html}
     </div>'''
                 log_items.append((time_str, html))
 
