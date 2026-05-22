@@ -3,6 +3,7 @@
 负责调用外部 API 申请和释放用户机器资源。
 """
 
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -223,12 +224,18 @@ class UserManager:
             # 判断是否可重试
             if error_msg in retryable_errors:
                 if attempt < max_retries:
+                    log_msg = f"{time.strftime('%H:%M:%S')} 机器资源不足，等待 {retry_interval} 秒后重试（第 {attempt+1}/{max_retries} 次）\n"
+                    sys.stderr.write(log_msg)
+                    sys.stderr.flush()
                     logger.info(
                         f"机器资源不足，等待 {retry_interval} 秒后重试（第 {attempt+1}/{max_retries} 次）"
                     )
                     time.sleep(retry_interval)
                     continue
                 else:
+                    log_msg = f"{time.strftime('%H:%M:%S')} 申请用户资源失败：机器资源不足，已等待 {max_wait_seconds} 秒\n"
+                    sys.stderr.write(log_msg)
+                    sys.stderr.flush()
                     raise UserManagerError(
                         f"申请用户资源失败：机器资源不足，已等待 {max_wait_seconds} 秒"
                     )
