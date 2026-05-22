@@ -364,15 +364,15 @@ class TestagentClient:
         self,
         platform: str,
         text: str,
-        timeout: int = 5000,
+        negate: bool = False,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """OCR 断言文字存在。
+        """OCR 断言文字存在或不存在（单次截图断言）。
 
         Args:
             platform: 平台类型。
-            text: 期望存在的文字。
-            timeout: 超时时间（毫秒）。
+            text: 期望存在或不存在文字。
+            negate: 断言不存在，True 时断言文字不存在。
             device_id: 设备 ID。
 
         Returns:
@@ -381,7 +381,7 @@ class TestagentClient:
         action = {
             "action_type": "ocr_assert",
             "value": text,
-            "timeout": timeout,
+            "negate": negate,
         }
         return self.execute(platform, [action], device_id)
 
@@ -556,17 +556,17 @@ class TestagentClient:
         platform: str,
         image_base64: str,
         threshold: float = 0.8,
-        timeout: int = 5000,
+        negate: bool = False,
         index: int = 0,
         device_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """图像断言。
+        """图像断言存在或不存在（单次截图断言）。
 
         Args:
             platform: 平台类型。
             image_base64: 图像的 base64 编码。
             threshold: 匹配阈值。
-            timeout: 超时时间（毫秒）。
+            negate: 断言不存在，True 时断言图像不存在。
             index: 选择第几个匹配结果（从 0 开始）。
             device_id: 设备 ID。
 
@@ -577,7 +577,7 @@ class TestagentClient:
             "action_type": "image_assert",
             "image_base64": image_base64,
             "threshold": threshold,
-            "timeout": timeout,
+            "negate": negate,
             "index": index,
         }
         return self.execute(platform, [action], device_id)

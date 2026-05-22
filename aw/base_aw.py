@@ -522,18 +522,19 @@ class BaseAW:
             action_data["region"] = resolved
         return self._exec("ocr_wait", action_data, {"text": text, **kwargs}, window=window)
 
-    def ocr_assert(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
-        """断言文字存在。
+    def ocr_assert(self, text: str, negate: bool = False, window_class: Optional[str] = None, **kwargs) -> dict:
+        """断言文字存在或不存在（单次截图断言）。
 
         Args:
             text: 要断言的文字。
+            negate: 断言不存在，True 时断言文字不存在。
             window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         window = self._build_window(window_class)
-        action_data = {"value": text}
+        action_data = {"value": text, "negate": negate}
         if "level" in kwargs:
             action_data["level"] = kwargs["level"]
             if "monitor" in kwargs:
@@ -541,7 +542,7 @@ class BaseAW:
         resolved = self._resolve_region(kwargs.get("region"))
         if resolved:
             action_data["region"] = resolved
-        return self._exec("ocr_assert", action_data, {"text": text, **kwargs}, window=window)
+        return self._exec("ocr_assert", action_data, {"text": text, "negate": negate, **kwargs}, window=window)
 
     def ocr_get_text(self, window_class: Optional[str] = None, **kwargs) -> str:
         """获取屏幕所有文字。
@@ -1195,11 +1196,12 @@ class BaseAW:
             {"image_path": image_path, **kwargs},
             window=window)
 
-    def image_assert(self, image_path: str, window_class: Optional[str] = None, **kwargs) -> dict:
-        """断言图像存在。
+    def image_assert(self, image_path: str, negate: bool = False, window_class: Optional[str] = None, **kwargs) -> dict:
+        """断言图像存在或不存在（单次截图断言）。
 
         Args:
             image_path: 图片路径。
+            negate: 断言不存在，True 时断言图像不存在。
             window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             confidence: 匹置信度（0-1），默认 0.8。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
@@ -1211,8 +1213,8 @@ class BaseAW:
         if not image_base64:
             raise FileNotFoundError(f"图片文件不存在: {image_path}")
         return self._exec("image_assert",
-            {"image_base64": image_base64, **self._image_params(kwargs)},
-            {"image_path": image_path, **kwargs},
+            {"image_base64": image_base64, "negate": negate, **self._image_params(kwargs)},
+            {"image_path": image_path, "negate": negate, **kwargs},
             window=window)
 
     def image_click_near_text(self, image_path: str, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
