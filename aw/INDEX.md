@@ -33,12 +33,11 @@
 | `ocr_click(text, **kwargs)` | OCR 识别并点击文字 |
 | `ocr_input(label, content, **kwargs)` | OCR 定位后输入文本 |
 | `ocr_wait(text, **kwargs)` | 等待文字出现 |
-| `ocr_assert(text, **kwargs)` | 断言文字存在 |
+| `ocr_assert(text, negate=False)` | 断言文字存在（支持 list 批量验证） |
 | `ocr_get_text(**kwargs)` | 获取屏幕所有文字 |
-| `ocr_paste(text, content, **kwargs)` | OCR 定位后粘贴剪贴板内容 |
 | `ocr_move(text, **kwargs)` | OCR 定位后移动鼠标（仅桌面端） |
 | `ocr_double_click(text, **kwargs)` | OCR 定位后双击文字 |
-| `ocr_exist(text, **kwargs)` | 检查文字是否存在（返回 bool） |
+| `ocr_exist(text, **kwargs)` | 检查文字是否存在（支持 list 批量检查，返回 bool） |
 | `ocr_get_position(text, **kwargs)` | 获取文字坐标列表 |
 | `ocr_click_same_row_text(anchor_text, target_text, **kwargs)` | 点击锚点文本同一行的目标文本 |
 | `ocr_click_same_row_image(anchor_text, image_path, **kwargs)` | 点击锚点文本同一行的目标图片 |
@@ -69,6 +68,7 @@
 | `swipe(from_x, from_y, to_x, to_y, **kwargs)` | 滑动操作 |
 | `drag(from_x, from_y, to_x, to_y, **kwargs)` | 拖拽操作（参数与 swipe 一致） |
 | `input_text(x, y, text)` | 在指定坐标输入文本 |
+| `paste_text(text)` | 直接粘贴文本（使用剪贴板 Ctrl+V） |
 
 > **注**：`swipe` 和 `drag` 参数完全一致，功能相同，可根据语义选用。
 
@@ -78,7 +78,7 @@
 |------|------|
 | `press(key)` | 按键操作 |
 | `wait(duration)` | 固定等待（秒） |
-| `start_app(app_id)` | 启动应用 |
+| `start_app(app_id, proxy=None)` | 启动应用（proxy 仅 Web 平台） |
 | `stop_app(app_id)` | 关闭应用 |
 | `navigate(url)` | 导航到 URL（Web 端专用） |
 | `new_page()` | 创建新空白标签页（Web 端专用） |

@@ -522,12 +522,13 @@ class BaseAW:
             action_data["region"] = resolved
         return self._exec("ocr_wait", action_data, {"text": text, **kwargs}, window=window)
 
-    def ocr_assert(self, text: str, negate: bool = False, window_class: Optional[str] = None, **kwargs) -> dict:
+    def ocr_assert(self, text, negate: bool = False, window_class: Optional[str] = None, **kwargs) -> dict:
         """断言文字存在或不存在（单次截图断言）。
 
         Args:
-            text: 要断言的文字。
+            text: 要断言的文字。支持 list 传参批量验证：["文字1", "文字2", "文字3"]。
             negate: 断言不存在，True 时断言文字不存在。
+                - list 场景：negate=true 要求所有文字都不存在才算通过（严格否定）
             window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
@@ -567,30 +568,6 @@ class BaseAW:
             action_data["region"] = resolved
         return self._exec_str("ocr_get_text", action_data, {**kwargs}, window=window)
 
-    def ocr_paste(self, text: str, content: str, window_class: Optional[str] = None, **kwargs) -> dict:
-        """OCR 定位后粘贴剪贴板内容。
-
-        Args:
-            text: 要定位的文字。
-            content: 剪贴板内容。
-            window_class: 窗口类名（仅 Windows 平台，精确匹配）。
-            timeout: 超时时间（秒），默认 5。
-            index: 选择第几个匹配结果（从 0 开始）。
-            offset: 点击偏移量 {"x": 0, "y": 0}。
-            click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
-            region: 操作区域名称或坐标 [x1, y1, x2, y2]。
-            level: 执行层级（仅 Web），browser 或 system。
-            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
-        """
-        window = self._build_window(window_class)
-        params = self._ocr_params(kwargs)
-        if "click_duration" in kwargs:
-            params["click_duration"] = kwargs["click_duration"]
-        return self._exec("ocr_paste",
-            {"value": text, "text": content, **params},
-            {"text": text, "content": content, **kwargs},
-            window=window)
-
     def ocr_move(self, text: str, window_class: Optional[str] = None, **kwargs) -> dict:
         """OCR 定位后移动鼠标（仅桌面端支持）。
 
@@ -629,11 +606,12 @@ class BaseAW:
             {"text": text, **kwargs},
             window=window)
 
-    def ocr_exist(self, text: str, window_class: Optional[str] = None, **kwargs) -> bool:
+    def ocr_exist(self, text, window_class: Optional[str] = None, **kwargs) -> bool:
         """检查文字是否存在。
 
         Args:
-            text: 要检查的文字。支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
+            text: 要检查的文字。支持 list 传参批量检查：["文字1", "文字2", "文字3"]。
+                也支持 `reg_` 前缀正则匹配，如 `reg_\\d+`。
             window_class: 窗口类名（仅 Windows 平台，精确匹配）。
             timeout: 超时时间（秒），默认 5。
             index: 选择第几个匹配结果（从 0 开始）。
@@ -1449,6 +1427,18 @@ class BaseAW:
         """
         return self._exec("input", {"x": x, "y": y, "text": text}, {"x": x, "y": y, "text": text})
 
+    def paste_text(self, text: str) -> dict:
+        """直接粘贴文本（使用剪贴板 Ctrl+V）。
+
+        Args:
+            text: 要粘贴的文本内容。
+
+        Note:
+            使用剪贴板方式粘贴，不点击坐标。
+            需要先将焦点定位到输入位置（如通过 ocr_click 点击输入框）。
+        """
+        return self._exec("paste", {"text": text}, {"text": text})
+
     # ── 其他动作 ─────────────────────────────────────────
 
     def press(self, key: str, **kwargs) -> dict:
@@ -1471,9 +1461,26 @@ class BaseAW:
         duration_ms = int(duration * 1000)
         return self._exec("wait", {"value": str(duration_ms)}, {"duration_ms": duration_ms})
 
-    def start_app(self, app_id: str) -> dict:
-        """启动应用。"""
-        return self._exec("start_app", {"value": app_id}, {"app_id": app_id})
+    def start_app(self, app_id: str, proxy: Optional[str] = None) -> dict:
+        """启动应用。
+
+        Args:
+            app_id: 应用标识。
+                - Web: 浏览器类型，如 "chromium"、"firefox"、"webkit"
+                - Android: 应用包名，如 "com.example.app"
+                - iOS: Bundle ID，如 "com.example.app"
+            proxy: 代理配置（仅 Web 平台），格式：
+                - "http://user:pass@proxy.example.com:8080"（带认证）
+                - "http://proxy.example.com:8080"（无认证）
+                - 不传 proxy 参数则显式禁用代理（不走系统代理）
+
+        Note:
+            Web 平台专用 proxy 参数，用于测试需要代理访问的内部网站。
+        """
+        action_data = {"value": app_id}
+        if proxy:
+            action_data["proxy"] = proxy
+        return self._exec("start_app", action_data, {"app_id": app_id, "proxy": proxy})
 
     def stop_app(self, app_id: str) -> dict:
         """关闭应用。"""
