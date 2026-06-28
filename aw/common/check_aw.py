@@ -16,19 +16,24 @@ class CheckAW(BaseAW):
         """
         return self.ocr_assert(text)
 
-    def should_window_class_exist(self, window_class: str, process: str | None = None) -> bool:
-        """检查窗口类是否存在（仅 Windows 平台）。
+    def should_window_spec_exist(self, window_spec: Dict[str, str], process: str | None = None) -> bool:
+        """检查窗口是否存在（仅 Windows 平台）。
 
         Args:
-            window_class: 窗口类名，如 'Notepad'、'Chrome_WidgetWin_1'。
+            window_spec: 窗口定位参数，如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             process: 进程名（可选），如 'notepad.exe'，用于进一步过滤。
 
         Returns:
-            True 如果窗口类存在，False 如果不存在。
+            True 如果窗口存在，False 如果不存在。
         """
-        # 使用 window-class-finder.exe 工具检查窗口类
-        # stdout 为 "null" 表示窗口不存在，否则返回窗口信息 JSON
-        command = f'@tools/window-class-finder.exe --class="{window_class}"'
+        # 构建命令参数
+        if "class" in window_spec:
+            command = f'@tools/window-class-finder.exe --class="{window_spec["class"]}"'
+        elif "title" in window_spec:
+            command = f'@tools/window-class-finder.exe --title="{window_spec["title"]}"'
+        else:
+            raise ValueError("window_spec 必须包含 class 或 title 键")
+
         if process:
             command += f' --process="{process}"'
 
