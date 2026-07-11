@@ -20,7 +20,7 @@ class TestagentClient:
     Args:
         base_url: Worker 服务地址，默认 http://localhost:8080。
         connect_timeout: TCP 连接超时（秒），默认 30。
-        read_timeout: 读取响应超时（秒），默认 60。
+        read_timeout: 读取响应超时（秒），默认 125。
 
     Example:
         client = TestagentClient("http://localhost:8080")
@@ -36,7 +36,7 @@ class TestagentClient:
         self,
         base_url: str = "http://localhost:8080",
         connect_timeout: int = 30,
-        read_timeout: int = 60,
+        read_timeout: int = 125,
     ):
         self.base_url = base_url.rstrip("/")
         self.connect_timeout = connect_timeout

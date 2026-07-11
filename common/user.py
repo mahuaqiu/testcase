@@ -73,7 +73,7 @@ class User:
             config = ConfigLoader().load()
             testagent_config = config.get("testagent", {})
             connect_timeout = testagent_config.get("connect_timeout", 30)
-            read_timeout = testagent_config.get("read_timeout", 60)
+            read_timeout = testagent_config.get("read_timeout", 125)
             self.client = TestagentClient(base_url, connect_timeout, read_timeout)
 
         # 加载 AW 实例
