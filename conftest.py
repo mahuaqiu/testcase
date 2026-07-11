@@ -215,7 +215,8 @@ def users(request) -> Dict[str, User]:
 
             if not is_connection_error:
                 # 非连接错误时，执行 teardown 清理资源
-                for user_id, user in user_instances.items():
+                # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
+                for user_id, user in _sort_users_for_teardown(user_instances):
                     final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
                     try:
                         _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
@@ -238,7 +239,8 @@ def users(request) -> Dict[str, User]:
         teardown_failed = False
         teardown_error = None
 
-        for user_id, user in user_instances.items():
+        # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
+        for user_id, user in _sort_users_for_teardown(user_instances):
             # 过滤：跳过未被使用的用户
             if not user._used:
                 continue
@@ -422,6 +424,23 @@ def _generate_report(
 
     # 清理测试结果
     _test_results.pop(request.node.nodeid, None)
+
+
+def _sort_users_for_teardown(user_instances: Dict[str, User]):
+    """teardown 执行顺序排序：API 用户优先，其它用户保持原顺序。
+
+    API 用户通常负责数据清理（如 cancel_all_meetings），需先于 UI 用户的
+    stop_app 执行，避免先关闭应用再做数据清理的不合理顺序。
+
+    Args:
+        user_instances: 用户资源字典。
+
+    Returns:
+        排序后的 (user_id, user) 列表，API 用户在前，其它用户按原顺序在后。
+    """
+    api_users = [(uid, u) for uid, u in user_instances.items() if u.platform == "api"]
+    other_users = [(uid, u) for uid, u in user_instances.items() if u.platform != "api"]
+    return api_users + other_users
 
 
 def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
