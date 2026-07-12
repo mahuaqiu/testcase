@@ -17,11 +17,16 @@
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from common.report_logger import ReportLogger
+
+SUCCESS_STATUSES = {"success", "completed"}
+ACTIVE_STATUSES = {"accepted", "pending", "running", "cancelling"}
+FAILURE_STATUSES = {"failed", "timeout", "cancelled", "interrupted"}
+POLL_INTERVAL_SECONDS = 2.0
 
 if TYPE_CHECKING:
     from common.testagent_client import TestagentClient
@@ -197,170 +202,173 @@ class ParallelContext:
         return False
 
     def _execute_parallel(self) -> None:
-        """按用户分组，批量异步执行。"""
+        """按用户分组，批量异步执行并共享同一个超时预算。"""
         if not self._actions:
             return
 
         logger = ReportLogger.get_current()
-
-        # 1. 按用户分组
         user_batches: Dict[tuple, Dict[str, Any]] = {}
         for action in self._actions:
-            # 分组键：(user_id, platform, client)
             key = (action.user_id, action.platform, id(action.client))
             if key not in user_batches:
                 user_batches[key] = {
                     "client": action.client,
                     "platform": action.platform,
                     "user_id": action.user_id,
-                    "actions": [],      # action_data 列表
-                    "action_objs": [],  # Action 对象列表（用于日志）
-                    "window": action.window,  # 窗口定位参数（取第一个 Action 的 window）
+                    "actions": [],
+                    "action_objs": [],
+                    "window": action.window,
                 }
             user_batches[key]["actions"].append(action.action_data)
             user_batches[key]["action_objs"].append(action)
 
-        # 2. 并行发送异步请求（每个用户一个批量请求）
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures: Dict[Any, Dict[str, Any]] = {}
-            for key, batch in user_batches.items():
-                future = executor.submit(self._execute_batch_async, batch, logger)
+        deadline = time.monotonic() + self.timeout
+        executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        futures: Dict[Any, Dict[str, Any]] = {}
+        try:
+            for batch in user_batches.values():
+                future = executor.submit(self._execute_batch_async, batch, logger, deadline)
                 futures[future] = batch
 
-            # 3. 等待结果
-            try:
-                for future in as_completed(futures, timeout=self.timeout):
-                    batch = futures[future]
+            while futures:
+                remaining = max(0.0, deadline - time.monotonic())
+                if remaining <= 0:
+                    break
+                done, _ = wait(futures, timeout=remaining)
+                if not done:
+                    break
+                for future in done:
+                    batch = futures.pop(future)
                     try:
-                        results = future.result()
-                        self._results[batch["user_id"]] = results
-                    except Exception as e:
-                        from aw.base_aw import AWError
-                        # 只把真正失败的 action（最后一个执行的）添加到 errors
-                        if isinstance(e, AWError):
-                            action_results = e.result.get("actions", [])
-                            if action_results:
-                                # 最后一个 action 是失败的
-                                failed_index = len(action_results) - 1
-                                if failed_index < len(batch["action_objs"]):
-                                    self._errors.append(
-                                        ParallelActionError(batch["action_objs"][failed_index], e)
-                                    )
-                        else:
-                            # 其他异常（如连接失败），只记录第一个 action 的错误
-                            if batch["action_objs"]:
-                                self._errors.append(ParallelActionError(batch["action_objs"][0], e))
-            except TimeoutError:
-                # 超时处理
-                for future, batch in futures.items():
-                    if not future.done():
-                        future.cancel()
-                        for action_obj in batch["action_objs"]:
-                            self._errors.append(
-                                ParallelActionError(
-                                    action_obj, TimeoutError("批量任务执行超时")
-                                )
-                            )
+                        self._results[batch["user_id"]] = future.result()
+                    except Exception as error:
+                        self._record_batch_error(batch, error)
+
+            if futures:
+                for future, batch in list(futures.items()):
+                    future.cancel()
+                    self._record_batch_error(
+                        batch,
+                        TimeoutError(f"批量任务执行超时（等待超过 {self.timeout} 秒）"),
+                    )
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    def _record_batch_error(self, batch: Dict[str, Any], error: Exception) -> None:
+        """将批次异常稳定关联到一个动作，确保错误可定位。"""
+        from aw.base_aw import AWError
+
+        action_objs = batch.get("action_objs", [])
+        if not action_objs:
+            return
+
+        action_index = 0
+        if isinstance(error, AWError):
+            action_results = error.result.get("actions", [])
+            if action_results:
+                action_index = min(len(action_results) - 1, len(action_objs) - 1)
+        self._errors.append(ParallelActionError(action_objs[action_index], error))
 
     def _execute_batch_async(
-        self, batch: Dict[str, Any], logger: ReportLogger
+        self,
+        batch: Dict[str, Any],
+        logger: ReportLogger,
+        deadline: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
-        """执行批量异步请求并轮询结果。
-
-        Worker 逻辑：中间有 action 失败就停止，后续 action 不执行。
-        查询结果时：
-        - status == "completed": 全部成功
-        - status == "failed": 中间有失败，停止执行
-
-        Args:
-            batch: 批量数据，包含 client、platform、actions 列表。
-            logger: 日志记录器。
-
-        Returns:
-            每个 action 的结果列表。
-
-        Raises:
-            AWError: 执行失败时抛出。
-        """
+        """提交并轮询一个批次，直到成功、失败或截止时间。"""
         from aw.base_aw import AWError
 
         client = batch["client"]
         platform = batch["platform"]
         actions = batch["actions"]
         action_objs = batch["action_objs"]
-        window = batch.get("window")  # 窗口定位参数
-
+        window = batch.get("window")
         if client is None:
             raise ValueError("client 未设置")
 
-        # 发送异步请求
+        deadline = deadline if deadline is not None else time.monotonic() + self.timeout
         async_result = client.execute_async(platform, actions, window=window)
         task_id = async_result.get("task_id")
-
         if not task_id:
             raise ValueError("execute_async 未返回 task_id")
 
-        if not task_id:
-            raise ValueError("execute_async 未返回 task_id")
+        def raise_terminal_error(status: str, task_result: Dict[str, Any]) -> None:
+            action_results = task_result.get("actions") or []
+            worker_screenshot = task_result.get("error_screenshot", "")
+            for index, action_result in enumerate(action_results):
+                if index < len(action_objs):
+                    is_last = index == len(action_results) - 1
+                    self._log_action_result(
+                        action_objs[index],
+                        action_result,
+                        logger,
+                        worker_error_screenshot=worker_screenshot if is_last else "",
+                    )
 
-        # 轮询等待结果（2秒一次，最多1分钟）
-        max_wait = 60  # 1分钟
-        poll_interval = 2  # 2秒
-        waited = 0.0
+            failed_result = action_results[-1] if action_results else {}
+            failed_error = (
+                failed_result.get("error")
+                or task_result.get("error")
+                or {
+                    "timeout": "批量任务执行超时",
+                    "cancelled": "批量任务已取消",
+                    "interrupted": "Worker 重启导致任务中断",
+                    "failed": "批量任务执行失败",
+                }.get(status, f"Worker 返回失败终态: {status}")
+            )
+            failed_index = min(len(action_results) - 1, len(action_objs) - 1) if action_results else 0
+            failed_action = action_objs[failed_index] if action_objs else None
+            method_name = (
+                f"{failed_action.aw_name}.{failed_action.method}"
+                if failed_action
+                else "ParallelTask.lifecycle"
+            )
+            result = {
+                "status": status,
+                "error": str(failed_error),
+                "task_id": task_id,
+                "failed_action": failed_result,
+                "actions": action_results,
+                "error_screenshot": worker_screenshot,
+            }
+            for key in ("code", "details", "request_id"):
+                if key in task_result:
+                    result[key] = task_result[key]
+            raise AWError(method_name, result)
 
-        while waited < max_wait:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                try:
+                    client.cancel_task(task_id)
+                except Exception:
+                    pass
+                raise TimeoutError(f"批量任务 {task_id} 执行超时（等待超过 {self.timeout} 秒）")
+
             task_result = client.get_task(task_id)
-
             status = task_result.get("status")
-
-            # worker 返回 'success' 或 'completed' 都表示成功
-            if status in ("completed", "success"):
-                # 全部成功，记录日志
+            if status in SUCCESS_STATUSES:
                 action_results = task_result.get("actions", [])
-                for i, action_obj in enumerate(action_objs):
-                    action_result = action_results[i] if i < len(action_results) else {}
+                for index, action_obj in enumerate(action_objs):
+                    action_result = action_results[index] if index < len(action_results) else {}
                     self._log_action_result(action_obj, action_result, logger)
-
                 return action_results
+            if status in FAILURE_STATUSES:
+                raise_terminal_error(status, task_result)
+            if status not in ACTIVE_STATUSES:
+                raise AWError(
+                    "ParallelTask.lifecycle",
+                    {
+                        "status": status,
+                        "error": f"Worker 返回未知任务状态: {status!r}",
+                        "task_id": task_id,
+                        "actions": task_result.get("actions", []),
+                    },
+                )
 
-            if status == "failed":
-                # 中间有失败，只记录已执行的 action 日志（未执行的不记录）
-                action_results = task_result.get("actions", [])
-                # Worker 返回的 error_screenshot（失败瞬间的截图）
-                worker_error_screenshot = task_result.get("error_screenshot", "")
-                for i, action_result in enumerate(action_results):
-                    if i < len(action_objs):
-                        # 最后一个失败的 action 传入 Worker 的 error_screenshot
-                        is_last_failed = (i == len(action_results) - 1)
-                        worker_screenshot = worker_error_screenshot if is_last_failed else ""
-                        self._log_action_result(action_objs[i], action_result, logger, worker_error_screenshot=worker_screenshot)
-
-                # 找到失败的 action（最后一个是失败的）
-                failed_index = len(action_results) - 1
-                failed_action_result = action_results[-1] if action_results else {}
-                failed_error = failed_action_result.get("error", "未知错误")
-
-                # 从 action_objs 获取失败 action 的方法名
-                if failed_index >= 0 and failed_index < len(action_objs):
-                    failed_action_obj = action_objs[failed_index]
-                    method_name = f"{failed_action_obj.aw_name}.{failed_action_obj.method}"
-                else:
-                    method_name = failed_error  # 兜底：使用错误消息作为方法名
-
-                raise AWError(method_name, {
-                    "error": failed_error,  # 将错误信息放入 result，让 AWError 正确提取
-                    "task_id": task_id,
-                    "failed_action": failed_action_result,
-                    "actions": action_results,
-                    "error_screenshot": worker_error_screenshot,  # 传递 Worker 的截图
-                })
-
-            # 继续轮询（pending/running 状态）
-            time.sleep(poll_interval)
-            waited += poll_interval
-
-        # 超时
-        raise TimeoutError(f"批量任务 {task_id} 执行超时（等待超过 {max_wait} 秒）")
+            sleep_for = min(POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic()))
+            if sleep_for > 0:
+                time.sleep(sleep_for)
 
     def _log_action_result(
         self,
@@ -457,6 +465,6 @@ def parallel(
             userB.do_login()
 
     Note:
-        批量任务轮询参数固定为：2秒轮询一次，最多等待60秒。
+        批量任务使用 parallel 的 timeout 作为统一截止时间，默认每2秒轮询一次。
     """
     return ParallelContext(max_workers=max_workers, timeout=timeout)

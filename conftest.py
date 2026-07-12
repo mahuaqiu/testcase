@@ -12,6 +12,7 @@ import pytest
 import json
 
 from common.config_loader import ConfigLoader
+from common.testagent_client import is_retryable_transport_error
 from common.user_manager import UserManager
 from common.user import User
 from common.hooks_resolver import HooksResolver
@@ -207,11 +208,7 @@ def users(request) -> Dict[str, User]:
             # 连接失败时没必要执行 teardown，只会再等超时
             is_connection_error = False
             if setup_error and setup_error.original_error:
-                error_msg = str(setup_error.original_error)
-                is_connection_error = any(
-                    keyword in error_msg
-                    for keyword in ["连接超时", "请求失败", "Connection refused", "无法连接"]
-                )
+                is_connection_error = is_retryable_transport_error(setup_error.original_error)
 
             if not is_connection_error:
                 # 非连接错误时，执行 teardown 清理资源
@@ -492,12 +489,8 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
                     if isinstance(e, OSError) and e.errno == errno.EPIPE:
                         break
 
-                    # Connection aborted/RemoteDisconnected - 重试一次
-                    is_connection_closed = any(keyword in error_msg for keyword in [
-                        "Connection aborted",
-                        "RemoteDisconnected",
-                        "Remote end closed connection"
-                    ])
+                    # 传输层连接异常最多重试一次，业务错误不自动重放。
+                    is_connection_closed = is_retryable_transport_error(e)
 
                     if is_connection_closed and attempt < max_retries:
                         # 重试一次，打印日志便于排查

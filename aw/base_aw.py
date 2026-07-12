@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from common.testagent_client import TestagentClient
+from common.testagent_client import TestagentClient, is_retryable_transport_error
 from common.report_logger import ReportLogger
 from common.parallel import is_collecting, get_action_queue, Action
 from common.utils import load_image_as_base64
@@ -349,14 +349,8 @@ class BaseAW:
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # 检测是否是连接关闭错误（上层可能重试）
-            # 连接类错误不记录失败日志，避免重试成功后出现重复失败日志
-            error_msg = str(e)
-            is_connection_closed = any(keyword in error_msg for keyword in [
-                "Connection aborted",
-                "RemoteDisconnected",
-                "Remote end closed connection",
-            ])
+            # 传输层异常可能由上层重试，避免重试成功后产生重复失败日志。
+            is_connection_closed = is_retryable_transport_error(e)
 
             if not is_connection_closed:
                 # 非连接类错误：记录失败日志

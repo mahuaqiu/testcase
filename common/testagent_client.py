@@ -7,9 +7,44 @@ API 文档参考: api.yaml
 """
 
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 import requests
+
+_CONNECTION_ERROR_MARKERS = (
+    "Connection aborted",
+    "RemoteDisconnected",
+    "Remote end closed connection",
+    "ConnectionReset",
+    "Connection reset",
+    "Connection refused",
+    "无法连接",
+)
+_TRANSPORT_ERROR_CODES = {
+    "CONNECTION_TIMEOUT",
+    "READ_TIMEOUT",
+    "REQUEST_TIMEOUT",
+    "CONNECTION_ERROR",
+}
+
+
+def _is_connection_closed_error(error: BaseException) -> bool:
+    """判断异常是否属于允许自动重试的连接中断。"""
+    if isinstance(error, requests.exceptions.ConnectionError):
+        return True
+    message = str(error)
+    return any(marker in message for marker in _CONNECTION_ERROR_MARKERS)
+
+
+def is_retryable_transport_error(error: BaseException) -> bool:
+    """判断异常是否为传输层错误。"""
+    code = getattr(error, "code", None)
+    if code is not None:
+        return bool(getattr(error, "retryable", False)) and code in _TRANSPORT_ERROR_CODES
+    return _is_connection_closed_error(error) or any(
+        marker in str(error) for marker in ("连接超时", "读取超时", "请求超时")
+    )
 
 
 class TestagentClient:
@@ -44,75 +79,146 @@ class TestagentClient:
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
 
+    @staticmethod
+    def _request_id(response: requests.Response) -> Optional[str]:
+        """从响应头提取请求 ID。"""
+        return response.headers.get("x-request-id") or response.headers.get("request-id")
+
+    @staticmethod
+    def _error_from_response(response: requests.Response) -> "TestagentError":
+        """将 Worker 的结构化错误响应转换为统一异常。"""
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+
+        detail = payload.get("detail") if isinstance(payload, dict) else None
+        source = detail if isinstance(detail, dict) else {}
+        message = source.get("message")
+        if not message and isinstance(detail, str):
+            message = detail
+        if not message and isinstance(payload, dict):
+            message = payload.get("message") or payload.get("error")
+        if not message:
+            message = (getattr(response, "text", "") or "").strip()
+        if not message:
+            message = getattr(response, "reason", "") or f"HTTP {response.status_code}"
+
+        return TestagentError(
+            str(message),
+            code=source.get("code"),
+            retryable=bool(source.get("retryable", False)),
+            details=source.get("details"),
+            status_code=response.status_code,
+            request_id=TestagentClient._request_id(response),
+        )
+
+    @staticmethod
+    def _decode_success(response: requests.Response) -> Dict[str, Any]:
+        """解析成功响应，拒绝无效 JSON。"""
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise TestagentError(
+                "Worker 返回无效 JSON",
+                code="INVALID_RESPONSE",
+                status_code=response.status_code,
+                request_id=TestagentClient._request_id(response),
+            ) from error
+        if not isinstance(payload, dict):
+            raise TestagentError(
+                "Worker 返回无效响应",
+                code="INVALID_RESPONSE",
+                status_code=response.status_code,
+                request_id=TestagentClient._request_id(response),
+            )
+        return payload
+
+    def _new_session(self, headers: Optional[Dict[str, str]] = None) -> None:
+        """重建 Session，并保留本次逻辑请求的自定义请求头。"""
+        self.session = requests.Session()
+        self.session.headers.update({"Content-Type": "application/json"})
+        if headers:
+            self.session.headers.update(headers)
+
     def _request(
         self,
         method: str,
         endpoint: str,
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """发送 HTTP 请求。
-
-        Args:
-            method: HTTP 方法（GET/POST/DELETE）。
-            endpoint: API 端点路径。
-            data: 请求体数据。
-            params: URL 查询参数。
-
-        Returns:
-            响应 JSON 数据。
-
-        Raises:
-            TestagentError: 请求失败时抛出。
-        """
+        """发送 HTTP 请求，并在连接中断时复用请求头重试一次。"""
         url = f"{self.base_url}{endpoint}"
-        # timeout 元组：(连接超时, 读取超时)
         timeout = (self.connect_timeout, self.read_timeout)
-        try:
+
+        def send() -> Dict[str, Any]:
             response = self.session.request(
                 method=method,
                 url=url,
                 json=data,
                 params=params,
                 timeout=timeout,
+                headers=headers,
             )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.ConnectTimeout:
-            raise TestagentError(f"连接超时: {url}（{self.connect_timeout}秒）")
-        except requests.exceptions.ReadTimeout:
-            raise TestagentError(f"读取超时: {url}（{self.read_timeout}秒）")
-        except requests.exceptions.Timeout:
-            raise TestagentError(f"请求超时: {url}")
-        except requests.exceptions.RequestException as e:
-            # 检测连接关闭错误，重建 Session 并重试一次
-            error_msg = str(e)
-            is_connection_closed = any(keyword in error_msg for keyword in [
-                "Connection aborted",
-                "RemoteDisconnected",
-                "Remote end closed connection",
-                "ConnectionReset",
-            ])
+            if not 200 <= response.status_code < 300:
+                raise self._error_from_response(response)
+            return self._decode_success(response)
 
-            if is_connection_closed:
-                # 重建 Session（清除已关闭的连接）
-                self.session = requests.Session()
-                self.session.headers.update({"Content-Type": "application/json"})
-                try:
-                    response = self.session.request(
-                        method=method,
-                        url=url,
-                        json=data,
-                        params=params,
-                        timeout=timeout,
-                    )
-                    response.raise_for_status()
-                    return response.json()
-                except requests.exceptions.RequestException as retry_e:
-                    raise TestagentError(f"请求失败（重试后）: {retry_e}") from retry_e
+        try:
+            return send()
+        except requests.exceptions.ConnectTimeout as error:
+            raise TestagentError(
+                f"连接超时: {url}（{self.connect_timeout}秒）",
+                code="CONNECTION_TIMEOUT",
+                retryable=True,
+            ) from error
+        except requests.exceptions.ReadTimeout as error:
+            raise TestagentError(
+                f"读取超时: {url}（{self.read_timeout}秒）",
+                code="READ_TIMEOUT",
+                retryable=True,
+            ) from error
+        except requests.exceptions.Timeout as error:
+            raise TestagentError(
+                f"请求超时: {url}", code="REQUEST_TIMEOUT", retryable=True
+            ) from error
+        except TestagentError:
+            raise
+        except requests.exceptions.RequestException as error:
+            if not _is_connection_closed_error(error):
+                raise TestagentError(
+                    f"请求失败: {error}", code="CONNECTION_ERROR", retryable=True
+                ) from error
 
-            raise TestagentError(f"请求失败: {e}") from e
-
+            self._new_session(headers)
+            try:
+                return send()
+            except requests.exceptions.ConnectTimeout as retry_error:
+                raise TestagentError(
+                    f"连接超时: {url}（{self.connect_timeout}秒）",
+                    code="CONNECTION_TIMEOUT",
+                    retryable=True,
+                ) from retry_error
+            except requests.exceptions.ReadTimeout as retry_error:
+                raise TestagentError(
+                    f"读取超时: {url}（{self.read_timeout}秒）",
+                    code="READ_TIMEOUT",
+                    retryable=True,
+                ) from retry_error
+            except requests.exceptions.Timeout as retry_error:
+                raise TestagentError(
+                    f"请求超时: {url}",
+                    code="REQUEST_TIMEOUT",
+                    retryable=True,
+                ) from retry_error
+            except requests.exceptions.RequestException as retry_error:
+                raise TestagentError(
+                    f"请求失败（重试后）: {retry_error}",
+                    code="CONNECTION_ERROR",
+                    retryable=True,
+                ) from retry_error
     # ── Worker 状态与设备 ─────────────────────────────────────────────
 
     def get_worker_devices(self) -> Dict[str, Any]:
@@ -190,25 +296,9 @@ class TestagentClient:
         user_id: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         window: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """异步执行任务。
-
-        立即返回 task_id，任务在后台执行。
-
-        Args:
-            platform: 平台类型（web/windows/mac/ios/android）。
-            actions: 动作列表。
-            device_id: 设备 ID（移动端必填）。
-            user_id: 用户标识。
-            config: 任务配置。
-            window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
-
-        Returns:
-            包含 task_id 和 status 的响应。
-
-        Raises:
-            TestagentError: 设备/平台冲突时抛出 409 错误。
-        """
+        """异步执行任务，并为本次逻辑调用固定一个幂等键。"""
         task_request = {
             "platform": platform,
             "actions": actions,
@@ -223,12 +313,18 @@ class TestagentClient:
         if window:
             task_request["window"] = window
 
-        return self._request("POST", "/task/execute_async", data=task_request)
+        idempotency_key = idempotency_key or str(uuid.uuid4())
+        return self._request(
+            "POST",
+            "/task/execute_async",
+            data=task_request,
+            headers={"Idempotency-Key": idempotency_key},
+        )
 
     def get_task(self, task_id: str) -> Dict[str, Any]:
         """查询任务结果。
 
-        一次性查询：查询后任务从内存中销毁，再次查询返回 404。
+        可重复查询：任务结果在 Worker 保留期内可重复读取。
 
         Args:
             task_id: 任务 ID。
@@ -965,6 +1061,45 @@ class TestagentClient:
 
 
 class TestagentError(Exception):
-    """testagent 错误。"""
+    """testagent 结构化错误，保留旧版字符串异常行为。"""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        code: Optional[str] = None,
+        retryable: bool = False,
+        details: Any = None,
+        status_code: Optional[int] = None,
+        request_id: Optional[str] = None,
+    ):
+        self._code = code
+        self._retryable = retryable
+        self._details = details
+        self._status_code = status_code
+        self._request_id = request_id
+        super().__init__(message)
+
+    @property
+    def code(self) -> Optional[str]:
+        """错误码。"""
+        return self._code
+
+    @property
+    def retryable(self) -> bool:
+        """Worker 建议的重试属性。"""
+        return self._retryable
+
+    @property
+    def details(self) -> Any:
+        """结构化错误详情。"""
+        return self._details
+
+    @property
+    def status_code(self) -> Optional[int]:
+        """HTTP 状态码。"""
+        return self._status_code
+
+    @property
+    def request_id(self) -> Optional[str]:
+        """请求追踪 ID。"""
+        return self._request_id

@@ -301,7 +301,15 @@ if is_collecting():
 | max_workers | int | 10 | 最大并发线程数 |
 | timeout | float | 300 | 总超时时间（秒） |
 
-### 6.5 异常处理
+### 6.5 基础设施边界
+
+- `TestagentClient.execute_async()` 会为每次逻辑调用生成幂等键；网络重试复用同一键，不同主动调用使用不同键。
+- Worker 的 `detail` 结构化错误由公共客户端解析为 `TestagentError`，包含 `code`、`message`、`retryable`、`details`、HTTP 状态码和 `request_id`。
+- `parallel(timeout=...)` 使用单调时钟作为批次统一预算，处理 `pending/running/cancelling` 活跃状态以及 `success/failed/timeout/cancelled/interrupted` 终态；查询结果可以重复读取。
+- 用例和 AW 不直接处理 Worker 任务生命周期，不根据业务错误的 `retryable` 属性自动重放动作；传输层重试由基础设施统一处理。
+- `/ws/screen/{platform}/{device_id}` 的 H.264 推流首帧必须包含解码所需配置和可信真实 IDR；Worker 会过滤暖机黑帧/不可独立解码帧，RSM1 二进制通道和兼容推流协议以 `api.yaml` 为准。
+
+### 6.6 异常处理
 
 并行执行失败时抛出 `ParallelExecutionError`，包含所有失败的动作：
 
