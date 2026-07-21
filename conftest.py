@@ -475,10 +475,7 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
 
             for attempt in range(max_retries + 1):
                 try:
-                    if hook_arg is not None:
-                        method(hook_arg)
-                    else:
-                        method()
+                    _invoke_hook(method, hook_arg)
                     break  # 成功则跳出循环
                 except Exception as e:
                     import errno
@@ -505,3 +502,21 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
                     else:
                         logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}")
                         raise HookFailureError(hook_name, e, hook_type)
+
+
+def _invoke_hook(method, hook_arg) -> None:
+    """调用 hook 方法，兼容无参方法使用布尔字典标记的写法。"""
+    if hook_arg is None:
+        method()
+        return
+
+    # 字典格式通常表示一个位置参数；若目标 hook 本身是无参方法，
+    # 允许使用 {"hook_name": True} 表示启用该 hook。
+    import inspect
+
+    try:
+        inspect.signature(method).bind(hook_arg)
+    except (TypeError, ValueError):
+        method()
+    else:
+        method(hook_arg)

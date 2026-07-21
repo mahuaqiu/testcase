@@ -44,10 +44,12 @@ class HooksResolver:
             if not case_list:
                 continue
 
-            # 分析前缀
+            # 分析前缀。无前缀字典是一个可执行 hook，不能像无前缀字符串
+            # 一样把同一列表中的 + hook 过滤掉。
             to_add = []
             to_remove = []
-            to_replace = None
+            has_unprefixed_string = False
+            has_unprefixed_dict = False
 
             for item in case_list:
                 # 提取 hook 名称（支持字符串和字典格式）
@@ -60,16 +62,27 @@ class HooksResolver:
                     to_add.append(item)
                 elif hook_name.startswith("-"):
                     to_remove.append(hook_name[1:])
+                elif isinstance(item, dict):
+                    has_unprefixed_dict = True
                 else:
-                    to_replace = True
+                    has_unprefixed_string = True
 
-            if to_replace:
+            if has_unprefixed_string:
                 # 完全覆盖
                 result[hook_type] = [
                     item for item in case_list
                     if not (isinstance(item, str) and item.startswith(("+", "-")))
                     and not (isinstance(item, dict) and next(iter(item.keys())).startswith(("+", "-")))
                 ]
+            elif has_unprefixed_dict and (to_add or to_remove):
+                # 混合模式下，按用例声明顺序执行显式 hook；未声明的默认 hook
+                # 仍然保留，但放在显式 hook 之后。
+                result[hook_type] = HooksResolver._merge_ordered(
+                    result[hook_type], case_list
+                )
+            elif has_unprefixed_dict:
+                # 纯字典列表保持原有的完全覆盖语义。
+                result[hook_type] = list(case_list)
             else:
                 # 增量修改
                 for item in to_remove:
@@ -99,3 +112,49 @@ class HooksResolver:
                         result[hook_type].append(clean_item)
 
         return result
+
+    @staticmethod
+    def _merge_ordered(default_list: List[Any], case_list: List[Any]) -> List[Any]:
+        """按用例顺序合并混合格式 hooks。"""
+        removed_names = set()
+        explicit_items = []
+        explicit_names = set()
+
+        for item in case_list:
+            hook_name = HooksResolver._hook_name(item)
+            if hook_name.startswith("-"):
+                removed_names.add(hook_name[1:])
+                continue
+
+            clean_item = HooksResolver._clean_hook_item(item)
+            clean_name = HooksResolver._hook_name(clean_item)
+            if clean_name not in explicit_names:
+                explicit_items.append(clean_item)
+                explicit_names.add(clean_name)
+
+        # 显式 hook 以用例顺序为准，未显式声明的默认 hook 按原顺序追加。
+        remaining_defaults = [
+            item for item in default_list
+            if HooksResolver._hook_name(item) not in removed_names
+            and HooksResolver._hook_name(item) not in explicit_names
+        ]
+        return explicit_items + remaining_defaults
+
+    @staticmethod
+    def _hook_name(item: Any) -> str:
+        """获取 hook 名称。"""
+        if isinstance(item, dict):
+            return next(iter(item.keys()))
+        return item
+
+    @staticmethod
+    def _clean_hook_item(item: Any) -> Any:
+        """移除增量 hook 名称上的 + 前缀。"""
+        if isinstance(item, dict):
+            hook_name, hook_arg = next(iter(item.items()))
+            if hook_name.startswith("+"):
+                return {hook_name[1:]: hook_arg}
+            return item
+        if isinstance(item, str) and item.startswith("+"):
+            return item[1:]
+        return item
