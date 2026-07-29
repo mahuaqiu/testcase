@@ -1,80 +1,63 @@
-"""HTML 报告生成器。"""
+"""HTML 报告生成器（V2）。
 
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Any
+设计要点：
+- 两级时间线：业务方法分组卡（可折叠）+ 组内原子操作紧凑行。
+- 分组依据 parent_call_id（业务方法每次调用的唯一 ID），跨 AW / 同名多次调用不会错位。
+- 组标题自动取业务方法 docstring 首行（display_name），新 AW 零登记。
+- 参数展示采用黑名单过滤（新参数自动显示），ocr_info 有数据即显示。
+- 无归属的原子操作合并为"直接操作"兜底组，不再散落在时间线上。
+"""
+
+import html as _html_mod
+import re
+from typing import Any, Dict, List, Optional
 
 
-# OCR 相关方法集合（需要显示 ocr_info）
-OCR_METHODS = {
-    # OCR 方法
-    "ocr_click", "ocr_input", "ocr_wait", "ocr_assert", "ocr_find",
-    "ocr_exists", "ocr_get_text", "ocr_paste", "ocr_move", "ocr_double_click",
-    "ocr_click_same_row_text", "ocr_check_same_row_text",
-    # OCR 相关 Image 方法
-    "image_click_near_text", "ocr_click_same_row_image", "ocr_check_same_row_image",
+# 不在报告中显示的参数（内部参数或 base64 大数据）
+_HIDDEN_ARGS = {
+    "user_id", "user_account", "user_name", "user_ip",
+    "target_image", "image_base64", "screenshot", "error_screenshot",
+    "platform",
 }
 
+# 原子操作耗时超过该阈值时高亮显示（毫秒）
+_SLOW_MS = 5000
 
-def should_show_ocr_info(method: str) -> bool:
-    """判断是否需要显示 OCR 信息。
 
-    Args:
-        method: 方法名。
-
-    Returns:
-        True 如果需要显示 OCR 信息。
-    """
-    return method in OCR_METHODS
+def _esc(text: Any) -> str:
+    """HTML 转义（所有用户数据渲染前必须经过）。"""
+    return _html_mod.escape(str(text), quote=True)
 
 
 class HTMLReportGenerator:
     """HTML 报告生成器。"""
 
+    # ── 通用帮手 ─────────────────────────────────────────
+
     @staticmethod
     def _clean_text_for_display(text: str) -> str:
-        """清理文本内容，只过滤 base64 数据，保留其他内容。
-
-        Args:
-            text: 原始文本。
-
-        Returns:
-            清理后的文本，base64 数据被替换为占位符。
-        """
+        """清理文本内容，过滤 base64 数据。"""
         if not text:
             return ""
-        # 检测并替换 PNG base64（以 iVBORw0KGgo 开头）
-        import re
-        # PNG base64 特征：iVBORw0KGgo 开头，后面是长字符串
-        base64_pattern = r'iVBORw0KGgo[A-Za-z0-9+/=]{100,}'
-        cleaned = re.sub(base64_pattern, '[截图数据]', text)
-        return cleaned
+        # PNG base64 特征：iVBORw0KGgo 开头的长字符串
+        return re.sub(r'iVBORw0KGgo[A-Za-z0-9+/=]{100,}', '[截图数据]', text)
 
     @staticmethod
     def _clean_response_for_display(response: Dict[str, Any]) -> Dict[str, Any]:
-        """清理响应数据，移除大型 base64 数据用于显示。
-
-        Args:
-            response: 原始响应数据。
-
-        Returns:
-            清理后的响应数据，适合在报告中显示。
-        """
+        """清理响应数据，移除大型 base64 数据用于显示。"""
         if not isinstance(response, dict):
             return response
-
         cleaned = {}
         for key, value in response.items():
             if key == "screenshots":
-                # 截图数据不显示，只显示数量
                 count = len(value) if isinstance(value, list) else 0
                 if count > 0:
                     cleaned[key] = f"[{count}张截图]"
-            elif key == "error_screenshot" and isinstance(value, str) and len(value) > 100:
-                # 错误截图不显示在文字中
-                cleaned[key] = "[错误截图]"
+            elif key in ("error_screenshot", "screenshot") and isinstance(value, str) and len(value) > 100:
+                cleaned[key] = "[截图数据]"
+            elif key == "ocr_info":
+                continue  # OCR 结果单独渲染为 chips
             elif key == "actions" and isinstance(value, list):
-                # 清理 actions 中的 screenshot 数据
                 cleaned[key] = []
                 for action in value:
                     if isinstance(action, dict):
@@ -83,263 +66,450 @@ class HTMLReportGenerator:
                             if ak in ("screenshot", "error_screenshot") and isinstance(av, str) and len(av) > 100:
                                 clean_action[ak] = "[截图数据]"
                             elif ak == "output" and isinstance(av, str) and len(av) > 500:
-                                # 可能是 base64 输出
                                 clean_action[ak] = "[输出数据]"
                             else:
                                 clean_action[ak] = av
                         cleaned[key].append(clean_action)
                     else:
-                        cleaned[key].append(value)
+                        cleaned[key].append(action)
             else:
                 cleaned[key] = value
         return cleaned
 
     @staticmethod
     def _format_duration(duration_ms: int) -> str:
-        """格式化耗时显示，超过1秒显示为秒。
-
-        Args:
-            duration_ms: 耗时（毫秒）。
-
-        Returns:
-            格式化后的耗时字符串，如 "1.5s" 或 "800ms"。
-        """
+        """格式化耗时，超过 1 秒显示为秒。"""
         if duration_ms >= 1000:
             return f"{duration_ms / 1000:.1f}s"
         return f"{duration_ms}ms"
 
     @staticmethod
+    def _format_total_duration(duration_ms: int) -> str:
+        """格式化总耗时，超过 1 分钟显示为 "Xm Ys"。"""
+        if duration_ms >= 60000:
+            minutes = duration_ms // 60000
+            seconds = (duration_ms % 60000) / 1000
+            return f"{minutes}m {seconds:.0f}s"
+        return HTMLReportGenerator._format_duration(duration_ms)
+
+    @staticmethod
     def _get_user_color(user_id: str) -> str:
-        """根据用户 ID 返回标签颜色。
-
-        Args:
-            user_id: 用户 ID，如 "userA"、"userB"。
-
-        Returns:
-            颜色十六进制值，如 "#3b82f6"。
-        """
+        """根据用户 ID 返回标签颜色。"""
         colors = {
             "userA": "#3b82f6",  # 蓝色
             "userB": "#22c55e",  # 绿色
             "userC": "#8b5cf6",  # 紫色
             "userD": "#f59e0b",  # 黄色
         }
-        # 处理 _api 后缀的用户（如 userA_api）
         base_user_id = user_id.replace("_api", "")
         return colors.get(base_user_id, "#6b7280")  # 默认灰色
 
     @staticmethod
-    def _format_timeline_title(aw_name: str, method: str, args: Dict[str, Any]) -> str:
-        """格式化时间线步骤标题，简化显示。
-
-        Args:
-            aw_name: AW 类名（如 LoginAW）。
-            method: 方法名（如 do_login）。
-            args: 调用参数。
-
-        Returns:
-            简化的标题，如 "登录系统" 或 "ocr_wait(text=\"登录\")"。
-        """
-        # 业务方法（do_*/should_*）：只显示方法名对应的中文描述
-        if method.startswith(('do_', 'should_')):
-            # 从方法名提取动作
-            action = method.replace('do_', '').replace('should_', '')
-            # 常见动作映射
-            action_map = {
-                'login': '登录系统',
-                'logout': '退出登录',
-                'join_as_host': '作为主持人入会',
-                'join_as_guest': '作为访客入会',
-                'leave': '离开会议',
-                'admit_participant': '准入参会者',
-                'create_meeting': '创建会议',
-                'cancel_meeting': '取消会议',
-                'set_waiting_room': '设置等候室',
-                'login_success': '断言登录成功',
-                'join_success': '断言入会成功',
-                'in_waitingroom': '断言在等候室',
-            }
-            return action_map.get(action, method)
-
-        # 原子操作：显示方法名和关键参数
-        DISPLAY_ARGS = {
-            "text", "label", "content", "image_path", "key", "url",
-            "app_id", "x", "y", "from_x", "from_y", "to_x", "to_y",
-            "duration_ms", "timeout", "index", "confidence", "name",
-            "command", "page_index", "monitor"
-        }
-
-        filtered_args = {
-            k: v for k, v in args.items()
-            if k in DISPLAY_ARGS and v is not None
-        }
-
-        if not filtered_args:
-            return method
-
+    def _format_args_inline(args: Dict[str, Any], max_len: int = 90) -> str:
+        """格式化原子操作参数为单行字符串（黑名单过滤，新参数自动显示）。"""
         parts = []
-        for k, v in filtered_args.items():
-            if isinstance(v, str) and len(v) > 20:
-                v = v[:17] + "..."
-            parts.append(f'{k}="{v}"' if isinstance(v, str) else f"{k}={v}")
+        for k, v in args.items():
+            if k in _HIDDEN_ARGS or v is None:
+                continue
+            if isinstance(v, str):
+                if len(v) > 40:
+                    v = v[:37] + "..."
+                parts.append(f'{k}="{v}"')
+            else:
+                parts.append(f"{k}={v}")
+        text = ", ".join(parts)
+        if len(text) > max_len:
+            text = text[:max_len - 3] + "..."
+        return text
 
-        return f"{method}({', '.join(parts)})"
+    # ── 分组算法 ─────────────────────────────────────────
 
     @staticmethod
-    def _render_timeline_step(log: Dict[str, Any]) -> str:
-        """渲染单个时间线步骤。
+    def _build_timeline(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """把日志流构建为有序时间线条目。
 
-        Args:
-            log: 日志数据。
+        条目类型：
+        - {"kind": "phase", "log": ...}          阶段分隔条（step 日志）
+        - {"kind": "error", "log": ...}          错误条目
+        - {"kind": "group", ...}                 业务方法分组
 
-        Returns:
-            HTML 字符串。
+        分组规则：
+        1. 原子操作按 parent_call_id 精确归组（首次出现的位置决定组顺序）。
+        2. 业务方法日志（is_business_method）按 call_id 关联为组头；
+           parallel 模式成功时无组头日志，用子操作的 parent_display 合成标题。
+        3. 兼容旧数据：无 parent_call_id 但有 parent_aw 时按 parent_aw 归组。
+        4. 无任何父级的原子操作合并进连续的"直接操作"兜底组。
         """
-        # 提取信息
-        time_str = log.get("time", "")
-        args = log.get("args", {})
-        user_id = args.get("user_id", "")
-        user_name = args.get("user_name", "")
-        user_account = args.get("user_account", "")
-        user_ip = args.get("user_ip", "")
-        aw_name = log.get("aw_name", "")
-        method = log.get("method", "")
-        duration = log.get("duration_ms", 0)
+        timeline: List[Dict[str, Any]] = []
+        groups_by_key: Dict[str, Dict[str, Any]] = {}
+        orphan_group: Optional[Dict[str, Any]] = None
+
+        def _new_group(key: str) -> Dict[str, Any]:
+            group = {
+                "kind": "group", "key": key, "title": "", "method_label": "",
+                "rows": [], "biz_log": None, "nested": False, "orphan": False,
+            }
+            timeline.append(group)
+            if key:
+                groups_by_key[key] = group
+            return group
+
+        for log in logs:
+            log_type = log.get("type", "")
+
+            if log_type == "step":
+                step_name = log.get("step", "")
+                # hook 日志在 aw_call 中已有对应操作，跳过避免重复
+                if step_name.startswith("执行 hook:"):
+                    continue
+                timeline.append({"kind": "phase", "log": log})
+                orphan_group = None
+                continue
+
+            if log_type == "error":
+                timeline.append({"kind": "error", "log": log})
+                orphan_group = None
+                continue
+
+            if log_type != "aw_call":
+                continue  # worker_call / screenshot 不进时间线
+
+            if log.get("is_business_method"):
+                cid = log.get("call_id", "")
+                group = groups_by_key.get(cid) if cid else None
+                if group is None:
+                    group = _new_group(cid)
+                group["biz_log"] = log
+                if log.get("parent_call_id"):
+                    group["nested"] = True  # 嵌套业务方法（外层组的子步骤）
+                orphan_group = None
+                continue
+
+            # 原子操作：确定归属键
+            pid = log.get("parent_call_id", "")
+            if not pid and log.get("parent_aw"):
+                pid = f"legacy::{log['parent_aw']}"  # 兼容旧数据
+            if pid:
+                group = groups_by_key.get(pid)
+                if group is None:
+                    group = _new_group(pid)
+                group["rows"].append(log)
+                orphan_group = None
+            else:
+                # 孤儿操作：合并进连续的"直接操作"组
+                if orphan_group is None:
+                    orphan_group = _new_group("")
+                    orphan_group["orphan"] = True
+                orphan_group["rows"].append(log)
+
+        # 补全每组的标题 / 统计信息
+        for entry in timeline:
+            if entry["kind"] != "group":
+                continue
+            HTMLReportGenerator._finalize_group(entry)
+
+        return timeline
+
+    @staticmethod
+    def _finalize_group(group: Dict[str, Any]) -> None:
+        """补全分组的标题、用户、状态、耗时等信息。"""
+        biz_log = group["biz_log"]
+        rows = group["rows"]
+        first_row = rows[0] if rows else None
+
+        if group["orphan"]:
+            group["title"] = "直接操作"
+            group["method_label"] = ""
+        elif biz_log:
+            aw_name = biz_log.get("aw_name", "")
+            method = biz_log.get("method", "")
+            group["title"] = biz_log.get("display_name") or method
+            group["method_label"] = f"{aw_name}.{method}"
+        elif first_row:
+            # parallel 成功场景无组头日志：用子操作携带的父级信息合成
+            parent_aw = first_row.get("parent_aw", "")
+            group["title"] = first_row.get("parent_display") or parent_aw.split(".")[-1] or "业务步骤"
+            group["method_label"] = parent_aw
+        else:
+            group["title"] = "业务步骤"
+
+        # 用户信息：优先组头日志，其次首个子操作
+        src = biz_log or first_row or {}
+        args = src.get("args", {})
+        group["user_id"] = args.get("user_id", "")
+        group["user_name"] = args.get("user_name", "")
+        group["user_ip"] = args.get("user_ip", "")
+
+        # 状态：组头失败 或 任一子操作失败 视为失败
+        biz_ok = biz_log.get("success", True) if biz_log else True
+        group["fail_rows"] = sum(1 for r in rows if not r.get("success", True))
+        group["ok"] = biz_ok and group["fail_rows"] == 0
+
+        # 耗时：优先组头记录，否则累加子操作
+        if biz_log and biz_log.get("duration_ms"):
+            group["duration_ms"] = biz_log["duration_ms"]
+        else:
+            group["duration_ms"] = sum(r.get("duration_ms", 0) for r in rows)
+
+        # 时间：组内最早的日志时间
+        times = [r.get("time", "") for r in rows if r.get("time")]
+        if biz_log and biz_log.get("time"):
+            times.append(biz_log["time"])
+        group["time"] = min(times) if times else ""
+
+        # 业务方法自身失败但无失败子操作时（如方法体断言），把组头日志渲染为末尾行
+        if biz_log and not biz_ok:
+            has_biz_row = any(r is biz_log for r in rows)
+            if not has_biz_row:
+                rows.append(biz_log)
+                group["fail_rows"] += 1
+
+    # ── 渲染 ─────────────────────────────────────────────
+
+    @staticmethod
+    def _render_row(log: Dict[str, Any]) -> str:
+        """渲染组内单条原子操作（紧凑行 + 可展开详情）。"""
         success = log.get("success", True)
-        request_id = log.get("request_id", "")
+        method = log.get("method", "")
+        args = log.get("args", {})
         result = log.get("result", {})
+        duration = log.get("duration_ms", 0)
+        time_str = log.get("time", "")
 
-        # 格式化
-        duration_str = HTMLReportGenerator._format_duration(duration)
-        user_color = HTMLReportGenerator._get_user_color(user_id)
-        title = HTMLReportGenerator._format_timeline_title(aw_name, method, args)
+        # 业务方法日志作为行渲染时显示 display_name
+        if log.get("is_business_method") and log.get("display_name"):
+            args_text = log["display_name"]
+        else:
+            args_text = HTMLReportGenerator._format_args_inline(args)
 
-        # 状态图标和样式
-        status_icon = "✓" if success else "✗"
-        status_color = "#22c55e" if success else "#ef4444"
+        # 截图标记
+        error_screenshot = result.get("error_screenshot", "") if isinstance(result, dict) else ""
+        target_image = log.get("target_image", "")
+        shot_count = sum(1 for s in (error_screenshot, target_image) if s and len(s) > 100)
+        shot_html = f'<span class="r-shot">📷 {shot_count}</span>' if shot_count else ""
 
-        # 用户信息行
-        user_info_parts = []
-        if user_name:
-            user_info_parts.append(user_name)
-        if user_account:
-            user_info_parts.append(user_account)
-        if user_ip:
-            user_info_parts.append(user_ip)
-        user_info_str = " · ".join(user_info_parts) if user_info_parts else user_id
+        row_classes = ["row"]
+        if not success:
+            row_classes.append("fail")
+        if duration >= _SLOW_MS:
+            row_classes.append("slow")
 
-        # 清理参数和响应用于显示
-        clean_args = {k: v for k, v in args.items() if k not in (
-            "user_id", "user_account", "user_name", "user_ip",
-            "target_image", "image_base64", "screenshot", "error_screenshot"
-        )}
-        clean_result = HTMLReportGenerator._clean_response_for_display(result)
+        row_html = (
+            f'<div class="{" ".join(row_classes)}" onclick="td(this)">'
+            f'<span class="dot"></span>'
+            f'<span class="r-time">{_esc(time_str)}</span>'
+            f'<span class="r-method">{_esc(method)}</span>'
+            f'<span class="r-args">{_esc(args_text)}</span>'
+            f'{shot_html}'
+            f'<span class="r-dur">{HTMLReportGenerator._format_duration(duration)}</span>'
+            f'</div>'
+        )
+        detail_html = HTMLReportGenerator._render_row_detail(log)
+        return row_html + detail_html
 
-        # 构建展开详情
-        detail_parts = []
+    @staticmethod
+    def _render_row_detail(log: Dict[str, Any]) -> str:
+        """渲染原子操作的展开详情（错误 / 请求响应 / OCR / 截图）。"""
+        success = log.get("success", True)
+        args = log.get("args", {})
+        result = log.get("result", {}) if isinstance(log.get("result"), dict) else {}
+        request_id = log.get("request_id", "")
 
-        # request_id
-        if request_id:
-            detail_parts.append(f'<div class="detail-item"><strong>request_id:</strong> {request_id}</div>')
+        parts = []
 
-        # 错误信息（失败时）
+        # 错误信息
         if not success:
             error_msg = result.get("error", "")
             if error_msg:
-                detail_parts.append(f'''
-            <div class="step-error-box">
-                <div class="step-error-label">错误信息</div>
-                <div class="step-error-text">{HTMLReportGenerator._clean_text_for_display(error_msg)}</div>
-            </div>''')
+                clean_err = HTMLReportGenerator._clean_text_for_display(str(error_msg))
+                rid = f'<div class="rid">request_id: {_esc(request_id)}</div>' if request_id else ""
+                parts.append(
+                    f'<div class="err-box"><div class="k">错误信息</div>'
+                    f'<div class="v">{_esc(clean_err)}</div>{rid}</div>'
+                )
+        elif request_id:
+            parts.append(f'<div class="rid">request_id: {_esc(request_id)}</div>')
 
-        # OCR 信息（OCR 相关方法时显示）
+        # 请求 / 响应
+        clean_args = {k: v for k, v in args.items() if k not in _HIDDEN_ARGS}
+        clean_result = HTMLReportGenerator._clean_response_for_display(result)
+        kv_parts = []
+        if clean_args:
+            kv_parts.append(f'<div><div class="k">请求</div><div class="v">{_esc(clean_args)}</div></div>')
+        if clean_result:
+            kv_parts.append(f'<div><div class="k">响应</div><div class="v">{_esc(clean_result)}</div></div>')
+        if kv_parts:
+            parts.append(f'<div class="kv">{"".join(kv_parts)}</div>')
+
+        # OCR 识别结果：有数据即显示（不再按方法名白名单门控）
         ocr_info = result.get("ocr_info", [])
-        if ocr_info and isinstance(ocr_info, list) and len(ocr_info) > 0:
-            # 判断是否是 OCR 相关方法
-            if should_show_ocr_info(method):
-                ocr_items = []
-                for item in ocr_info:
-                    text = item.get("text", "")
-                    center = item.get("center", {})
-                    x = center.get("x", "-")
-                    y = center.get("y", "-")
-                    if text:
-                        ocr_items.append(f'<span class="ocr-text-item">"{text}" ({x}, {y})</span>')
-                if ocr_items:
-                    detail_parts.append(f'''
-            <div class="step-ocr-box">
-                <div class="step-ocr-label">OCR 识别结果</div>
-                <div class="step-ocr-content">{"".join(ocr_items)}</div>
-            </div>''')
-
-        # 请求和响应
-        if clean_args or clean_result:
-            detail_parts.append('<div class="detail-row">')
-            if clean_args:
-                detail_parts.append(f'''
-                <div class="detail-half">
-                    <div class="detail-label">请求</div>
-                    <div class="detail-content">{clean_args}</div>
-                </div>''')
-            if clean_result:
-                detail_parts.append(f'''
-                <div class="detail-half">
-                    <div class="detail-label">响应</div>
-                    <div class="detail-content">{clean_result}</div>
-                </div>''')
-            detail_parts.append('</div>')
+        if isinstance(ocr_info, list) and ocr_info:
+            chips = []
+            for item in ocr_info:
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text", "")
+                center = item.get("center", {})
+                x = center.get("x", "-") if isinstance(center, dict) else "-"
+                y = center.get("y", "-") if isinstance(center, dict) else "-"
+                if text:
+                    chips.append(f'<span class="ocr-chip">"{_esc(text)}" ({_esc(x)}, {_esc(y)})</span>')
+            if chips:
+                parts.append(f'<div class="ocr-box"><div class="k">OCR 识别结果</div><div>{"".join(chips)}</div></div>')
 
         # 截图（失败时）
         if not success:
+            shots = []
             error_screenshot = result.get("error_screenshot", "")
             target_image = log.get("target_image", "")
-
-            screenshots_html = ""
             if error_screenshot and len(error_screenshot) > 100:
-                screenshots_html += f'''
-                <div class="step-screenshot-item" onclick="showImage('{error_screenshot}')">
-                    <img src="data:image/png;base64,{error_screenshot}">
-                    <div class="step-screenshot-label">当前屏幕</div>
-                </div>'''
+                shots.append(
+                    f'<div class="shot" onclick="showImage(this.querySelector(\'img\').src);event.stopPropagation()">'
+                    f'<img src="data:image/png;base64,{error_screenshot}"><span class="cap">当前屏幕</span></div>'
+                )
             if target_image and len(target_image) > 100:
-                screenshots_html += f'''
-                <div class="step-screenshot-item" onclick="showImage('{target_image}')">
-                    <img src="data:image/png;base64,{target_image}">
-                    <div class="step-screenshot-label">目标图片</div>
-                </div>'''
+                shots.append(
+                    f'<div class="shot" onclick="showImage(this.querySelector(\'img\').src);event.stopPropagation()">'
+                    f'<img src="data:image/png;base64,{target_image}"><span class="cap">目标图片</span></div>'
+                )
+            if shots:
+                parts.append(f'<div class="shots">{"".join(shots)}</div>')
 
-            if screenshots_html:
-                detail_parts.append(f'''
-            <div class="screenshots-row">
-                <div class="screenshots-label">失败截图</div>
-                <div class="screenshots-grid">{screenshots_html}</div>
-            </div>''')
+        if not parts:
+            return ""
+        open_class = " open" if not success else ""
+        return f'<div class="row-detail{open_class}">{"".join(parts)}</div>'
 
-        detail_html = "".join(detail_parts)
+    @staticmethod
+    def _render_group(group: Dict[str, Any], anchor_id: str) -> str:
+        """渲染业务方法分组卡。"""
+        ok = group["ok"]
+        rows = group["rows"]
+        user_id = group.get("user_id", "")
+        user_color = HTMLReportGenerator._get_user_color(user_id)
 
-        # CSS 类
-        step_class = "timeline-step success"
-        if not success:
-            step_class = "timeline-step failed-step"
+        state_class = "ok" if ok else "failed open"
+        icon = "✓" if ok else "✗"
+        title_style = "" if ok else ' style="color:var(--red)"'
+        nested_mark = "↳ " if group.get("nested") else ""
+
+        user_tag = (
+            f'<span class="u-tag" style="background:{user_color}">{_esc(user_id)}</span>'
+            if user_id else ""
+        )
+        method_label = (
+            f'<span class="g-method">{_esc(group["method_label"])}</span>'
+            if group.get("method_label") else ""
+        )
+
+        # 统计与进度小条
+        total = len(rows)
+        fails = group["fail_rows"]
+        cnt_html = f'<b>{total}</b> 步'
+        if fails:
+            cnt_html += f' · <span class="f">{fails} 失败</span>'
+        ok_pct = int((total - fails) / total * 100) if total else 100
+        bar_html = f'<span class="g-bar"><i style="width:{ok_pct}%"></i>'
+        if fails:
+            bar_html += f'<i class="f" style="width:{100 - ok_pct}%"></i>'
+        bar_html += '</span>'
+
+        rows_html = "".join(HTMLReportGenerator._render_row(r) for r in rows)
+        if not rows_html:
+            rows_html = '<div class="row-empty">无原子操作记录</div>'
 
         return f'''
-    <div class="{step_class}">
-        <div class="step-header" onclick="toggleStep(this)">
-            <div class="step-icon">{status_icon}</div>
-            <span class="step-user" style="background:{user_color}">{user_id}</span>
-            <span class="step-time">{time_str}</span>
-            <span class="step-duration" style="color:{status_color}">{duration_str}</span>
-            <span class="step-divider"></span>
-            <span class="step-user-info" style="color:{'#7f1d1d' if not success else '#9ca3af'}">{user_info_str}</span>
-            <span class="step-title{' failed-text' if not success else ''}">{title}</span>
+    <div class="group {state_class}" id="{anchor_id}" data-user="{_esc(user_id)}">
+        <div class="group-header" onclick="tg(this)">
+            <span class="chevron">▶</span>
+            <span class="g-icon">{icon}</span>
+            {user_tag}
+            <span class="g-title"{title_style}>{nested_mark}{_esc(group["title"])}</span>
+            {method_label}
+            <div class="g-meta">
+                <span class="cnt">{cnt_html}</span>
+                {bar_html}
+                <span class="g-dur">{HTMLReportGenerator._format_duration(group["duration_ms"])}</span>
+            </div>
         </div>
-        <div class="step-detail {'expanded' if not success else ''}">
-            {detail_html}
-        </div>
+        <div class="rows">{rows_html}</div>
     </div>'''
+
+    @staticmethod
+    def _render_phase(log: Dict[str, Any]) -> str:
+        """渲染阶段分隔条（step 类型日志），有详情时可点击展开。"""
+        step_name = log.get("step", "")
+        time_str = log.get("time", "")
+        detail = log.get("detail", "")
+        clean_detail = HTMLReportGenerator._clean_text_for_display(detail) if detail else ""
+
+        if clean_detail:
+            return f'''
+    <div class="phase-wrap">
+        <div class="phase clickable" onclick="tp(this)"><span class="t">{_esc(time_str)}</span> {_esc(step_name)} <span class="phase-more">详情 ▾</span></div>
+        <pre class="phase-detail">{_esc(clean_detail)}</pre>
+    </div>'''
+        return f'<div class="phase"><span class="t">{_esc(time_str)}</span> {_esc(step_name)}</div>'
+
+    @staticmethod
+    def _render_error(log: Dict[str, Any]) -> str:
+        """渲染 error 类型日志。"""
+        time_str = log.get("time", "")
+        error = HTMLReportGenerator._clean_text_for_display(log.get("error", ""))
+        return f'''
+    <div class="error-entry"><span class="t">{_esc(time_str)}</span> ⚠ {_esc(error)}</div>'''
+
+    @staticmethod
+    def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
+        """构建末尾截图区 HTML（只显示步骤中没有截图的用户，避免重复）。"""
+        screenshots = [log for log in logs if log.get("type") == "screenshot"]
+        if not screenshots:
+            return ""
+
+        users_with_step_screenshot = set()
+        for log in logs:
+            if log.get("type") != "aw_call":
+                continue
+            result = log.get("result", {})
+            if not isinstance(result, dict):
+                continue
+            has_screenshot = bool(result.get("error_screenshot", "")) and len(result.get("error_screenshot", "")) > 100
+            if not has_screenshot:
+                for action in result.get("actions", []) or []:
+                    if isinstance(action, dict) and len(action.get("screenshot", "") or "") > 100:
+                        has_screenshot = True
+                        break
+            if has_screenshot:
+                user_id = log.get("args", {}).get("user_id", "")
+                if user_id:
+                    users_with_step_screenshot.add(user_id)
+
+        filtered = [s for s in screenshots if s.get("user_id", "") not in users_with_step_screenshot]
+        if not filtered:
+            return ""
+
+        items = []
+        for shot in filtered:
+            base64_data = shot.get("base64", "")
+            user_id = shot.get("user_id", "")
+            items.append(
+                f'<div class="shot" onclick="showImage(this.querySelector(\'img\').src)">'
+                f'<img src="data:image/png;base64,{base64_data}" alt="{_esc(user_id)}">'
+                f'<span class="cap">📷 {_esc(user_id)}</span></div>'
+            )
+
+        title = "📸 用户截图" if is_api_failure else "📸 其他用户截图"
+        return f'''
+    <div class="screenshots-card">
+        <div class="sc-title">{title}</div>
+        <div class="shots">{"".join(items)}</div>
+    </div>'''
+
+    # ── 主入口 ───────────────────────────────────────────
+
     @staticmethod
     def generate(
-        report_path: Path,
+        report_path,
         case_name: str,
         case_title: str = "",
         logs: List[Dict[str, Any]] = [],
@@ -349,510 +519,369 @@ class HTMLReportGenerator:
         is_api_failure: bool = False
     ) -> None:
         """生成 HTML 报告。"""
-        failed_aw_steps = HTMLReportGenerator._get_failed_aw_steps(logs)
-        logs_html = HTMLReportGenerator._build_logs_html(logs)
-        screenshots_html = HTMLReportGenerator._build_screenshots_html(logs, is_api_failure)
+        timeline = HTMLReportGenerator._build_timeline(logs)
+        groups = [e for e in timeline if e["kind"] == "group"]
 
-        failed_steps_html = ""
-        if failed_aw_steps:
-            steps_list = "".join([f"<li>{step}</li>" for step in failed_aw_steps])
-            failed_steps_html = f"""
-            <div class="failed-steps">
-                <div class="failed-steps-title">❌ 失败步骤</div>
-                <ul class="failed-steps-list">{steps_list}</ul>
-            </div>"""
+        # ── 统计 ──
+        ops_total = sum(len(g["rows"]) for g in groups)
+        ops_fail = sum(g["fail_rows"] for g in groups)
+        ops_ok = ops_total - ops_fail
+        first_failed = next((g for g in groups if not g["ok"]), None)
+        passed = status == "passed"
 
-        html = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{case_name}</title>
-    <style>
-        * {{ box-sizing: border-box; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8fafc;
-            min-height: 100vh;
-            margin: 0;
-            padding: 24px 16px;
-        }}
-        .container {{ max-width: 1400px; margin: 0 auto; }}
-
-        /* 报告头部 */
-        .header {{
-            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-            border-radius: 16px;
-            padding: 24px 28px;
-            margin-bottom: 24px;
-            box-shadow: 0 4px 20px rgba(34,197,94,0.1);
-        }}
-        .header.failed {{
-            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-            box-shadow: 0 4px 20px rgba(239,68,68,0.1);
-        }}
-        .header-content {{ display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }}
-        .header-left {{ flex: 1; }}
-        .header h1 {{ margin: 0 0 6px 0; font-size: 24px; color: #166534; font-weight: 700; }}
-        .header.failed h1 {{ color: #dc2626; }}
-        .header h2 {{ margin: 0; font-size: 15px; color: #15803d; font-weight: 400; }}
-        .header.failed h2 {{ color: #b91c1c; }}
-        .header-right {{ display: flex; align-items: center; gap: 20px; }}
-        .status-badge {{
-            padding: 12px 24px;
-            border-radius: 24px;
-            font-weight: 600;
-            font-size: 16px;
-        }}
-        .status-passed {{ background: #22c55e; color: white; }}
-        .status-failed {{ background: #ef4444; color: white; }}
-        .header-meta {{ text-align: right; }}
-        .header-meta .duration {{ font-size: 22px; font-weight: 700; color: #166534; }}
-        .header.failed .header-meta .duration {{ color: #dc2626; }}
-        .header-meta .time {{ font-size: 13px; color: #6b7280; margin-top: 4px; }}
-
-        /* 失败提示 */
-        .failed-steps {{
-            margin-top: 14px;
-            padding: 12px 16px;
-            background: white;
-            border-radius: 10px;
-            border-left: 4px solid #ef4444;
-        }}
-        .failed-steps-title {{ font-weight: 600; color: #dc2626; margin-bottom: 8px; font-size: 14px; }}
-        .failed-steps-list {{ margin: 0; padding-left: 20px; color: #7f1d1d; font-size: 13px; }}
-        .failed-steps-list li {{ margin: 6px 0; }}
-
-        .error-box {{
-            margin-top: 14px;
-            padding: 12px 16px;
-            background: white;
-            border-radius: 10px;
-            border-left: 4px solid #ef4444;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #dc2626;
-            white-space: pre-wrap;
-            word-break: break-all;
-            max-height: 150px;
-            overflow: auto;
-        }}
-
-        /* 时间线步骤 */
-        .timeline-card {{
-            background: white;
-            border-radius: 16px;
-            padding: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }}
-        .timeline-title {{
-            font-size: 14px;
-            color: #374151;
-            padding: 8px 12px;
-            font-weight: 600;
-            border-bottom: 1px solid #e5e7eb;
-        }}
-
-        .timeline-step {{
-            margin: 10px 0;
-            border-radius: 12px;
-            background: white;
-            border: 1px solid #e5e7eb;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-        }}
-        .timeline-step:last-child {{ margin-bottom: 0; }}
-        .timeline-step.success {{ border-color: #bbf7d0; }}
-        .timeline-step.failed-step {{
-            border-color: #fecaca;
-            background: linear-gradient(to right, #fef2f2, white);
-        }}
-
-        .step-header {{
-            padding: 14px 16px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            transition: background 0.15s;
-        }}
-        .timeline-step.success .step-header {{ background: linear-gradient(to right, #f0fdf4, white); }}
-        .timeline-step.failed-step .step-header {{ background: linear-gradient(to right, #fef2f2, white); }}
-        .step-header:hover {{ filter: brightness(0.98); }}
-
-        .step-icon {{
-            width: 32px;
-            height: 32px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            flex-shrink: 0;
-        }}
-        .timeline-step.success .step-icon {{ background: #dcfce7; color: #22c55e; }}
-        .timeline-step.failed-step .step-icon {{ background: #fee2e2; color: #ef4444; }}
-        .step-icon-blue {{ background: #dbeafe; color: #1d4ed8; }}
-
-        /* 步骤卡片样式（step 类型日志） */
-        .timeline-step.step-block {{ border-color: #dbeafe; }}
-        .timeline-step.step-block .step-header {{ background: linear-gradient(to right, #eff6ff, white); }}
-        .timeline-step.step-block .step-detail {{ background: #eff6ff; }}
-
-        .step-status {{ font-size: 16px; font-weight: 600; }}
-        .step-user {{
-            color: white;
-            padding: 3px 10px;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 13px;
-        }}
-        .step-time {{ color: #6b7280; font-size: 13px; width: 70px; }}
-        .step-duration {{ font-size: 13px; }}
-        .step-divider {{
-            width: 1px;
-            height: 18px;
-            background: #d1d5db;
-            margin-left: 4px;
-        }}
-        .step-user-info {{ font-size: 13px; }}
-        .step-title {{
-            flex: 1;
-            font-weight: 500;
-            padding-left: 14px;
-        }}
-        .step-title.failed-text {{ color: #dc2626; }}
-
-        /* 展开详情 */
-        .step-detail {{
-            display: none;
-            padding: 12px 14px;
-            border-top: 1px solid #e5e7eb;
-        }}
-        .step-detail.expanded {{ display: block; }}
-        .timeline-step.success .step-detail {{ background: #f0fdf4; }}
-        .timeline-step.failed-step .step-detail {{ background: #fef2f2; border-top-color: #fecaca; }}
-
-        .detail-item {{ font-size: 12px; color: #6b7280; margin-bottom: 8px; }}
-        .detail-label {{ font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 4px; }}
-        .detail-content {{
-            background: white;
-            padding: 8px;
-            border-radius: 6px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #4b5563;
-        }}
-        .detail-json {{
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #4b5563;
-            white-space: pre;
-            overflow-x: auto;
-            margin: 0;
-            line-height: 1.5;
-        }}
-
-        .step-error-label {{ font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px; }}
-        .step-error-text {{
-            background: white;
-            padding: 8px;
-            border-radius: 6px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #dc2626;
-        }}
-        .step-error-box {{ margin-bottom: 10px; }}
-
-        /* OCR 信息样式 */
-        .step-ocr-box {{ margin-bottom: 10px; }}
-        .step-ocr-label {{ font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 4px; }}
-        .step-ocr-content {{
-            background: white;
-            padding: 8px;
-            border-radius: 6px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #4b5563;
-            line-height: 1.6;
-        }}
-        .ocr-text-item {{
-            display: inline-block;
-            margin: 3px 5px;
-            padding: 3px 8px;
-            background: #f3f4f6;
-            border-radius: 4px;
-        }}
-
-        .detail-row {{ display: flex; gap: 14px; margin-bottom: 10px; }}
-        .detail-half {{ flex: 1; }}
-
-        .screenshots-row {{ margin-top: 10px; }}
-        .screenshots-label {{ font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 6px; }}
-        .screenshots-grid {{ display: flex; gap: 10px; }}
-        .step-screenshot-item {{
-            width: 120px;
-            height: 80px;
-            background: #e5e7eb;
-            border-radius: 6px;
-            cursor: pointer;
-            position: relative;
-            border: 1px solid #fecaca;
-        }}
-        .step-screenshot-item img {{
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 6px;
-        }}
-        .step-screenshot-label {{
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0,0,0,0.6);
-            color: white;
-            font-size: 10px;
-            padding: 3px 6px;
-            text-align: center;
-            border-radius: 0 0 6px 6px;
-        }}
-
-        /* 截图卡片 */
-        .screenshots-card {{
-            background: white;
-            border-radius: 16px;
-            padding: 24px;
-            margin-top: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }}
-        .screenshots-card h3 {{ margin: 0 0 16px 0; font-size: 16px; color: #374151; font-weight: 600; }}
-
-        /* 弹窗 */
-        .modal {{
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 1000;
-            cursor: zoom-out;
-        }}
-        .modal.show {{ display: flex; align-items: center; justify-content: center; }}
-        .modal img {{ max-width: 95%; max-height: 95%; border-radius: 8px; }}
-        .modal-close {{ position: fixed; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; }}
-
-        .empty-logs {{ padding: 24px; text-align: center; color: #868e96; font-size: 14px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header {'failed' if status == 'failed' else ''}">
-            <div class="header-content">
-                <div class="header-left">
-                    <h1>{case_name}</h1>
-                    {f'<h2>{case_title}</h2>' if case_title else ''}
-                </div>
-                <div class="header-right">
-                    <span class="status-badge {'status-passed' if status == 'passed' else 'status-failed'}">
-                        {'✓ 通过' if status == 'passed' else '✗ 失败'}
-                    </span>
-                    <div class="header-meta">
-                        <div class="duration">{HTMLReportGenerator._format_duration(duration_ms)}</div>
-                        <div class="time">{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
-                    </div>
-                </div>
-            </div>
-            {failed_steps_html}
-            {f'<div class="error-box">{error_msg}</div>' if error_msg else ''}
-        </div>
-
-        <div class="timeline-card">
-            <div class="timeline-title">执行步骤</div>
-            {logs_html}
-        </div>
-
-        {screenshots_html}
-    </div>
-
-    <div id="modal" class="modal">
-        <span class="modal-close">&times;</span>
-        <img id="modal-img" src="">
-    </div>
-
-    <script>
-        function showImage(base64) {{
-            document.getElementById('modal-img').src = 'data:image/png;base64,' + base64;
-            document.getElementById('modal').classList.add('show');
-        }}
-
-        function toggleStep(header) {{
-            const step = header.closest('.timeline-step');
-            const detail = step.querySelector('.step-detail');
-            detail.classList.toggle('expanded');
-        }}
-
-        // 点击弹窗关闭
-        document.getElementById('modal').addEventListener('click', function() {{
-            this.classList.remove('show');
-        }});
-    </script>
-</body>
-</html>"""
-
-        report_path.write_text(html, encoding="utf-8")
-
-    @staticmethod
-    def _get_failed_aw_steps(logs: List[Dict[str, Any]]) -> List[str]:
-        """提取失败的 AW 步骤名称。"""
-        failed_steps = []
-        for log in logs:
-            if log.get("type") == "aw_call" and not log.get("success"):
-                aw_name = log.get("aw_name", "")
-                method = log.get("method", "")
-                failed_steps.append(f"{aw_name}.{method}()")
-        return failed_steps
-
-    @staticmethod
-    def _build_logs_html(logs: List[Dict[str, Any]]) -> str:
-        """构建时间线步骤列表 HTML。
-
-        Args:
-            logs: 日志列表。
-
-        Returns:
-            HTML 字符串。
-        """
-        # 构建所有日志项，统一按时间排序
-        log_items: List[tuple] = []  # (time_str, html)
-
-        # 处理 aw_call 类型日志
+        # 用户 chips（保持首次出现顺序）
+        users: Dict[str, Dict[str, str]] = {}
         for log in logs:
             if log.get("type") != "aw_call":
                 continue
-            time_str = log.get("time", "")
-            html = HTMLReportGenerator._render_timeline_step(log)
-            log_items.append((time_str, html))
+            args = log.get("args", {})
+            uid = args.get("user_id", "")
+            if uid and uid not in users:
+                users[uid] = {"name": args.get("user_name", ""), "ip": args.get("user_ip", "")}
 
-        # 处理 step 类型日志（如"申请用户资源"，排除 hook 日志避免重复）
-        for log in logs:
-            log_type = log.get("type", "")
-            time_str = log.get("time", "")
+        # ── 时间线 HTML（同时给分组编锚点） ──
+        timeline_parts = []
+        anchor_index = 0
+        progress_parts = []
+        for entry in timeline:
+            if entry["kind"] == "group":
+                anchor_index += 1
+                anchor_id = f"g{anchor_index}"
+                timeline_parts.append(HTMLReportGenerator._render_group(entry, anchor_id))
+                cls = "" if entry["ok"] else ' class="fail"'
+                tip = _esc(entry["title"]) + ("" if entry["ok"] else " — 失败")
+                progress_parts.append(f'<a href="#{anchor_id}"{cls} title="{tip}"></a>')
+            elif entry["kind"] == "phase":
+                timeline_parts.append(HTMLReportGenerator._render_phase(entry["log"]))
+            elif entry["kind"] == "error":
+                timeline_parts.append(HTMLReportGenerator._render_error(entry["log"]))
+        timeline_html = "\n".join(timeline_parts) or '<div class="empty-logs">暂无执行步骤</div>'
+        progress_html = f'<div class="progress-track">{"".join(progress_parts)}</div>' if progress_parts else ""
 
-            if log_type == "step":
-                step_name = log.get('step', '')
-                # 排除 hook 日志（aw_call 中已有对应操作）
-                if step_name.startswith('执行 hook:'):
-                    continue
-                detail = log.get('detail', '')
-                clean_detail = HTMLReportGenerator._clean_text_for_display(detail) if detail else ""
+        # ── 头部 ──
+        badge = ('<span class="badge-status passed">✓ 通过</span>' if passed
+                 else '<span class="badge-status failed">✗ 失败</span>')
+        subtitle = f'<div class="subtitle">{_esc(case_title.strip())}</div>' if case_title.strip() else ""
 
-                # 判断是否是 JSON 格式（包含换行和缩进），使用 pre 标签保留格式
-                if clean_detail and ('\n' in clean_detail or clean_detail.startswith('{') or clean_detail.startswith('[')):
-                    detail_html = f'<div class="step-detail"><pre class="detail-json">{clean_detail}</pre></div>'
-                elif clean_detail:
-                    detail_html = f'<div class="step-detail"><div class="detail-content">{clean_detail}</div></div>'
-                else:
-                    detail_html = ''
+        first_failed_html = ""
+        if first_failed:
+            label = first_failed.get("method_label") or first_failed["title"]
+            first_failed_html = (
+                '<div class="stat-sep"></div>'
+                f'<div class="stat"><span class="num small red">{_esc(label)}</span>'
+                '<span class="lbl">首个失败步骤</span></div>'
+            )
 
-                html = f'''
-    <div class="timeline-step step-block">
-        <div class="step-header" onclick="toggleStep(this)">
-            <div class="step-icon step-icon-blue">▶</div>
-            <span class="step-title">{step_name}</span>
-            <span class="step-time">{time_str}</span>
-        </div>
-        {detail_html}
-    </div>'''
-                log_items.append((time_str, html))
+        user_chips = "".join(
+            f'<span class="user-chip"><span class="dot" style="background:{HTMLReportGenerator._get_user_color(uid)}"></span>'
+            + _esc(" · ".join(p for p in (uid, info["name"], info["ip"]) if p))
+            + '</span>'
+            for uid, info in users.items()
+        )
 
-        # 按时间排序
-        log_items.sort(key=lambda x: x[0] or "")
+        error_box = ""
+        if error_msg:
+            clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
+            error_box = f'<div class="error-box">{_esc(clean_error)}</div>'
 
-        if not log_items:
-            return '<div class="empty-logs">暂无执行步骤</div>'
+        # 用户过滤按钮
+        user_btns = "".join(
+            f'<button class="tbtn ubtn" onclick="filterUser(this,\'{_esc(uid)}\')">{_esc(uid)}</button>'
+            for uid in users
+        )
 
-        return "\n".join(item[1] for item in log_items)
+        screenshots_html = HTMLReportGenerator._build_screenshots_html(logs, is_api_failure)
 
-    @staticmethod
-    def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
-        """构建截图区域 HTML。
+        html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{_esc(case_name)}</title>
+<style>{_CSS}</style>
+</head>
+<body>
+<div class="container">
 
-        只显示步骤中没有截图的用户，避免重复显示。
-
-        Args:
-            logs: 日志列表。
-            is_api_failure: 是否是 API AW 失败。
-
-        Returns:
-            截图区域 HTML。
-        """
-        # 获取所有失败截图
-        screenshots = [log for log in logs if log.get("type") == "screenshot"]
-
-        if not screenshots:
-            return ""
-
-        # 找出步骤中已有截图的用户
-        users_with_step_screenshot = set()
-        for log in logs:
-            if log.get("type") == "aw_call":
-                result = log.get("result", {})
-                has_screenshot = False
-
-                # 检查 error_screenshot（失败时的错误截图）
-                error_screenshot = result.get("error_screenshot", "")
-                if error_screenshot and len(error_screenshot) > 100:
-                    has_screenshot = True
-
-                # 检查 actions 中的截图
-                if not has_screenshot:
-                    actions = result.get("actions", [])
-                    for action in actions:
-                        screenshot = action.get("screenshot", "")
-                        if screenshot and len(screenshot) > 100:
-                            has_screenshot = True
-                            break
-
-                if has_screenshot:
-                    # 从 args 中获取用户ID
-                    args = log.get("args", {})
-                    user_id = args.get("user_id", "")
-                    if user_id:
-                        users_with_step_screenshot.add(user_id)
-
-        # 只显示步骤中没有截图的用户
-        filtered_screenshots = [
-            shot for shot in screenshots
-            if shot.get("user_id", "") not in users_with_step_screenshot
-        ]
-
-        if not filtered_screenshots:
-            return ""
-
-        items = []
-        for shot in filtered_screenshots:
-            base64_data = shot.get("base64", "")
-            user_id = shot.get("user_id", "")
-            items.append(f"""
-                <div class="step-screenshot-item" onclick="showImage('{base64_data}')">
-                    <img src="data:image/png;base64,{base64_data}" alt="{user_id}">
-                    <div class="step-screenshot-label">📷 {user_id}</div>
-                </div>""")
-
-        # 根据失败来源决定标题
-        title = "📸 用户截图" if is_api_failure else "📸 其他用户截图"
-
-        return f"""
-        <div class="screenshots-card">
-            <h3>{title}</h3>
-            <div class="screenshots-grid">
-                {"".join(items)}
+    <div class="header {'passed' if passed else ''}">
+        <div class="header-top">
+            <div>
+                <h1>{_esc(case_name)}</h1>
+                {subtitle}
             </div>
-        </div>"""
+            {badge}
+        </div>
+        <div class="stat-row">
+            <div class="stat"><span class="num">{HTMLReportGenerator._format_total_duration(duration_ms)}</span><span class="lbl">总耗时</span></div>
+            <div class="stat-sep"></div>
+            <div class="stat"><span class="num">{len(groups)}</span><span class="lbl">业务步骤</span></div>
+            <div class="stat"><span class="num green">{ops_ok}</span><span class="lbl">操作成功</span></div>
+            <div class="stat"><span class="num red">{ops_fail}</span><span class="lbl">操作失败</span></div>
+            {first_failed_html}
+            <div class="user-chips">{user_chips}</div>
+        </div>
+        {progress_html}
+        {error_box}
+    </div>
+
+    <div class="toolbar">
+        <button class="tbtn fail-filter" onclick="document.body.classList.toggle('only-fail');this.classList.toggle('active')">只看失败</button>
+        <button class="tbtn" onclick="toggleAll(true)">全部展开</button>
+        <button class="tbtn" onclick="toggleAll(false)">全部收起</button>
+        <span class="vsep"></span>
+        <button class="tbtn ubtn active" onclick="filterUser(this,'')">全部用户</button>
+        {user_btns}
+        <span class="spacer"></span>
+        <span class="hint">{len(groups)} 个业务步骤 · {ops_total} 次原子操作{' · 失败步骤已自动展开' if ops_fail or not passed else ''}</span>
+    </div>
+
+    <div class="timeline">
+{timeline_html}
+    </div>
+    {screenshots_html}
+</div>
+
+<div class="modal" id="modal"><img id="modal-img" src=""></div>
+
+<script>{_JS}</script>
+</body>
+</html>'''
+
+        report_path.write_text(html, encoding="utf-8")
+
+
+# ── 样式（普通字符串，避免 f-string 花括号转义） ──────────
+_CSS = """
+* { box-sizing: border-box; margin: 0; }
+:root {
+    --green: #16a34a; --green-bg: #f0fdf4; --green-soft: #dcfce7;
+    --red: #dc2626; --red-bg: #fef2f2; --red-soft: #fee2e2;
+    --blue: #3b82f6; --ink: #0f172a; --ink-2: #475569; --ink-3: #94a3b8;
+    --line: #e2e8f0; --bg: #f1f5f9;
+    --mono: 'Cascadia Code', Consolas, monospace;
+}
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    background: var(--bg); color: var(--ink); padding: 20px 16px;
+}
+.container { max-width: 1280px; margin: 0 auto; }
+
+/* ── 头部 ── */
+.header {
+    background: white; border-radius: 14px; padding: 20px 24px 16px;
+    border: 1px solid var(--line); border-top: 4px solid var(--red);
+    box-shadow: 0 1px 3px rgba(15,23,42,.06); margin-bottom: 14px;
+}
+.header.passed { border-top-color: var(--green); }
+.header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.header h1 { font-size: 19px; font-weight: 700; letter-spacing: -.2px; }
+.header .subtitle { font-size: 13px; color: var(--ink-2); margin-top: 4px; white-space: pre-line; }
+.badge-status {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border-radius: 999px; font-weight: 700; font-size: 14px; flex-shrink: 0;
+}
+.badge-status.failed { background: var(--red-soft); color: var(--red); }
+.badge-status.passed { background: var(--green-soft); color: var(--green); }
+.stat-row { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .num { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat .num.small { font-size: 13px; padding-top: 6px; font-family: var(--mono); }
+.stat .num.red { color: var(--red); } .stat .num.green { color: var(--green); }
+.stat .lbl { font-size: 11px; color: var(--ink-3); }
+.stat-sep { width: 1px; height: 30px; background: var(--line); }
+.user-chips { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.user-chip {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+    padding: 4px 10px; border-radius: 999px; background: #f8fafc; border: 1px solid var(--line);
+    color: var(--ink-2);
+}
+.user-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.progress-track { display: flex; gap: 3px; margin-top: 14px; height: 8px; }
+.progress-track a { flex: 1; border-radius: 3px; background: var(--green); opacity: .75; transition: .15s; }
+.progress-track a:hover { opacity: 1; transform: scaleY(1.5); }
+.progress-track a.fail { background: var(--red); opacity: 1; }
+.error-box {
+    margin-top: 14px; padding: 10px 14px; background: var(--red-bg);
+    border: 1px solid #fca5a5; border-radius: 10px;
+    font-family: var(--mono); font-size: 12px; color: var(--red);
+    white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow: auto;
+}
+
+/* ── 工具栏 ── */
+.toolbar {
+    position: sticky; top: 8px; z-index: 10;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 8px 12px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(15,23,42,.05);
+}
+.tbtn {
+    border: 1px solid var(--line); background: white; border-radius: 8px;
+    padding: 5px 12px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; transition: .15s;
+}
+.tbtn:hover { border-color: #94a3b8; color: var(--ink); }
+.tbtn.active { background: var(--ink); color: white; border-color: var(--ink); }
+.tbtn.fail-filter.active { background: var(--red); border-color: var(--red); }
+.toolbar .vsep { width: 1px; height: 18px; background: var(--line); }
+.toolbar .spacer { flex: 1; }
+.toolbar .hint { font-size: 12px; color: var(--ink-3); }
+
+/* ── 时间线 ── */
+.timeline { display: flex; flex-direction: column; gap: 8px; }
+.phase, .phase-wrap .phase {
+    display: flex; align-items: center; gap: 10px; padding: 2px 4px;
+    font-size: 12px; color: var(--ink-3); font-weight: 600;
+}
+.phase::before, .phase::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.phase .t { font-weight: 400; font-variant-numeric: tabular-nums; }
+.phase.clickable { cursor: pointer; }
+.phase-more { color: var(--blue); font-weight: 400; }
+.phase-detail {
+    display: none; margin: 6px 20px 4px; padding: 10px 12px; background: white;
+    border: 1px solid var(--line); border-radius: 8px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto;
+}
+.phase-wrap.open .phase-detail { display: block; }
+.error-entry {
+    padding: 8px 14px; background: var(--red-bg); border: 1px solid #fca5a5;
+    border-radius: 10px; font-size: 12.5px; color: var(--red);
+}
+.error-entry .t { font-family: var(--mono); font-size: 11px; margin-right: 8px; color: var(--ink-3); }
+.empty-logs { text-align: center; color: var(--ink-3); padding: 40px 0; }
+
+/* ── 业务方法分组卡 ── */
+.group {
+    background: white; border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
+.group.failed { border-color: #fca5a5; box-shadow: 0 1px 6px rgba(220,38,38,.08); }
+.group-header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    cursor: pointer; user-select: none; transition: background .15s;
+}
+.group-header:hover { background: #f8fafc; }
+.chevron { color: var(--ink-3); font-size: 11px; transition: transform .2s; width: 12px; flex-shrink: 0; }
+.group.open .chevron { transform: rotate(90deg); }
+.g-icon {
+    width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
+}
+.group.ok .g-icon { background: var(--green-soft); color: var(--green); }
+.group.failed .g-icon { background: var(--red-soft); color: var(--red); }
+.g-title { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-method { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.u-tag { color: white; padding: 2px 9px; border-radius: 6px; font-weight: 600; font-size: 11.5px; flex-shrink: 0; }
+.g-meta { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.g-meta .cnt b { color: var(--ink-2); }
+.g-meta .cnt .f { color: var(--red); font-weight: 700; }
+.g-dur { font-weight: 600; color: var(--ink-2); }
+.group.failed .g-dur { color: var(--red); }
+.g-bar { width: 64px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; display: flex; }
+.g-bar i { display: block; height: 100%; background: var(--green); }
+.g-bar i.f { background: var(--red); }
+
+/* ── 组内原子操作行 ── */
+.rows { display: none; border-top: 1px solid var(--line); }
+.group.open .rows { display: block; }
+.row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 40px;
+    font-size: 12.5px; cursor: pointer; border-top: 1px solid #f1f5f9; transition: background .1s;
+}
+.row:first-child { border-top: none; }
+.row:hover { background: #f8fafc; }
+.row.fail { background: var(--red-bg); }
+.row.fail:hover { background: #fee2e2; }
+.row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.row.fail .dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+.r-time { font-family: var(--mono); font-size: 11px; color: var(--ink-3); width: 86px; flex-shrink: 0; }
+.r-method { font-family: var(--mono); color: var(--ink); font-weight: 550; flex-shrink: 0; }
+.r-args { font-family: var(--mono); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.row.fail .r-method, .row.fail .r-args { color: var(--red); }
+.r-shot { font-size: 11px; color: var(--blue); flex-shrink: 0; }
+.r-dur { font-family: var(--mono); font-size: 11px; color: var(--ink-3); width: 56px; text-align: right; flex-shrink: 0; }
+.row.slow .r-dur { color: #d97706; font-weight: 700; }
+.row-empty { padding: 12px 40px; font-size: 12px; color: var(--ink-3); }
+
+/* ── 行详情 ── */
+.row-detail { display: none; padding: 10px 14px 12px 40px; background: #fafbfc; border-top: 1px dashed var(--line); }
+.row-detail.open { display: block; }
+.row.fail + .row-detail { background: var(--red-bg); }
+.kv { display: flex; gap: 12px; flex-wrap: wrap; }
+.kv > div { flex: 1; min-width: 260px; }
+.k { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+.row-detail .v, .err-box .v {
+    background: white; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    line-height: 1.55; word-break: break-all;
+}
+.err-box { margin-bottom: 10px; }
+.err-box .v { border-color: #fca5a5; color: var(--red); }
+.rid { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin: 6px 0; }
+.ocr-box { margin-top: 10px; }
+.ocr-chip { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 8px; background: #eef2ff; color: #4338ca; border-radius: 5px; font-size: 11px; font-family: var(--mono); }
+.shots { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.shot {
+    width: 168px; height: 104px; border-radius: 8px; border: 1px solid var(--line);
+    position: relative; cursor: zoom-in; overflow: hidden; background: #e2e8f0;
+}
+.shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shot .cap {
+    position: absolute; bottom: 0; left: 0; right: 0; background: rgba(15,23,42,.72);
+    color: white; font-size: 10px; padding: 3px 8px;
+}
+
+/* ── 截图区 ── */
+.screenshots-card {
+    margin-top: 14px; background: white; border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px;
+}
+.sc-title { font-size: 13px; font-weight: 700; color: var(--ink-2); margin-bottom: 10px; }
+.screenshots-card .shot { width: 220px; height: 136px; }
+
+/* ── 图片弹窗 ── */
+.modal {
+    display: none; position: fixed; inset: 0; background: rgba(15,23,42,.85);
+    z-index: 100; align-items: center; justify-content: center; cursor: zoom-out;
+}
+.modal.show { display: flex; }
+.modal img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
+
+/* ── 过滤态 ── */
+body.only-fail .group.ok, body.only-fail .phase, body.only-fail .phase-wrap { display: none; }
+body.filter-user .group:not(.match-user) { display: none; }
+"""
+
+# ── 交互脚本 ─────────────────────────────────────────────
+_JS = """
+function tg(h) { h.parentElement.classList.toggle('open'); }
+function td(r) {
+    const next = r.nextElementSibling;
+    if (next && next.classList.contains('row-detail')) next.classList.toggle('open');
+}
+function tp(p) { p.parentElement.classList.toggle('open'); }
+function toggleAll(open) {
+    document.querySelectorAll('.group').forEach(g => g.classList.toggle('open', open));
+}
+function filterUser(btn, uid) {
+    document.querySelectorAll('.ubtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (!uid) {
+        document.body.classList.remove('filter-user');
+        document.querySelectorAll('.group').forEach(g => g.classList.remove('match-user'));
+        return;
+    }
+    document.body.classList.add('filter-user');
+    document.querySelectorAll('.group').forEach(g => {
+        g.classList.toggle('match-user', g.dataset.user === uid);
+    });
+}
+function showImage(src) {
+    const modal = document.getElementById('modal');
+    document.getElementById('modal-img').src = src;
+    modal.classList.add('show');
+}
+document.getElementById('modal').addEventListener('click', function() {
+    this.classList.remove('show');
+});
+"""

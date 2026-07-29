@@ -97,6 +97,8 @@ class Action:
         client: TestagentClient 实例（用于发送请求）。
         parent_aw: 父级 AW 标识（如 LoginAW.do_login），用于日志聚合。
         window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
+        parent_call_id: 父级业务方法本次调用的唯一 ID（用于报告精确分组）。
+        parent_display: 父级业务方法显示名（docstring 首行）。
     """
 
     action_data: Dict[str, Any]
@@ -111,6 +113,8 @@ class Action:
     client: Optional["TestagentClient"] = None
     parent_aw: str = ""  # 父级 AW 标识，用于日志聚合
     window: Optional[Dict[str, Any]] = None  # 窗口定位参数（仅 Windows 平台）
+    parent_call_id: str = ""  # 父级业务方法本次调用的唯一 ID
+    parent_display: str = ""  # 父级业务方法显示名（docstring 首行）
 
 
 # ── 异常类 ───────────────────────────────────────────────────────
@@ -439,6 +443,8 @@ class ParallelContext:
             target_image_path=target_image_path,
             parent_aw=action.parent_aw,  # 传递 parent_aw 以支持日志聚合
             request_id=action_result.get("request_id", ""),  # 新增：用于问题定位
+            parent_call_id=action.parent_call_id,
+            parent_display=action.parent_display,
         )
 
 

@@ -79,8 +79,8 @@ class BaseApiAW(BaseAW):
         user_account = self.user.account if self.user else ""
         user_name = self.user.name if self.user else ""
         user_ip = self.user.ip if self.user else ""
-        # 获取 parent_aw（用于日志聚合）
-        parent_aw = self._find_parent_aw()
+        # 获取父级业务方法信息（用于日志聚合）
+        parent_aw, parent_call_id, parent_display = self._parent_call_info()
 
         client = self.user._get_ui_client() if self.user else None
         if not client:
@@ -91,7 +91,7 @@ class BaseApiAW(BaseAW):
                 success=False,
                 result={"error": "client is None"},
                 duration_ms=0,
-                parent_aw=parent_aw,
+                parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                 request_id="",  # API AW 无 worker request_id
             )
             return None
@@ -105,7 +105,7 @@ class BaseApiAW(BaseAW):
                 success=False,
                 result={"error": "ui_platform is None"},
                 duration_ms=0,
-                parent_aw=parent_aw,
+                parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                 request_id="",  # API AW 无 worker request_id
             )
             return None
@@ -128,7 +128,7 @@ class BaseApiAW(BaseAW):
                             success=True,
                             result={"raw_result": result, "token_keys": list(token_dict.keys())},
                             duration_ms=0,
-                            parent_aw=parent_aw,
+                            parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                             request_id="",  # API AW 无 worker request_id
                         )
                         return token_dict
@@ -140,7 +140,7 @@ class BaseApiAW(BaseAW):
                             success=False,
                             result={"raw_result": result, "error": f"JSON parse failed: {e}", "output": output[:100]},
                             duration_ms=0,
-                            parent_aw=parent_aw,
+                            parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                             request_id="",  # API AW 无 worker request_id
                         )
                         return None
@@ -152,7 +152,7 @@ class BaseApiAW(BaseAW):
                         success=False,
                         result={"raw_result": result, "error": "output is empty"},
                         duration_ms=0,
-                        parent_aw=parent_aw,
+                        parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                         request_id="",  # API AW 无 worker request_id
                     )
                     return None
@@ -164,7 +164,7 @@ class BaseApiAW(BaseAW):
                     success=False,
                     result={"raw_result": result, "error": "status not success or no actions", "status": result.get("status")},
                     duration_ms=0,
-                    parent_aw=parent_aw,
+                    parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                     request_id="",  # API AW 无 worker request_id
                 )
                 return None
@@ -176,7 +176,7 @@ class BaseApiAW(BaseAW):
                 success=False,
                 result={"error": str(e)},
                 duration_ms=0,
-                parent_aw=parent_aw,
+                parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                 request_id="",  # API AW 无 worker request_id
             )
             return None
@@ -424,8 +424,8 @@ class BaseApiAW(BaseAW):
                 duration_ms = int((time.time() - start_time) * 1000)
                 success = response.ok
 
-                # 获取 parent_aw（用于日志聚合）
-                parent_aw = self._find_parent_aw()
+                # 获取父级业务方法信息（用于日志聚合）
+                parent_aw, parent_call_id, parent_display = self._parent_call_info()
 
                 # 记录重试日志
                 retry_reason = "worker_token" if worker_token else "api_login"
@@ -436,7 +436,7 @@ class BaseApiAW(BaseAW):
                     success=success,
                     result={"status_code": response.status_code, "body": response.text[:500]},
                     duration_ms=duration_ms,
-                    parent_aw=parent_aw,
+                    parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                     request_id="",  # API AW 无 worker request_id
                 )
 
@@ -448,8 +448,8 @@ class BaseApiAW(BaseAW):
             duration_ms = int((time.time() - start_time) * 1000)
             success = response.ok
 
-            # 获取 parent_aw（用于日志聚合）
-            parent_aw = self._find_parent_aw()
+            # 获取父级业务方法信息（用于日志聚合）
+            parent_aw, parent_call_id, parent_display = self._parent_call_info()
 
             # 记录日志
             logger.log_aw_call(
@@ -459,7 +459,7 @@ class BaseApiAW(BaseAW):
                 success=success,
                 result={"status_code": response.status_code, "body": response.text[:500]},
                 duration_ms=duration_ms,
-                parent_aw=parent_aw,
+                parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                 request_id="",  # API AW 无 worker request_id
             )
 
@@ -470,8 +470,8 @@ class BaseApiAW(BaseAW):
 
         except requests.exceptions.RequestException as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            # 获取 parent_aw（用于日志聚合）
-            parent_aw = self._find_parent_aw()
+            # 获取父级业务方法信息（用于日志聚合）
+            parent_aw, parent_call_id, parent_display = self._parent_call_info()
             logger.log_aw_call(
                 aw_name=self._aw_name,
                 method=method,
@@ -479,7 +479,7 @@ class BaseApiAW(BaseAW):
                 success=False,
                 result={"error": str(e)},
                 duration_ms=duration_ms,
-                parent_aw=parent_aw,
+                parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
                 request_id="",  # API AW 无 worker request_id
             )
             raise ApiError(method, 0, str(e)) from e

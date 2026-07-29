@@ -365,6 +365,7 @@ class TestClass:
 | 方法命名 | test_{文件名} | 不符合则修正 |
 | AW引用 | from aw.{平台}.{业务}_aw import XxxAW | 检查路径正确 |
 | Docstring | 中文注释 | 缺失则补充 |
+| AW docstring 首行 | 简短中文动作描述（报告自动用作业务步骤标题） | 首行含参数说明/英文方法名则修正 |
 
 #### 7.3 INDEX.md同步验证
 

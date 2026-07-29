@@ -109,7 +109,7 @@ class XxxAW(BaseAW):
 
 1. **业务方法以 `do_` 开头**：表示执行一个业务动作
 2. **断言方法以 `should_` 开头**：表示验证一个期望结果
-3. **每个方法必须有中文 docstring**：说明步骤和参数
+3. **每个方法必须有中文 docstring**：说明步骤和参数。**docstring 首行会自动作为 HTML 报告的业务步骤标题**，必须是简短中文动作描述（如"执行登录操作。"、"断言在等候室。"），新增 AW 无需在报告生成器中登记任何映射
 4. **使用 `self.PLATFORM` 常量**：避免硬编码平台名
 5. **使用 BaseAW 便捷方法**：`self.ocr_click(text)` 而非 `self.client.ocr_click(self.PLATFORM, text)`
 

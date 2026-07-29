@@ -3,7 +3,9 @@
 import functools
 import inspect
 import logging
+import threading
 import time
+import uuid
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient, is_retryable_transport_error
@@ -76,12 +78,42 @@ class PendingResult:
         raise ParallelModeError(self._method, "数据访问")
 
 
+# ── 业务方法调用栈（线程本地） ─────────────────────────────
+# 记录当前线程正在执行的业务方法链，供原子操作精确归属父级业务方法。
+# 相比 inspect.stack() 按函数名猜测：类名永远正确（由业务方法自身压栈）、
+# 同名方法多次调用可通过 call_id 区分、parallel 收集模式同样适用。
+_business_stack_local = threading.local()
+
+
+def _business_call_stack() -> list:
+    """获取当前线程的业务方法调用栈。"""
+    stack = getattr(_business_stack_local, "stack", None)
+    if stack is None:
+        stack = []
+        _business_stack_local.stack = stack
+    return stack
+
+
+def _doc_first_line(func) -> str:
+    """提取方法 docstring 首行作为报告显示名。
+
+    新增 AW 业务方法只要按规范写中文 docstring，报告即自动显示中文名，
+    无需在报告生成器中登记映射。
+    """
+    doc = inspect.getdoc(func)
+    if not doc:
+        return ""
+    return doc.strip().splitlines()[0].strip().rstrip("。.")
+
+
 def _auto_log_aw_call(func):
     """自动记录业务方法参数的装饰器。
 
     用于 do_*/should_* 方法，在执行后记录方法参数和结果。
     失败时自动截图并记录错误信息。
     """
+    display_name = _doc_first_line(func)
+
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         # 获取方法签名和绑定参数
@@ -95,8 +127,19 @@ def _auto_log_aw_call(func):
             if k != "self"
         }
 
-        # 获取 parent_aw（调用栈中上层的业务方法）
-        parent_aw = self._find_parent_aw(skip_self=True)
+        # 从业务调用栈获取父级业务方法（嵌套调用时为外层业务方法）
+        call_stack = _business_call_stack()
+        parent_frame = call_stack[-1] if call_stack else None
+        parent_aw = parent_frame["aw"] if parent_frame else ""
+        parent_call_id = parent_frame["call_id"] if parent_frame else ""
+
+        # 生成本次调用的唯一 ID 并压栈（原子操作据此归属分组）
+        call_id = uuid.uuid4().hex[:12]
+        call_stack.append({
+            "call_id": call_id,
+            "aw": f"{self._aw_name}.{func.__name__}",
+            "display": display_name,
+        })
 
         # 用户信息
         user_id = self.user.user_id if self.user else ""
@@ -106,11 +149,82 @@ def _auto_log_aw_call(func):
 
         # 收集模式下，收集模式也需要捕获异常
         # 注意：原子操作在收集模式下不抛异常，但业务方法可能直接抛异常
-        if is_collecting():
+        try:
+            if is_collecting():
+                try:
+                    return func(self, *args, **kwargs)
+                except Exception as e:
+                    # 失败：从异常中提取 error_screenshot（如果已有）
+                    error_screenshot = ""
+                    has_atomic_screenshot = False  # 标记截图是否来自原子操作
+
+                    if isinstance(e, AWError) and "error_screenshot" in e.result:
+                        error_screenshot = e.result.get("error_screenshot", "")
+                        has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
+                    if not error_screenshot:
+                        try:
+                            error_screenshot = self.screenshot()
+                        except Exception:
+                            pass
+
+                    error_result = {
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                    # 只有截图来自业务方法自身时才记录到业务方法日志
+                    if error_screenshot and not has_atomic_screenshot:
+                        error_result["error_screenshot"] = error_screenshot
+
+                    logger = ReportLogger.get_current()
+                    logger.log_aw_call(
+                        aw_name=self._aw_name,
+                        method=func.__name__,
+                        args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
+                        success=False,
+                        result=error_result,
+                        duration_ms=0,
+                        parent_aw=parent_aw,
+                        is_business_method=True,
+                        request_id="",  # 业务方法没有直接的 request_id
+                        call_id=call_id,
+                        parent_call_id=parent_call_id,
+                        display_name=display_name,
+                    )
+                    raise
+
+            # 同步模式：记录日志
+            logger = ReportLogger.get_current()
+            start_time = time.time()
+
             try:
-                return func(self, *args, **kwargs)
+                # 执行原方法
+                result = func(self, *args, **kwargs)
+
+                # 成功：记录日志
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                logger.log_aw_call(
+                    aw_name=self._aw_name,
+                    method=func.__name__,
+                    args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
+                    success=True,
+                    result={},
+                    duration_ms=duration_ms,
+                    parent_aw=parent_aw,
+                    is_business_method=True,
+                    request_id="",  # 业务方法没有直接的 request_id
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    display_name=display_name,
+                )
+
+                return result
+
             except Exception as e:
-                # 失败：从异常中提取 error_screenshot（如果已有）
+                # 失败：截图并记录日志
+                duration_ms = int((time.time() - start_time) * 1000)
+
+                # 失败时截图：优先从异常中提取已有的 error_screenshot（如果是 AWError）
                 error_screenshot = ""
                 has_atomic_screenshot = False  # 标记截图是否来自原子操作
 
@@ -119,10 +233,15 @@ def _auto_log_aw_call(func):
                     has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
                 if not error_screenshot:
                     try:
-                        error_screenshot = self.screenshot()
+                        # Web 平台需要 system 级别截图
+                        screenshot_kwargs = {}
+                        if self.PLATFORM == "web" or (self.PLATFORM == "common" and self.user and self.user.platform == "web"):
+                            screenshot_kwargs["level"] = "system"
+                        error_screenshot = self.screenshot(**screenshot_kwargs)
                     except Exception:
-                        pass
+                        pass  # 截图失败不影响主流程
 
+                # 记录失败日志
                 error_result = {
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -131,89 +250,27 @@ def _auto_log_aw_call(func):
                 if error_screenshot and not has_atomic_screenshot:
                     error_result["error_screenshot"] = error_screenshot
 
-                logger = ReportLogger.get_current()
                 logger.log_aw_call(
                     aw_name=self._aw_name,
                     method=func.__name__,
                     args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
                     success=False,
                     result=error_result,
-                    duration_ms=0,
+                    duration_ms=duration_ms,
                     parent_aw=parent_aw,
                     is_business_method=True,
                     request_id="",  # 业务方法没有直接的 request_id
+                    call_id=call_id,
+                    parent_call_id=parent_call_id,
+                    display_name=display_name,
                 )
+
+                # 重新抛出异常
                 raise
-
-        # 同步模式：记录日志
-        logger = ReportLogger.get_current()
-        start_time = time.time()
-
-        try:
-            # 执行原方法
-            result = func(self, *args, **kwargs)
-
-            # 成功：记录日志
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            logger.log_aw_call(
-                aw_name=self._aw_name,
-                method=func.__name__,
-                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
-                success=True,
-                result={},
-                duration_ms=duration_ms,
-                parent_aw=parent_aw,
-                is_business_method=True,
-                request_id="",  # 业务方法没有直接的 request_id
-            )
-
-            return result
-
-        except Exception as e:
-            # 失败：截图并记录日志
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # 失败时截图：优先从异常中提取已有的 error_screenshot（如果是 AWError）
-            error_screenshot = ""
-            has_atomic_screenshot = False  # 标记截图是否来自原子操作
-
-            if isinstance(e, AWError) and "error_screenshot" in e.result:
-                error_screenshot = e.result.get("error_screenshot", "")
-                has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
-            if not error_screenshot:
-                try:
-                    # Web 平台需要 system 级别截图
-                    screenshot_kwargs = {}
-                    if self.PLATFORM == "web" or (self.PLATFORM == "common" and self.user and self.user.platform == "web"):
-                        screenshot_kwargs["level"] = "system"
-                    error_screenshot = self.screenshot(**screenshot_kwargs)
-                except Exception:
-                    pass  # 截图失败不影响主流程
-
-            # 记录失败日志
-            error_result = {
-                "error": str(e),
-                "error_type": type(e).__name__,
-            }
-            # 只有截图来自业务方法自身时才记录到业务方法日志
-            if error_screenshot and not has_atomic_screenshot:
-                error_result["error_screenshot"] = error_screenshot
-
-            logger.log_aw_call(
-                aw_name=self._aw_name,
-                method=func.__name__,
-                args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
-                success=False,
-                result=error_result,
-                duration_ms=duration_ms,
-                parent_aw=parent_aw,
-                is_business_method=True,
-                request_id="",  # 业务方法没有直接的 request_id
-            )
-
-            # 重新抛出异常
-            raise
+        finally:
+            # 弹栈（与压栈严格配对，异常时也保证弹出）
+            if call_stack and call_stack[-1]["call_id"] == call_id:
+                call_stack.pop()
 
     return wrapper
 
@@ -251,31 +308,35 @@ class BaseAW:
     # ── 内部方法 ─────────────────────────────────────────
 
     def _find_parent_aw(self, skip_self: bool = False) -> str:
-        """从调用栈中查找最近的 do_*/should_* 方法作为 parent。
+        """获取当前正在执行的父级业务方法标识。
+
+        从线程本地业务调用栈读取（由 _auto_log_aw_call 压栈），
+        类名由业务方法自身记录，跨 AW 调用时不会错位。
 
         Args:
-            skip_self: 是否跳过当前方法（装饰器调用时需要）。
+            skip_self: 兼容旧签名，已无实际作用。
 
         Returns:
-            父级 AW 标识，如 "LoginAW.do_login"。
-            如果没找到业务方法，返回空字符串（顶层）。
+            父级 AW 标识，如 "LoginAW.do_login"。顶层调用返回空字符串。
         """
-        stack = inspect.stack()
-        aw_name = self._aw_name
+        return self._parent_call_info()[0]
 
-        try:
-            first = True
-            for frame_info in stack:
-                func_name = frame_info.function
-                # 跳过当前方法（装饰器调用时）
-                if skip_self and first:
-                    first = False
-                    continue
-                if func_name.startswith(('do_', 'should_')):
-                    return f"{aw_name}.{func_name}"
-            return ""
-        finally:
-            del stack  # 显式释放栈帧引用
+    @staticmethod
+    def _parent_call_info() -> tuple:
+        """获取当前父级业务方法的完整信息。
+
+        Returns:
+            (parent_aw, parent_call_id, parent_display) 三元组：
+            - parent_aw: 父级标识字符串，如 "LoginAW.do_login"
+            - parent_call_id: 父级本次调用的唯一 ID（同名方法多次调用可区分）
+            - parent_display: 父级显示名（docstring 首行）
+            顶层调用时均为空字符串。
+        """
+        call_stack = _business_call_stack()
+        if not call_stack:
+            return "", "", ""
+        frame = call_stack[-1]
+        return frame["aw"], frame["call_id"], frame["display"]
 
     def _execute_with_log(
         self,
@@ -314,8 +375,8 @@ class BaseAW:
                 user_name = self.user.name if self.user else ""
                 user_account = self.user.account if self.user else ""
                 user_ip = self.user.ip if self.user else ""
-                # 获取 parent_aw（用于日志聚合）
-                parent_aw = self._find_parent_aw()
+                # 获取父级业务方法信息（用于日志聚合）
+                parent_aw, parent_call_id, parent_display = self._parent_call_info()
                 action_obj = Action(
                     action_data=action_data,
                     platform=platform,
@@ -329,13 +390,15 @@ class BaseAW:
                     client=self.client,
                     parent_aw=parent_aw,  # 传递 parent_aw 以支持日志聚合
                     window=window,
+                    parent_call_id=parent_call_id,
+                    parent_display=parent_display,
                 )
                 queue.append(action_obj)
                 return None  # 收集模式标记
 
         # 同步执行模式
-        # 自动识别 parent_aw
-        parent_aw = self._find_parent_aw()
+        # 自动识别父级业务方法
+        parent_aw, parent_call_id, parent_display = self._parent_call_info()
         logger = ReportLogger.get_current()
         start_time = time.time()
 
@@ -363,6 +426,8 @@ class BaseAW:
                     duration_ms=duration_ms,
                     parent_aw=parent_aw,
                     request_id="",  # 异常时无 request_id
+                    parent_call_id=parent_call_id,
+                    parent_display=parent_display,
                 )
             raise
 
@@ -428,6 +493,8 @@ class BaseAW:
             target_image_path=target_image_path,
             parent_aw=parent_aw,
             request_id=request_id,
+            parent_call_id=parent_call_id,
+            parent_display=parent_display,
         )
 
         # 记录 worker 调用日志（用于调试，报告中不显示）
@@ -840,7 +907,7 @@ class BaseAW:
                 user_name = self.user.name if self.user else ""
                 user_account = self.user.account if self.user else ""
                 user_ip = self.user.ip if self.user else ""
-                parent_aw = self._find_parent_aw()
+                parent_aw, parent_call_id, parent_display = self._parent_call_info()
                 action_obj = Action(
                     action_data=action_data,
                     platform=platform,
@@ -854,12 +921,14 @@ class BaseAW:
                     client=self.client,
                     parent_aw=parent_aw,
                     window=window,
+                    parent_call_id=parent_call_id,
+                    parent_display=parent_display,
                 )
                 queue.append(action_obj)
                 return None  # 收集模式标记
 
         # 同步执行模式
-        parent_aw = self._find_parent_aw()
+        parent_aw, parent_call_id, parent_display = self._parent_call_info()
         logger = ReportLogger.get_current()
         start_time = time.time()
 
@@ -881,6 +950,8 @@ class BaseAW:
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
                 request_id="",  # 异常时无 request_id
+                parent_call_id=parent_call_id,
+                parent_display=parent_display,
             )
             # exist 方法不抛异常，返回 False
             return {"exists": False}
@@ -930,6 +1001,8 @@ class BaseAW:
             duration_ms=duration_ms,
             parent_aw=parent_aw,
             request_id=request_id,
+            parent_call_id=parent_call_id,
+            parent_display=parent_display,
         )
 
         logger.log_worker_call(
