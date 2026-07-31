@@ -325,8 +325,9 @@ class BaseApiAW(BaseAW):
         if headers:
             final_headers.update(headers)
 
-        # 添加 x-request-id header（随机 UUID）
-        final_headers["x-request-id"] = str(uuid.uuid4())
+        # 添加 x-request-id header（随机 UUID），并记入日志便于与平台侧关联
+        request_id = str(uuid.uuid4())
+        final_headers["x-request-id"] = request_id
 
         # 添加 token
         if need_token:
@@ -437,7 +438,7 @@ class BaseApiAW(BaseAW):
                     result={"status_code": response.status_code, "body": response.text[:500]},
                     duration_ms=duration_ms,
                     parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
-                    request_id="",  # API AW 无 worker request_id
+                    request_id=request_id,  # 请求头 x-request-id，可关联平台侧日志
                 )
 
                 if not success:
@@ -460,7 +461,7 @@ class BaseApiAW(BaseAW):
                 result={"status_code": response.status_code, "body": response.text[:500]},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
-                request_id="",  # API AW 无 worker request_id
+                request_id=request_id,  # 请求头 x-request-id，可关联平台侧日志
             )
 
             if not success:
@@ -480,7 +481,7 @@ class BaseApiAW(BaseAW):
                 result={"error": str(e)},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw, parent_call_id=parent_call_id, parent_display=parent_display,
-                request_id="",  # API AW 无 worker request_id
+                request_id=request_id,  # 请求头 x-request-id，可关联平台侧日志
             )
             raise ApiError(method, 0, str(e)) from e
 

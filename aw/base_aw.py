@@ -106,6 +106,22 @@ def _doc_first_line(func) -> str:
     return doc.strip().splitlines()[0].strip().rstrip("。.")
 
 
+def _request_id_from_exception(e: Exception) -> str:
+    """从异常中尽力提取 request_id（用于失败日志定位问题）。
+
+    优先级：AWError.result 中的 request_id > actions 中最后一个带
+    request_id 的 action > 异常对象自身的 request_id 属性（TestagentError）。
+    """
+    if isinstance(e, AWError):
+        rid = e.result.get("request_id", "")
+        if rid:
+            return str(rid)
+        for action in reversed(e.result.get("actions") or []):
+            if isinstance(action, dict) and action.get("request_id"):
+                return str(action["request_id"])
+    return str(getattr(e, "request_id", "") or "")
+
+
 def _auto_log_aw_call(func):
     """自动记录业务方法参数的装饰器。
 
@@ -161,6 +177,10 @@ def _auto_log_aw_call(func):
                     if isinstance(e, AWError) and "error_screenshot" in e.result:
                         error_screenshot = e.result.get("error_screenshot", "")
                         has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
+                    elif getattr(e, "error_screenshot", ""):
+                        # 原子操作异常分支已补拍并挂到异常上，避免重复补拍
+                        error_screenshot = getattr(e, "error_screenshot", "")
+                        has_atomic_screenshot = True
                     if not error_screenshot:
                         try:
                             error_screenshot = self.screenshot()
@@ -185,7 +205,7 @@ def _auto_log_aw_call(func):
                         duration_ms=0,
                         parent_aw=parent_aw,
                         is_business_method=True,
-                        request_id="",  # 业务方法没有直接的 request_id
+                        request_id=_request_id_from_exception(e),  # 从异常透传 request_id
                         call_id=call_id,
                         parent_call_id=parent_call_id,
                         display_name=display_name,
@@ -231,6 +251,10 @@ def _auto_log_aw_call(func):
                 if isinstance(e, AWError) and "error_screenshot" in e.result:
                     error_screenshot = e.result.get("error_screenshot", "")
                     has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
+                elif getattr(e, "error_screenshot", ""):
+                    # 原子操作异常分支已补拍并挂到异常上，避免重复补拍
+                    error_screenshot = getattr(e, "error_screenshot", "")
+                    has_atomic_screenshot = True
                 if not error_screenshot:
                     try:
                         # Web 平台需要 system 级别截图
@@ -259,7 +283,7 @@ def _auto_log_aw_call(func):
                     duration_ms=duration_ms,
                     parent_aw=parent_aw,
                     is_business_method=True,
-                    request_id="",  # 业务方法没有直接的 request_id
+                    request_id=_request_id_from_exception(e),  # 从异常透传 request_id
                     call_id=call_id,
                     parent_call_id=parent_call_id,
                     display_name=display_name,
@@ -416,16 +440,40 @@ class BaseAW:
             is_connection_closed = is_retryable_transport_error(e)
 
             if not is_connection_closed:
-                # 非连接类错误：记录失败日志
+                # 非连接类错误：提取 request_id（TestagentError 携带响应头中的值）
+                request_id = _request_id_from_exception(e)
+
+                # 补拍失败截图（Worker 仍可达时可成功）
+                error_screenshot = ""
+                try:
+                    screenshot_kwargs = {}
+                    if platform == "web":
+                        screenshot_kwargs["level"] = "system"
+                    error_screenshot = self.screenshot(**screenshot_kwargs)
+                except Exception:
+                    pass  # 截图失败不影响主流程
+
+                error_result: Dict[str, Any] = {"error": str(e)}
+                if request_id:
+                    error_result["request_id"] = request_id
+                if error_screenshot:
+                    error_result["error_screenshot"] = error_screenshot
+                    # 挂到异常上，业务方法装饰器据此避免重复补拍
+                    try:
+                        setattr(e, "error_screenshot", error_screenshot)
+                    except Exception:
+                        pass
+
+                # 记录失败日志
                 logger.log_aw_call(
                     aw_name=self._aw_name,
                     method=method,
                     args=log_args,
                     success=False,
-                    result={"error": str(e)},
+                    result=error_result,
                     duration_ms=duration_ms,
                     parent_aw=parent_aw,
-                    request_id="",  # 异常时无 request_id
+                    request_id=request_id,
                     parent_call_id=parent_call_id,
                     parent_display=parent_display,
                 )
@@ -438,8 +486,8 @@ class BaseAW:
         failed_actions = [a for a in actions if a.get("status") == "failed"]
         action_result = failed_actions[0] if failed_actions else (actions[0] if actions else {})
         success = action_result.get("status") == "success"
-        # 提取 request_id（用于问题定位）
-        request_id = action_result.get("request_id", "")
+        # 提取 request_id（用于问题定位），action 结果里没有时回退到顶层结果
+        request_id = action_result.get("request_id", "") or result.get("request_id", "")
 
         # 失败时获取截图，优先使用 Worker 返回的 error_screenshot
         target_image_base64 = ""
@@ -481,6 +529,9 @@ class BaseAW:
             full_result["error_screenshot"] = action_result["error_screenshot"]
         if "ocr_info" in action_result:
             full_result["ocr_info"] = action_result["ocr_info"]
+        if request_id:
+            # 携带 request_id，失败时随 AWError 透传给业务方法日志
+            full_result["request_id"] = request_id
 
         logger.log_aw_call(
             aw_name=self._aw_name,
@@ -949,7 +1000,7 @@ class BaseAW:
                 result={"error": str(e)},
                 duration_ms=duration_ms,
                 parent_aw=parent_aw,
-                request_id="",  # 异常时无 request_id
+                request_id=_request_id_from_exception(e),
                 parent_call_id=parent_call_id,
                 parent_display=parent_display,
             )

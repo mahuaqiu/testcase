@@ -148,6 +148,7 @@ class HTMLReportGenerator:
             group = {
                 "kind": "group", "key": key, "title": "", "method_label": "",
                 "rows": [], "biz_log": None, "nested": False, "orphan": False,
+                "children": [],
             }
             timeline.append(group)
             if key:
@@ -202,13 +203,54 @@ class HTMLReportGenerator:
                     orphan_group["orphan"] = True
                 orphan_group["rows"].append(log)
 
-        # 补全每组的标题 / 统计信息
+        # 嵌套业务方法归入父组：一个 AW 调用其它 AW 时聚合为父卡片内的子卡片，
+        # 不再平铺为顶层卡片
+        nested_groups = []
         for entry in timeline:
             if entry["kind"] != "group":
                 continue
-            HTMLReportGenerator._finalize_group(entry)
+            biz_log = entry.get("biz_log")
+            pcid = biz_log.get("parent_call_id", "") if biz_log else ""
+            parent = groups_by_key.get(pcid) if pcid else None
+            if parent is not None and parent is not entry:
+                parent["children"].append(entry)
+                entry["nested"] = True
+                nested_groups.append(entry)
+        if nested_groups:
+            nested_ids = {id(g) for g in nested_groups}
+            timeline = [e for e in timeline if id(e) not in nested_ids]
+
+        # 补全每组的标题 / 统计信息（含嵌套子组），再自底向上聚合
+        for entry in timeline:
+            if entry["kind"] != "group":
+                continue
+            for group in HTMLReportGenerator._iter_group_tree(entry):
+                HTMLReportGenerator._finalize_group(group)
+            HTMLReportGenerator._aggregate_group(entry)
 
         return timeline
+
+    @staticmethod
+    def _iter_group_tree(group: Dict[str, Any]):
+        """深度优先遍历分组及其全部嵌套子组。"""
+        yield group
+        for child in group["children"]:
+            yield from HTMLReportGenerator._iter_group_tree(child)
+
+    @staticmethod
+    def _aggregate_group(group: Dict[str, Any]) -> None:
+        """自底向上聚合嵌套子组的统计（总步数 / 失败数 / 状态）。"""
+        total = len(group["rows"])
+        fails = group["fail_rows"]
+        ok = group["ok"]
+        for child in group["children"]:
+            HTMLReportGenerator._aggregate_group(child)
+            total += child["total_rows"]
+            fails += child["fail_total"]
+            ok = ok and child["ok"]
+        group["total_rows"] = total
+        group["fail_total"] = fails
+        group["ok"] = ok
 
     @staticmethod
     def _finalize_group(group: Dict[str, Any]) -> None:
@@ -257,12 +299,18 @@ class HTMLReportGenerator:
             times.append(biz_log["time"])
         group["time"] = min(times) if times else ""
 
-        # 业务方法自身失败但无失败子操作时（如方法体断言），把组头日志渲染为末尾行
-        if biz_log and not biz_ok:
+        # 组头日志需要作为行渲染的两种情况：
+        # 1) 业务方法自身失败但无失败子操作（如方法体断言失败）
+        # 2) 组内无任何子内容（如业务方法只做了直连 HTTP 调用），
+        #    渲染组头行以展示参数与耗时，避免"无原子操作记录"空卡
+        if biz_log:
             has_biz_row = any(r is biz_log for r in rows)
-            if not has_biz_row:
+            if not has_biz_row and (
+                (not biz_ok) or (not rows and not group.get("children"))
+            ):
                 rows.append(biz_log)
-                group["fail_rows"] += 1
+                if not biz_ok:
+                    group["fail_rows"] += 1
 
     # ── 渲染 ─────────────────────────────────────────────
 
@@ -381,17 +429,19 @@ class HTMLReportGenerator:
         return f'<div class="row-detail{open_class}">{"".join(parts)}</div>'
 
     @staticmethod
-    def _render_group(group: Dict[str, Any], anchor_id: str) -> str:
-        """渲染业务方法分组卡。"""
+    def _render_group(group: Dict[str, Any], anchor_id: str, depth: int = 0) -> str:
+        """渲染业务方法分组卡（嵌套调用的子 AW 递归渲染为子卡片）。"""
         ok = group["ok"]
         rows = group["rows"]
+        children = group.get("children", [])
         user_id = group.get("user_id", "")
         user_color = HTMLReportGenerator._get_user_color(user_id)
 
         state_class = "ok" if ok else "failed open"
+        if depth:
+            state_class += " sub"
         icon = "✓" if ok else "✗"
         title_style = "" if ok else ' style="color:var(--red)"'
-        nested_mark = "↳ " if group.get("nested") else ""
 
         user_tag = (
             f'<span class="u-tag" style="background:{user_color}">{_esc(user_id)}</span>'
@@ -402,9 +452,9 @@ class HTMLReportGenerator:
             if group.get("method_label") else ""
         )
 
-        # 统计与进度小条
-        total = len(rows)
-        fails = group["fail_rows"]
+        # 统计与进度小条（含嵌套子组聚合值）
+        total = group.get("total_rows", len(rows))
+        fails = group.get("fail_total", group["fail_rows"])
         cnt_html = f'<b>{total}</b> 步'
         if fails:
             cnt_html += f' · <span class="f">{fails} 失败</span>'
@@ -414,17 +464,28 @@ class HTMLReportGenerator:
             bar_html += f'<i class="f" style="width:{100 - ok_pct}%"></i>'
         bar_html += '</span>'
 
-        rows_html = "".join(HTMLReportGenerator._render_row(r) for r in rows)
+        # 组内内容：自身原子操作行与嵌套子卡片按时间交错排序
+        items = [("row", r.get("time", ""), r) for r in rows]
+        items += [("group", c.get("time", ""), c) for c in children]
+        items.sort(key=lambda it: it[1])
+        parts = []
+        for kind, _t, obj in items:
+            if kind == "row":
+                parts.append(HTMLReportGenerator._render_row(obj))
+            else:
+                parts.append(HTMLReportGenerator._render_group(obj, "", depth + 1))
+        rows_html = "".join(parts)
         if not rows_html:
             rows_html = '<div class="row-empty">无原子操作记录</div>'
 
+        anchor_attr = f' id="{anchor_id}"' if anchor_id else ""
         return f'''
-    <div class="group {state_class}" id="{anchor_id}" data-user="{_esc(user_id)}">
+    <div class="group {state_class}"{anchor_attr} data-user="{_esc(user_id)}">
         <div class="group-header" onclick="tg(this)">
             <span class="chevron">▶</span>
             <span class="g-icon">{icon}</span>
             {user_tag}
-            <span class="g-title"{title_style}>{nested_mark}{_esc(group["title"])}</span>
+            <span class="g-title"{title_style}>{_esc(group["title"])}</span>
             {method_label}
             <div class="g-meta">
                 <span class="cnt">{cnt_html}</span>
@@ -522,9 +583,9 @@ class HTMLReportGenerator:
         timeline = HTMLReportGenerator._build_timeline(logs)
         groups = [e for e in timeline if e["kind"] == "group"]
 
-        # ── 统计 ──
-        ops_total = sum(len(g["rows"]) for g in groups)
-        ops_fail = sum(g["fail_rows"] for g in groups)
+        # ── 统计（含嵌套子组聚合值） ──
+        ops_total = sum(g.get("total_rows", len(g["rows"])) for g in groups)
+        ops_fail = sum(g.get("fail_total", g["fail_rows"]) for g in groups)
         ops_ok = ops_total - ops_fail
         first_failed = next((g for g in groups if not g["ok"]), None)
         passed = status == "passed"
@@ -756,6 +817,12 @@ body {
     overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04);
 }
 .group.failed { border-color: #fca5a5; box-shadow: 0 1px 6px rgba(220,38,38,.08); }
+/* 嵌套子卡片（AW 调用其它 AW） */
+.group.sub { margin: 6px 14px 6px 40px; border-radius: 10px; border-left: 3px solid var(--line); }
+.group.sub.failed { border-left-color: var(--red); }
+.group.sub > .group-header { padding: 8px 12px; }
+.group.sub .g-title { font-size: 13px; }
+.group.sub .row { padding-left: 32px; }
 .group-header {
     display: flex; align-items: center; gap: 10px; padding: 10px 14px;
     cursor: pointer; user-select: none; transition: background .15s;
