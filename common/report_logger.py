@@ -103,6 +103,60 @@ class ReportLogger:
             sys.stderr.write(f"{time_str} 步骤: {step}\n")
         sys.stderr.flush()
 
+    def log_aw_message(
+        self,
+        message: str,
+        aw_name: str = "",
+        user_id: str = "",
+        user_account: str = "",
+        user_name: str = "",
+        user_ip: str = "",
+        user_platform: str = "",
+        parent_aw: str = "",
+        parent_call_id: str = "",
+        parent_display: str = "",
+    ) -> None:
+        """记录 AW 内的自定义日志，并归入当前业务方法步骤。
+
+        Args:
+            message: 要展示的日志内容。
+            aw_name: 当前 AW 类名。
+            user_id: 用户标识。
+            user_account: 用户账号。
+            user_name: 用户姓名。
+            user_ip: Worker IP 地址。
+            user_platform: 用户实际设备类型。
+            parent_aw: 当前业务方法标识。
+            parent_call_id: 当前业务方法调用 ID。
+            parent_display: 当前业务方法显示名。
+        """
+        log_entry = {
+            "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
+            "type": "aw_log",
+            "aw_name": aw_name,
+            "method": parent_aw.rsplit(".", 1)[-1] if parent_aw else "log",
+            "message": str(message),
+            "args": {
+                "user_id": user_id,
+                "user_account": user_account,
+                "user_name": user_name,
+                "user_ip": user_ip,
+                "user_platform": user_platform,
+            },
+            "success": True,
+            "parent_aw": parent_aw,
+            "parent_call_id": parent_call_id,
+            "parent_display": parent_display,
+        }
+        with self._lock:
+            self._logs.append(log_entry)
+
+        # 保留实时控制台输出，便于定位正在执行的用例。
+        time_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        prefix = f"{aw_name} 日志" if aw_name else "日志"
+        sys.stderr.write(f"{time_str} {prefix}: {message}\n")
+        sys.stderr.flush()
+
     def log_aw_call(
         self,
         aw_name: str,

@@ -329,6 +329,36 @@ class BaseAW:
         self.user = user
         self._aw_name = self.__class__.__name__
 
+    def log(self, message: str) -> None:
+        """记录一行 AW 日志，并展示在当前业务步骤中。
+
+        在业务 AW 中直接调用 ``self.log("日志内容")``。如果当前正在执行
+        ``do_*`` 或 ``should_*`` 方法，日志会归入该方法的步骤卡片；在步骤外
+        调用时会归入“直接操作”分组。
+
+        Args:
+            message: 要记录的日志内容。
+        """
+        parent_aw, parent_call_id, parent_display = self._parent_call_info()
+        user_id = self.user.user_id if self.user else ""
+        user_account = self.user.account if self.user else ""
+        user_name = self.user.name if self.user else ""
+        user_ip = self.user.ip if self.user else ""
+        user_platform = self.user.platform if self.user else self.PLATFORM
+
+        ReportLogger.get_current().log_aw_message(
+            message=str(message),
+            aw_name=self._aw_name,
+            user_id=user_id,
+            user_account=user_account,
+            user_name=user_name,
+            user_ip=user_ip,
+            user_platform=user_platform,
+            parent_aw=parent_aw,
+            parent_call_id=parent_call_id,
+            parent_display=parent_display,
+        )
+
     # ── 内部方法 ─────────────────────────────────────────
 
     def _find_parent_aw(self, skip_self: bool = False) -> str:

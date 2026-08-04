@@ -9,6 +9,7 @@
 """
 
 import html as _html_mod
+import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -105,6 +106,50 @@ class HTMLReportGenerator:
         return colors.get(base_user_id, "#6b7280")  # 默认灰色
 
     @staticmethod
+    def _format_platform(platform: str) -> str:
+        """把设备类型转换为报告中的友好名称。"""
+        labels = {
+            "windows": "Windows",
+            "web": "Web",
+            "mac": "macOS",
+            "ios": "iOS",
+            "android": "Android",
+            "harmony_pc": "Harmony PC",
+            "harmony_mobile": "Harmony Mobile",
+            "api": "API",
+        }
+        value = str(platform or "").strip()
+        return labels.get(value.lower(), value or "未知设备")
+
+    @staticmethod
+    def _format_value_for_display(value: Any, max_len: int = 5000) -> str:
+        """将请求或响应值格式化为便于阅读的文本。"""
+        if isinstance(value, (dict, list, tuple)):
+            try:
+                text = json.dumps(value, ensure_ascii=False, indent=2, default=str)
+            except (TypeError, ValueError):
+                text = str(value)
+        else:
+            text = str(value)
+
+        if len(text) > max_len:
+            return text[:max_len] + "\n...[内容已截断]"
+        return text
+
+    @staticmethod
+    def _parse_json_value(value: Any) -> Any:
+        """尽量把 HTTP 响应体中的 JSON 字符串解析为结构化数据。"""
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return ""
+        try:
+            return json.loads(text)
+        except (TypeError, ValueError):
+            return value
+
+    @staticmethod
     def _format_args_inline(args: Dict[str, Any], max_len: int = 90) -> str:
         """格式化原子操作参数为单行字符串（黑名单过滤，新参数自动显示）。"""
         parts = []
@@ -170,6 +215,24 @@ class HTMLReportGenerator:
             if log_type == "error":
                 timeline.append({"kind": "error", "log": log})
                 orphan_group = None
+                continue
+
+            if log_type == "aw_log":
+                # AW 自定义日志和原子操作一样，按父级业务方法归组。
+                pid = log.get("parent_call_id", "")
+                if not pid and log.get("parent_aw"):
+                    pid = f"legacy::{log['parent_aw']}"
+                if pid:
+                    group = groups_by_key.get(pid)
+                    if group is None:
+                        group = _new_group(pid)
+                    group["rows"].append(log)
+                    orphan_group = None
+                else:
+                    if orphan_group is None:
+                        orphan_group = _new_group("")
+                        orphan_group["orphan"] = True
+                    orphan_group["rows"].append(log)
                 continue
 
             if log_type != "aw_call":
@@ -281,6 +344,7 @@ class HTMLReportGenerator:
         group["user_id"] = args.get("user_id", "")
         group["user_name"] = args.get("user_name", "")
         group["user_ip"] = args.get("user_ip", "")
+        group["user_platform"] = args.get("user_platform", "")
 
         # 状态：组头失败 或 任一子操作失败 视为失败
         biz_ok = biz_log.get("success", True) if biz_log else True
@@ -317,6 +381,24 @@ class HTMLReportGenerator:
     @staticmethod
     def _render_row(log: Dict[str, Any]) -> str:
         """渲染组内单条原子操作（紧凑行 + 可展开详情）。"""
+        if log.get("type") == "aw_log":
+            message = log.get("message", "")
+            row_html = (
+                '<div class="row aw-log" onclick="td(this)">'
+                '<span class="log-dot">●</span>'
+                f'<span class="r-time">{_esc(log.get("time", ""))}</span>'
+                '<span class="r-method">日志</span>'
+                f'<span class="r-args">{_esc(message)}</span>'
+                '</div>'
+            )
+            detail_html = (
+                '<div class="row-detail log-detail">'
+                '<div class="k">AW 日志</div>'
+                f'<div class="v">{_esc(message)}</div>'
+                '</div>'
+            )
+            return row_html + detail_html
+
         success = log.get("success", True)
         method = log.get("method", "")
         args = log.get("args", {})
@@ -378,14 +460,40 @@ class HTMLReportGenerator:
         elif request_id:
             parts.append(f'<div class="rid">request_id: {_esc(request_id)}</div>')
 
-        # 请求 / 响应
+        # HTTP 请求 / 响应使用专门布局，避免响应体被压成不可读的 Python 字典。
         clean_args = {k: v for k, v in args.items() if k not in _HIDDEN_ARGS}
         clean_result = HTMLReportGenerator._clean_response_for_display(result)
         kv_parts = []
-        if clean_args:
-            kv_parts.append(f'<div><div class="k">请求</div><div class="v">{_esc(clean_args)}</div></div>')
-        if clean_result:
-            kv_parts.append(f'<div><div class="k">响应</div><div class="v">{_esc(clean_result)}</div></div>')
+        is_http = "status_code" in result and ("url" in args or "method" in args)
+        if is_http:
+            request_parts = {
+                key: value for key, value in clean_args.items()
+                if key in {"method", "url", "params", "body"}
+            }
+            if request_parts:
+                request_text = HTMLReportGenerator._format_value_for_display(request_parts)
+                kv_parts.append(f'<div><div class="k">HTTP 请求</div><pre class="v code-block">{_esc(request_text)}</pre></div>')
+
+            status_code = result.get("status_code", "-")
+            try:
+                status_class = "http-ok" if 200 <= int(status_code) < 400 else "http-fail"
+            except (TypeError, ValueError):
+                status_class = "http-fail"
+            body = HTMLReportGenerator._parse_json_value(result.get("body", ""))
+            body_text = HTMLReportGenerator._format_value_for_display(body)
+            response_html = (
+                '<div><div class="k">HTTP 响应</div>'
+                f'<div class="http-status {status_class}">状态码 {_esc(status_code)}</div>'
+                f'<pre class="v code-block http-body">{_esc(body_text or "（空响应体）")}</pre></div>'
+            )
+            kv_parts.append(response_html)
+        else:
+            if clean_args:
+                request_text = HTMLReportGenerator._format_value_for_display(clean_args)
+                kv_parts.append(f'<div><div class="k">请求</div><pre class="v code-block">{_esc(request_text)}</pre></div>')
+            if clean_result:
+                result_text = HTMLReportGenerator._format_value_for_display(clean_result)
+                kv_parts.append(f'<div><div class="k">响应</div><pre class="v code-block">{_esc(result_text)}</pre></div>')
         if kv_parts:
             parts.append(f'<div class="kv">{"".join(kv_parts)}</div>')
 
@@ -429,13 +537,25 @@ class HTMLReportGenerator:
         return f'<div class="row-detail{open_class}">{"".join(parts)}</div>'
 
     @staticmethod
-    def _render_group(group: Dict[str, Any], anchor_id: str, depth: int = 0) -> str:
+    def _render_group(
+        group: Dict[str, Any],
+        anchor_id: str,
+        depth: int = 0,
+        user_details: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> str:
         """渲染业务方法分组卡（嵌套调用的子 AW 递归渲染为子卡片）。"""
         ok = group["ok"]
         rows = group["rows"]
         children = group.get("children", [])
         user_id = group.get("user_id", "")
         user_color = HTMLReportGenerator._get_user_color(user_id)
+        detail = (user_details or {}).get(user_id, {})
+        is_api_user = bool(detail.get("is_api") or user_id.endswith("_api"))
+        platform = "" if is_api_user else (
+            group.get("user_platform")
+            or detail.get("display_platform")
+            or detail.get("platform")
+        )
 
         state_class = "ok" if ok else "failed open"
         if depth:
@@ -443,8 +563,11 @@ class HTMLReportGenerator:
         icon = "✓" if ok else "✗"
         title_style = "" if ok else ' style="color:var(--red)"'
 
+        user_label = user_id
+        if platform and user_id:
+            user_label = f"{user_id} · {HTMLReportGenerator._format_platform(platform)}"
         user_tag = (
-            f'<span class="u-tag" style="background:{user_color}">{_esc(user_id)}</span>'
+            f'<span class="u-tag" style="background:{user_color}">{_esc(user_label)}</span>'
             if user_id else ""
         )
         method_label = (
@@ -473,7 +596,7 @@ class HTMLReportGenerator:
             if kind == "row":
                 parts.append(HTMLReportGenerator._render_row(obj))
             else:
-                parts.append(HTMLReportGenerator._render_group(obj, "", depth + 1))
+                parts.append(HTMLReportGenerator._render_group(obj, "", depth + 1, user_details))
         rows_html = "".join(parts)
         if not rows_html:
             rows_html = '<div class="row-empty">无原子操作记录</div>'
@@ -566,6 +689,95 @@ class HTMLReportGenerator:
         <div class="shots">{"".join(items)}</div>
     </div>'''
 
+    @staticmethod
+    def _collect_user_details(
+        logs: List[Dict[str, Any]],
+        user_details: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """合并资源申请信息和 AW 日志中的用户信息。"""
+        collected: Dict[str, Dict[str, Any]] = {}
+        for user_id, detail in (user_details or {}).items():
+            collected[user_id] = dict(detail or {})
+
+        # 先读取资源申请阶段的原始响应，兼容 data/resources 或直接字典结构。
+        for log in logs:
+            if log.get("type") != "step" or log.get("step") != "申请用户资源":
+                continue
+            detail = log.get("detail", "")
+            try:
+                payload = json.loads(detail) if isinstance(detail, str) else detail
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            resources = payload.get("data") or payload.get("resources") or payload
+            if not isinstance(resources, dict):
+                continue
+            for user_id, resource in resources.items():
+                if not isinstance(resource, dict):
+                    continue
+                current = collected.setdefault(user_id, {})
+                for key, value in resource.items():
+                    if value not in (None, "") and key not in current:
+                        current[key] = value
+                if resource.get("device_type") and not current.get("platform"):
+                    current["platform"] = resource["device_type"]
+
+        # AW 日志作为最后一层兜底，确保不经过 conftest 直接生成的报告也能展示用户。
+        for log in logs:
+            if log.get("type") not in {"aw_call", "aw_log"}:
+                continue
+            args = log.get("args", {})
+            user_id = args.get("user_id", "")
+            if not user_id:
+                continue
+            current = collected.setdefault(user_id, {})
+            for key, value in {
+                "name": args.get("user_name", ""),
+                "ip": args.get("user_ip", ""),
+                "platform": args.get("user_platform", "") or args.get("platform", ""),
+            }.items():
+                if value not in (None, "") and not current.get(key):
+                    current[key] = value
+
+        return collected
+
+    @staticmethod
+    def _build_resource_summary_html(
+        user_details: Dict[str, Dict[str, Any]],
+    ) -> str:
+        """构建可换行的用户资源卡片区，避免用户过多时挤压头部。"""
+        resource_users = [
+            (user_id, detail)
+            for user_id, detail in user_details.items()
+            if not user_id.endswith("_api")
+        ]
+        if not resource_users:
+            return ""
+
+        cards = []
+        for user_id, detail in resource_users:
+            platform = detail.get("display_platform") or detail.get("device_type") or detail.get("platform", "")
+            meta = " · ".join(
+                str(value) for value in (detail.get("name", ""), detail.get("ip", ""))
+                if value
+            )
+            meta_html = f'<div class="resource-meta">{_esc(meta or "资源信息未返回")}</div>'
+            cards.append(
+                f'<div class="resource-card" data-user="{_esc(user_id)}">'
+                f'<div class="resource-card-top"><span class="dot" style="background:{HTMLReportGenerator._get_user_color(user_id)}"></span>'
+                f'<strong>{_esc(user_id)}</strong>'
+                f'<span class="platform-badge">{_esc(HTMLReportGenerator._format_platform(platform))}</span></div>'
+                f'{meta_html}</div>'
+            )
+
+        return (
+            '<div class="resource-summary">'
+            f'<div class="resource-summary-title">申请资源 <span>{len(resource_users)} 位用户</span></div>'
+            f'<div class="resource-grid">{"".join(cards)}</div>'
+            '</div>'
+        )
+
     # ── 主入口 ───────────────────────────────────────────
 
     @staticmethod
@@ -577,7 +789,8 @@ class HTMLReportGenerator:
         duration_ms: int = 0,
         status: str = "passed",
         error_msg: str = "",
-        is_api_failure: bool = False
+        is_api_failure: bool = False,
+        user_details: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> None:
         """生成 HTML 报告。"""
         timeline = HTMLReportGenerator._build_timeline(logs)
@@ -590,15 +803,8 @@ class HTMLReportGenerator:
         first_failed = next((g for g in groups if not g["ok"]), None)
         passed = status == "passed"
 
-        # 用户 chips（保持首次出现顺序）
-        users: Dict[str, Dict[str, str]] = {}
-        for log in logs:
-            if log.get("type") != "aw_call":
-                continue
-            args = log.get("args", {})
-            uid = args.get("user_id", "")
-            if uid and uid not in users:
-                users[uid] = {"name": args.get("user_name", ""), "ip": args.get("user_ip", "")}
+        # 用户信息保持资源申请和日志中的首次出现顺序。
+        users = HTMLReportGenerator._collect_user_details(logs, user_details)
 
         # ── 时间线 HTML（同时给分组编锚点） ──
         timeline_parts = []
@@ -608,7 +814,7 @@ class HTMLReportGenerator:
             if entry["kind"] == "group":
                 anchor_index += 1
                 anchor_id = f"g{anchor_index}"
-                timeline_parts.append(HTMLReportGenerator._render_group(entry, anchor_id))
+                timeline_parts.append(HTMLReportGenerator._render_group(entry, anchor_id, user_details=users))
                 cls = "" if entry["ok"] else ' class="fail"'
                 tip = _esc(entry["title"]) + ("" if entry["ok"] else " — 失败")
                 progress_parts.append(f'<a href="#{anchor_id}"{cls} title="{tip}"></a>')
@@ -633,12 +839,7 @@ class HTMLReportGenerator:
                 '<span class="lbl">首个失败步骤</span></div>'
             )
 
-        user_chips = "".join(
-            f'<span class="user-chip"><span class="dot" style="background:{HTMLReportGenerator._get_user_color(uid)}"></span>'
-            + _esc(" · ".join(p for p in (uid, info["name"], info["ip"]) if p))
-            + '</span>'
-            for uid, info in users.items()
-        )
+        resource_summary_html = HTMLReportGenerator._build_resource_summary_html(users)
 
         error_box = ""
         if error_msg:
@@ -679,8 +880,8 @@ class HTMLReportGenerator:
             <div class="stat"><span class="num green">{ops_ok}</span><span class="lbl">操作成功</span></div>
             <div class="stat"><span class="num red">{ops_fail}</span><span class="lbl">操作失败</span></div>
             {first_failed_html}
-            <div class="user-chips">{user_chips}</div>
         </div>
+        {resource_summary_html}
         {progress_html}
         {error_box}
     </div>
@@ -757,6 +958,32 @@ body {
     color: var(--ink-2);
 }
 .user-chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.resource-summary {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.resource-summary-title {
+    display: flex; align-items: baseline; gap: 8px;
+    font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px;
+}
+.resource-summary-title span { font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.resource-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;
+}
+.resource-card {
+    min-width: 0; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 9px; background: #f8fafc;
+}
+.resource-card-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.resource-card-top .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.resource-card-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.platform-badge {
+    margin-left: auto; flex-shrink: 0; padding: 2px 6px; border-radius: 5px;
+    background: #e0e7ff; color: #3730a3; font-size: 10.5px; font-weight: 700;
+}
+.resource-meta {
+    margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--ink-3); font-size: 11px;
+}
 .progress-track { display: flex; gap: 3px; margin-top: 14px; height: 8px; }
 .progress-track a { flex: 1; border-radius: 3px; background: var(--green); opacity: .75; transition: .15s; }
 .progress-track a:hover { opacity: 1; transform: scaleY(1.5); }
@@ -865,6 +1092,11 @@ body {
 .r-method { font-family: var(--mono); color: var(--ink); font-weight: 550; flex-shrink: 0; }
 .r-args { font-family: var(--mono); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .row.fail .r-method, .row.fail .r-args { color: var(--red); }
+.row.aw-log { background: #fffbeb; }
+.row.aw-log:hover { background: #fef3c7; }
+.row.aw-log .r-method { color: #b45309; }
+.row.aw-log .r-args { color: #92400e; }
+.log-dot { width: 7px; color: #f59e0b; font-size: 10px; flex-shrink: 0; }
 .r-shot { font-size: 11px; color: var(--blue); flex-shrink: 0; }
 .r-dur { font-family: var(--mono); font-size: 11px; color: var(--ink-3); width: 56px; text-align: right; flex-shrink: 0; }
 .row.slow .r-dur { color: #d97706; font-weight: 700; }
@@ -882,6 +1114,15 @@ body {
     padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
     line-height: 1.55; word-break: break-all;
 }
+.code-block { margin: 0; white-space: pre-wrap; overflow: auto; max-height: 360px; }
+.http-status {
+    display: inline-block; margin-bottom: 5px; padding: 2px 7px; border-radius: 5px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+}
+.http-ok { color: var(--green); background: var(--green-soft); }
+.http-fail { color: var(--red); background: var(--red-soft); }
+.http-body { max-height: 420px; }
+.log-detail .v { white-space: pre-wrap; }
 .err-box { margin-bottom: 10px; }
 .err-box .v { border-color: #fca5a5; color: var(--red); }
 .rid { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin: 6px 0; }

@@ -408,6 +408,18 @@ def _generate_report(
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{request.node.name}.html"
 
+    # 将申请到的用户设备类型传给报告，避免仅依赖 AW 日志推断用户平台。
+    report_user_details = {}
+    for user_id, user in user_instances.items():
+        report_user_details[user_id] = {
+            "name": user.name,
+            "ip": user.ip,
+            "platform": user.platform,
+            # API 用户只用于 HTTP 数据操作，不展示关联 UI 用户的设备类型。
+            "display_platform": "" if user.platform == "api" else user.platform,
+            "is_api": user.platform == "api",
+        }
+
     HTMLReportGenerator.generate(
         report_path=report_path,
         case_name=request.node.name,
@@ -416,7 +428,8 @@ def _generate_report(
         duration_ms=logger.get_duration(),
         status="passed" if result["passed"] else "failed",
         error_msg=result["error_msg"],
-        is_api_failure=logger.is_api_failure()
+        is_api_failure=logger.is_api_failure(),
+        user_details=report_user_details,
     )
 
     # 清理测试结果
