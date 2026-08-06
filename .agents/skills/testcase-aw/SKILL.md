@@ -64,3 +64,5 @@ description: "AW新增/扩展/修改。与用户确认平台和操作步骤，�
 11. **Worker 生命周期由基建处理**：AW 不直接调用 `execute_async`、`get_task`、`cancel_task`，不根据 `accepted/running/cancelling` 等状态编写业务分支；只使用 BaseAW 原子方法。
 12. **错误处理边界**：AW 方法保留业务语义和原有参数/返回约定，直接让 `AWError`、`TestagentError` 向上抛出，不自行根据英文错误字符串重试或吞错。
 13. **并行兼容性**：AW 方法在 `with parallel()` 中必须只表达动作收集；需要返回值的动作、依赖前一步结果的动作和断言应放到并行上下文外。
+14. **AW 日志**：需要补充业务上下文时使用 `self.log("日志内容")`，会自动归入当前 `do_*/should_*` 步骤；OCR、图像、坐标、等待等原子操作已由 `BaseAW` 自动记录，无需重复记录或直接调用 `ReportLogger`。
+15. **日志标题规范**：`do_*/should_*` 方法的 docstring 首行会作为 HTML 报告标题，必须是简短中文动作描述；业务日志内容应描述关键业务状态或分支，不要重复方法名和底层动作名。

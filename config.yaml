@@ -1,6 +1,6 @@
 # testcase 工程配置文件
 
-# 运行环境配置（可通过 --exeParam='{"env":"prod"}' 覆盖）
+# 运行环境配置（可通过 --exeParam='{"env":"prod","namespace":"xxx","env_auth":"xxx"}' 覆盖）
 env: "test"
 
 # 资源管理服务配置
@@ -46,6 +46,12 @@ hooks:
     setup: ["start_app"]
     teardown: ["stop_app"]
   mac:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  harmony_pc:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+  harmony_mobile:
     setup: ["start_app"]
     teardown: ["stop_app"]
   # API 平台 hooks

@@ -87,5 +87,7 @@ def do_xxx(self, param: str) -> None:
 10. **图片路径默认规则**：涉及图片操作（`image_click`、`image_wait`、`image_assert` 等）时，默认路径为 `images/{平台}/图片名.png`，无需询问路径。例如用户说"点击挂断按钮图片"，平台为 web，则理解为 `images/web/挂断.png`
 11. **docstring 首行即报告标题**：`do_*/should_*` 方法的 docstring 首行会自动作为 HTML 报告的业务步骤标题，必须是简短中文动作描述（如"执行登录操作。"、"断言在等候室。"），句末句号会自动去除；禁止首行写参数说明或英文方法名
 12. **禁止手动登记报告映射**：报告展示完全数据驱动（docstring 标题 / 参数黑名单 / ocr_info 自动展示），新增 AW 不需要也不允许修改 `common/report_generator.py`
+13. **AW 日志**：需要补充业务上下文时使用 `self.log("日志内容")`，会自动归入当前 `do_*/should_*` 步骤；OCR、图像、坐标、等待等原子操作已由 `BaseAW` 自动记录，无需重复记录或直接调用 `ReportLogger`。
+14. **日志标题规范**：`do_*/should_*` 方法的 docstring 首行会作为 HTML 报告标题，必须是简短中文动作描述；业务日志内容应描述关键业务状态或分支，不要重复方法名和底层动作名。
 
 用户输入: $ARGUMENTS

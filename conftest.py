@@ -93,11 +93,10 @@ def pytest_configure(config):
         print(f"[警告] exeParam 参数解析失败，将使用空字典: {e}")
         _exe_param = {}
 
-    # exeParam 参数更新全局配置（如 env 参数覆盖 config.yaml 的默认值）
+    # exeParam 参数更新全局配置；namespace/env_auth 支持顶层短写。
     if _exe_param:
         cfg = get_config()  # 先加载配置
-        for key, value in _exe_param.items():
-            cfg[key] = value
+        _apply_exe_param_overrides(cfg, _exe_param)
 
 
 # ── 用户资源 Fixture ─────────────────────────────────
@@ -326,6 +325,27 @@ def _get_case_hooks(node) -> Dict[str, Any]:
     if not marker:
         return {}
     return marker.args[0] if marker.args else marker.kwargs
+
+
+def _apply_exe_param_overrides(config: Dict[str, Any], exe_param: Dict[str, Any]) -> None:
+    """将 exeParam 覆盖到全局配置。
+
+    ``namespace`` 和 ``env_auth`` 是资源管理配置的常用短参数，支持直接以
+    顶层字段传入；同时支持 ``resource_manager`` 嵌套写法。其它字段保持
+    原有顶层覆盖行为，嵌套字典使用深度合并，避免覆盖同级默认配置。
+    """
+    resource_manager = config.setdefault("resource_manager", {})
+    for key in ("namespace", "env_auth"):
+        if key in exe_param:
+            resource_manager[key] = exe_param[key]
+
+    nested_resource_manager = exe_param.get("resource_manager")
+    if isinstance(nested_resource_manager, dict):
+        ConfigLoader()._deep_merge(resource_manager, nested_resource_manager)
+
+    for key, value in exe_param.items():
+        if key not in {"namespace", "env_auth", "resource_manager"}:
+            config[key] = value
 
 
 def _get_namespace(node, config) -> str:
