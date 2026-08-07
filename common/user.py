@@ -139,6 +139,16 @@ class User:
             f"'{type(self).__name__}' 对象没有属性 '{name}'"
         )
 
+    def mark_used(self) -> None:
+        """显式标记用户为已使用，确保 teardown hooks 会执行。
+
+        适用场景：用例中虽未直接调用 API AW 方法，但仍需要 API 用户
+        执行 teardown（如 cancel_all_meetings）时，在用例中调用：
+
+            users["userA_api"].mark_used()
+        """
+        self._used = True
+
     def screenshot(self, level: Optional[str] = None) -> str:
         """截图并返回 base64。
 
