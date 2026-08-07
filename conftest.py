@@ -79,7 +79,9 @@ def pytest_configure(config):
         "markers", "users: 用户资源需求标记，如 @pytest.mark.users({'userA': 'web'})"
     )
     config.addinivalue_line(
-        "markers", "hooks: 用例级别 hooks 标记，如 @pytest.mark.hooks(setup=['+login'])"
+        "markers",
+        "hooks: 用例级 hooks，支持全局/平台/用户。"
+        "如 @pytest.mark.hooks(setup=['+login'], userA={'teardown': ['+leave']})",
     )
     config.addinivalue_line(
         "markers", "namespace: namespace 标记，如 @pytest.mark.namespace('web_public')"
@@ -190,11 +192,21 @@ def users(request) -> Dict[str, User]:
         hooks_config = config.get("hooks", {})
         case_hooks = _get_case_hooks(request.node)
 
+        # 校验用户键合法性（引用未声明用户时直接 fail）
+        try:
+            HooksResolver.validate_user_keys(
+                case_hooks,
+                user_instances.keys(),
+                list(hooks_config.keys()),
+            )
+        except ValueError as e:
+            pytest.fail(str(e))
+
         setup_failed = False
         setup_error = None
 
         for user_id, user in user_instances.items():
-            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
+            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
             try:
                 _execute_hooks(user, final_hooks.get("setup", []), hook_type="setup")
             except HookFailureError as e:
@@ -213,7 +225,7 @@ def users(request) -> Dict[str, User]:
                 # 非连接错误时，执行 teardown 清理资源
                 # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
                 for user_id, user in _sort_users_for_teardown(user_instances):
-                    final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
+                    final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
                     try:
                         _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
                     except HookFailureError:
@@ -241,7 +253,7 @@ def users(request) -> Dict[str, User]:
             if not user._used:
                 continue
 
-            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks)
+            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
             try:
                 _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
             except HookFailureError as e:

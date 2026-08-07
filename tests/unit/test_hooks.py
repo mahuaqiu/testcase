@@ -94,3 +94,148 @@ def test_execute_hooks_preserves_order_and_supports_boolean_flag_for_no_arg_hook
     )
 
     assert calls == ["leave", "stoprecordingdesktop", "stop_app"]
+
+
+# ── 按用户/平台分层 hooks 测试 ─────────────────────────────────────────
+
+
+def test_only_user_key_applies_to_that_user():
+    """仅 userA 键：userA 增量，userB 仅默认。"""
+    defaults = {
+        "windows": {"setup": ["start_app"], "teardown": ["stop_app"]},
+        "mac": {"setup": ["start_app"], "teardown": ["stop_app"]},
+    }
+    case_hooks = {
+        "userA": {"setup": ["+login"]},
+    }
+
+    result_a = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userA")
+    result_b = HooksResolver.resolve("mac", defaults, case_hooks, user_id="userB")
+
+    assert result_a["setup"] == ["start_app", "login"]
+    assert result_b["setup"] == ["start_app"]
+    assert result_a["teardown"] == ["stop_app"]
+    assert result_b["teardown"] == ["stop_app"]
+
+
+def test_global_plus_user_layer_priority():
+    """全局 + user 叠加：用户键优先。"""
+    defaults = {
+        "web": {"setup": ["start_app"], "teardown": ["stop_app"]},
+    }
+    case_hooks = {
+        "setup": ["+login"],
+        "userA": {"setup": ["+extra_login"], "teardown": ["-stop_app"]},
+    }
+
+    result_a = HooksResolver.resolve("web", defaults, case_hooks, user_id="userA")
+    result_b = HooksResolver.resolve("web", defaults, case_hooks, user_id="userB")
+
+    assert result_a["setup"] == ["start_app", "login", "extra_login"]
+    assert result_a["teardown"] == []
+    assert result_b["setup"] == ["start_app", "login"]
+    assert result_b["teardown"] == ["stop_app"]
+
+
+def test_platform_key_affects_only_that_platform():
+    """平台键 windows 只影响 windows 用户，不影响 mac。"""
+    defaults = {
+        "windows": {"setup": ["start_app"], "teardown": ["stop_app"]},
+        "mac": {"setup": ["start_app"], "teardown": ["stop_app"]},
+    }
+    case_hooks = {
+        "windows": {"setup": ["+login"]},
+        "mac": {"teardown": ["-stop_app"]},
+    }
+
+    result_win = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userA")
+    result_mac = HooksResolver.resolve("mac", defaults, case_hooks, user_id="userB")
+
+    assert result_win["setup"] == ["start_app", "login"]
+    assert result_win["teardown"] == ["stop_app"]
+    assert result_mac["setup"] == ["start_app"]
+    assert result_mac["teardown"] == []
+
+
+def test_user_key_overrides_platform_key():
+    """用户键优先于平台键。"""
+    defaults = {
+        "windows": {"setup": ["start_app"], "teardown": ["stop_app"]},
+    }
+    case_hooks = {
+        "windows": {"setup": ["+login"]},
+        "userA": {"setup": ["+extra"], "teardown": ["-stop_app"]},
+    }
+
+    result = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userA")
+
+    assert result["setup"] == ["start_app", "login", "extra"]
+    assert result["teardown"] == []
+
+
+def test_user_a_does_not_affect_user_a_api():
+    """userA 不影响 userA_api；userA_api 显式覆盖生效。"""
+    defaults = {
+        "web": {"setup": ["start_app"], "teardown": ["stop_app"]},
+        "api": {"setup": [], "teardown": ["cancel_all_meetings"]},
+    }
+    case_hooks = {
+        "userA": {"setup": ["+login"]},
+        "userA_api": {"teardown": ["-cancel_all_meetings"]},
+    }
+
+    result_ui = HooksResolver.resolve("web", defaults, case_hooks, user_id="userA")
+    result_api = HooksResolver.resolve("api", defaults, case_hooks, user_id="userA_api")
+
+    assert result_ui["setup"] == ["start_app", "login"]
+    assert result_api["setup"] == []
+    assert result_api["teardown"] == []
+
+
+def test_validate_user_keys_raises_on_unknown_user():
+    """未知 user 键应直接抛错。"""
+    case_hooks = {
+        "userC": {"setup": ["+login"]},
+    }
+    known_users = ["userA", "userB", "userA_api", "userB_api"]
+    known_platforms = ["web", "windows", "mac", "api"]
+
+    try:
+        HooksResolver.validate_user_keys(case_hooks, known_users, known_platforms)
+        assert False, "应抛出 ValueError"
+    except ValueError as e:
+        assert "userC" in str(e)
+        assert "合法用户" in str(e)
+
+
+def test_validate_user_keys_passes_for_valid_users():
+    """合法用户键应通过校验。"""
+    case_hooks = {
+        "userA": {"setup": ["+login"]},
+        "userB_api": {"teardown": ["-cancel_all_meetings"]},
+    }
+    known_users = ["userA", "userB", "userA_api", "userB_api"]
+    known_platforms = ["web", "windows", "mac", "api"]
+
+    # 不应抛错
+    HooksResolver.validate_user_keys(case_hooks, known_users, known_platforms)
+
+
+def test_mixed_plus_minus_dict_in_user_layer():
+    """用户层混合 +/−/字典格式仍按既有规则工作。"""
+    defaults = {
+        "web": {"teardown": ["stop_app"]},
+    }
+    case_hooks = {
+        "userA": {
+            "teardown": ["+stoprecordingdesktop", "+stop_app", {"leave": True}]
+        },
+    }
+
+    result = HooksResolver.resolve("web", defaults, case_hooks, user_id="userA")
+
+    assert result["teardown"] == [
+        "stoprecordingdesktop",
+        "stop_app",
+        {"leave": True},
+    ]

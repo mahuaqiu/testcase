@@ -372,7 +372,47 @@ hooks:
 @pytest.mark.hooks(setup=[{"start_app": "edge"}])
 ```
 
-### 7.4 自定义 Hook 方法
+### 7.4 按用户 / 按平台控制（多用户场景）
+
+多端或多用户时，可在 `@pytest.mark.hooks` 中按 **user_id** 或 **platform** 精细控制谁执行哪些 setup/teardown。
+
+**合并优先级**（对每个用户独立计算）：
+
+```
+① config.yaml 平台默认
+② 用例全局 setup / teardown
+③ 用例平台键（如 windows=...）
+④ 用例用户键（如 userA=...）← 最终层
+```
+
+```python
+@pytest.mark.users({"userA": "windows", "userB": "mac"})
+@pytest.mark.hooks(
+    # 可选：所有用户共用
+    setup=["+login"],
+
+    # 仅 userA
+    userA={"setup": ["+login"], "teardown": ["+leave"]},
+
+    # 仅 userB
+    userB={"teardown": ["-stop_app"]},
+
+    # 可选：该平台下所有 UI 用户
+    # windows={"setup": ["+login"]},
+    # mac={"teardown": ["-stop_app"]},
+)
+```
+
+**规则要点**：
+
+| 规则 | 说明 |
+|------|------|
+| 仅写 user 键 | 允许；其它用户只吃平台默认 |
+| API 用户独立 | `userA` 不影响 `userA_api`；改 API 需写 `userA_api=...` 或 `api=...` |
+| 未知 user 键 | 直接 fail（必须在 `users` 中声明） |
+| hook 项格式 | 与全局相同：`"+x"` / `"-x"` / `{"x": arg}` |
+
+### 7.5 自定义 Hook 方法
 
 在 AW 层创建 `do_{hook_name}` 方法：
 

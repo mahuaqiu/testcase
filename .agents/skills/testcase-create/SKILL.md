@@ -38,7 +38,7 @@ description: "自动化测试用例生成。单Skill直接执行全流程，生�
 | `AGENTS.md` | 架构、命名规范、编码约定、并行执行模式 |
 | `aw/INDEX.md` | 功能速查表 |
 | `aw/{平台}/INDEX.md` | 平台已有AW资源详情 |
-| `config.yaml` | hooks配置（setup/teardown自动处理） |
+| `config.yaml` | hooks 配置（setup/teardown 自动处理，支持按用户/平台精细控制） |
 
 ---
 
@@ -233,6 +233,13 @@ Skill(skill="testcase-aw", args="需要新建 {业务}AW，{平台}端")
 - setup: start_app（自动执行，无需编写）
 - teardown: stop_app（自动执行，无需编写）
 
+## hooks 控制说明（多用户/多端场景）
+- setup/teardown 由 hooks 自动处理
+- 可在 `@pytest.mark.hooks` 中按 `userA`/`userB` 或 `windows`/`mac` 精细控制
+- 优先级：平台默认 → 全局 hooks → 平台键 → 用户键
+- `userA` 不影响 `userA_api`；改 API 需写 `userA_api=...` 或 `api=...`
+- 未知 user 键会直接 fail
+
 ## 相似用例复用
 - 复用 test_login_001.py 的登录流程引用模式
 ```
@@ -323,6 +330,7 @@ class TestClass:
 | 导入顺序 | pytest → 项目模块 | `import pytest` 然后 `from common.parallel import parallel` |
 | 用户标记 | `@pytest.mark.users()` | `{"userA": "web", "userB": "web"}` |
 | API用户 | 自动创建 `_api` 实例 | `userA_api = users["userA_api"]` |
+| hooks 控制 | 多用户可按 user/platform 精细控制 | `@pytest.mark.hooks(userA={"setup": ["+login"]})` |
 | 步骤注释 | 每个步骤标注编号 | `# 步骤 1: 并行登录` |
 | 并行操作 | `with parallel():` 包裹 | 并行登录等无依赖操作 |
 | 断言分离 | 验证步骤不在并行块内 | 先操作后断言 |
@@ -358,9 +366,13 @@ class TestClass:
 
 **遗漏时自动补充**。
 
-#### 7.2 hooks 冲突验证
+#### 7.2 hooks 冲突验证（支持多用户精细控制）
 
 检查测试代码中的清理操作是否与 `config.yaml` 的 `hooks.teardown` 配置重复，重复则移除并标注 `# 已由 hooks.teardown 自动处理`。
+
+**多用户场景额外检查**：
+- 清理操作是否与 `userX` / `platformY` 键的 teardown 冲突（例如写了 `userA.do_stop_app()` 但 `userA` 声明了 `teardown: ["-stop_app"]`）
+- 若用例需要不同用户执行不同 setup/teardown，应在 `@pytest.mark.hooks` 中使用 `userA=...` / `userB=...` 或平台键，而不是在测试方法里手写清理
 
 #### 7.3 编码规范验证
 
@@ -386,6 +398,7 @@ class TestClass:
 ✅ 复查通过
 - 步骤覆盖：{N}/{N} 用户STEP全部覆盖
 - hooks冲突：无重复清理操作
+- hooks 控制：多用户差异已用 user/platform 键声明（如有）
 - 编码规范：命名、格式符合AGENTS.md
 - 平台索引：已同步更新
 ```
@@ -395,6 +408,7 @@ class TestClass:
 ⚠️ 发现问题，已修正：
 - 遗漏STEP 3断言 → 已补充 should_xxx_success()
 - hooks冲突：user.stop_app() 与 teardown.stop_app 重复 → 已移除
+- 多用户 hooks 误用全局 -stop_app → 已改为 userB={"teardown": ["-stop_app"]}
 - 文件命名不规范 → 已修正为 test_xxx_001.py
 - 平台索引未更新 → 已补充XxxAW记录
 ```
@@ -403,11 +417,12 @@ class TestClass:
 
 ## 核心原则
 
-1**优先复用相似用例**：查平台索引前先查同目录用例
-2**用户评审前置**：生成代码前必须让用户确认计划
-3**生成后复查**：步骤覆盖、编码规范、平台索引同步
-4**需要AW时调用 testcase-aw**：AW操作专用Skill
-5**遵循命名规范**：详见AGENTS.md
+1. **优先复用相似用例**：查平台索引前先查同目录用例
+2. **用户评审前置**：生成代码前必须让用户确认计划
+3. **生成后复查**：步骤覆盖、编码规范、平台索引同步
+4. **需要AW时调用 testcase-aw**：AW操作专用Skill
+5. **遵循命名规范**：详见AGENTS.md
+6. **多用户 hooks 精细控制**：不同用户/端需要不同 setup/teardown 时，用 `@pytest.mark.hooks(userA=..., userB=...)` 或平台键，禁止用全局 `-xxx` 误伤所有用户
 
 ---
 

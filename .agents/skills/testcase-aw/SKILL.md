@@ -66,3 +66,25 @@ description: "AW新增/扩展/修改。与用户确认平台和操作步骤，�
 13. **并行兼容性**：AW 方法在 `with parallel()` 中必须只表达动作收集；需要返回值的动作、依赖前一步结果的动作和断言应放到并行上下文外。
 14. **AW 日志**：需要补充业务上下文时使用 `self.log("日志内容")`，会自动归入当前 `do_*/should_*` 步骤；OCR、图像、坐标、等待等原子操作已由 `BaseAW` 自动记录，无需重复记录或直接调用 `ReportLogger`。
 15. **日志标题规范**：`do_*/should_*` 方法的 docstring 首行会作为 HTML 报告标题，必须是简短中文动作描述；业务日志内容应描述关键业务状态或分支，不要重复方法名和底层动作名。
+
+16. **多用户/多端 hooks 控制支持**：
+
+新增 AW 时，文档/用例作者可使用以下方式控制 hooks：
+
+```python
+@pytest.mark.users({"userA": "windows", "userB": "mac"})
+@pytest.mark.hooks(
+    userA={"setup": ["+login"]},           # 仅 userA 执行 setup 登录
+    userB={"teardown": ["-stop_app"]},     # 仅 userB 跳过关应用
+    # windows={"setup": ["+login"]},        # 该平台全部用户
+    userA_api={"teardown": ["-cancel_all_meetings"]},  # 按需控制 API 用户
+)
+```
+
+**合并优先级**（每个用户独立计算）：
+1. 平台默认（config.yaml）
+2. 用例全局 hooks
+3. 用例平台键
+4. 用例用户键（最终层）
+
+**API 用户**：`userA` 的 `userA` 键**不影响** `userA_api`；改 API 用户需显式写 `userA_api=...` 或 `api=...`。

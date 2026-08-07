@@ -78,6 +78,18 @@ hooks:
 @pytest.mark.hooks(setup=["+custom_hook"], teardown=["-stop_app"])
 ```
 
+多用户/多端按用户或平台控制：
+```python
+@pytest.mark.users({"userA": "windows", "userB": "mac"})
+@pytest.mark.hooks(
+    userA={"setup": ["+login"]},           # 仅 userA
+    userB={"teardown": ["-stop_app"]},     # 仅 userB
+    # windows={"setup": ["+login"]},       # 该平台全部用户
+)
+```
+
+优先级：平台默认 → 全局 hooks → 平台键 → 用户键。`userA` 不影响 `userA_api`。
+
 ## API AW
 
 API 平台用于数据准备和清理，无需 UI 操作：
