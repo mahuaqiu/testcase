@@ -422,7 +422,7 @@ class TestClass:
 3. **生成后复查**：步骤覆盖、编码规范、平台索引同步
 4. **需要AW时调用 testcase-aw**：AW操作专用Skill
 5. **遵循命名规范**：详见AGENTS.md
-6. **多用户 hooks 精细控制**：不同用户/端需要不同 setup/teardown 时，用 `@pytest.mark.hooks(userA=..., userB=...)` 或平台键，禁止用全局 `-xxx` 误伤所有用户
+6. **多用户 hooks 精细控制**：不同用户/端需要不同 setup/teardown 时，用 `@pytest.mark.hooks(userA=..., userB=...)` 或平台键。
 
 ---
 
