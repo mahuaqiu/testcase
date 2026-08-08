@@ -139,3 +139,139 @@ def test_http_row_displays_status_and_response_body():
     assert "HTTP 响应" in html
     assert "状态码 200" in html
     assert "meetingId" in html and "m-001" in html
+
+
+def test_unused_api_user_not_shown_in_report_filters():
+    """声明了 userA/userB，但只调用 userA_api 时，不应出现 userB_api。"""
+    logs = [
+        {
+            "time": "10:00:00.000",
+            "type": "aw_call",
+            "aw_name": "MeetingManageAW",
+            "method": "do_create_meeting",
+            "args": {"user_id": "userA_api", "user_name": "甲"},
+            "success": True,
+            "result": {"status_code": 200, "body": "{}"},
+            "duration_ms": 10,
+            "is_business_method": True,
+            "call_id": "api-1",
+            "display_name": "创建会议",
+        },
+        {
+            "time": "10:00:01.000",
+            "type": "aw_call",
+            "aw_name": "LoginAW",
+            "method": "do_login",
+            "args": {"user_id": "userA", "user_name": "甲", "user_platform": "web"},
+            "success": True,
+            "result": {"status": "success"},
+            "duration_ms": 20,
+            "is_business_method": True,
+            "call_id": "ui-1",
+            "display_name": "执行登录操作",
+        },
+        {
+            "time": "10:00:02.000",
+            "type": "aw_call",
+            "aw_name": "LoginAW",
+            "method": "do_login",
+            "args": {"user_id": "userB", "user_name": "乙", "user_platform": "windows"},
+            "success": True,
+            "result": {"status": "success"},
+            "duration_ms": 20,
+            "is_business_method": True,
+            "call_id": "ui-2",
+            "display_name": "执行登录操作",
+        },
+    ]
+    details = {
+        "userA": {"name": "甲", "ip": "1.1.1.1", "platform": "web", "display_platform": "web"},
+        "userB": {"name": "乙", "ip": "1.1.1.2", "platform": "windows", "display_platform": "windows"},
+        "userA_api": {"name": "甲", "platform": "api", "is_api": True},
+        "userB_api": {"name": "乙", "platform": "api", "is_api": True},  # 未调用
+    }
+    users = HTMLReportGenerator._collect_user_details(logs, details)
+    assert "userA" in users
+    assert "userB" in users
+    assert "userA_api" in users
+    assert "userB_api" not in users
+
+    report_path = SimpleNamespace(html="")
+    report_path.write_text = lambda content, encoding="utf-8": setattr(report_path, "html", content)
+    HTMLReportGenerator.generate(report_path, "test_api_filter", logs=logs, user_details=details)
+    html = report_path.html
+    assert "filterUser(this,'userA_api')" in html
+    assert "filterUser(this,'userB_api')" not in html
+
+
+def test_error_entry_follows_failed_user_in_filter():
+    """错误堆栈应带 user_id，切换用户时只显示报错用户的条目。"""
+    error_log = {
+        "time": "10:00:05.000",
+        "type": "error",
+        "error": "userA 断言失败: 未找到目标文字",
+        "user_id": "userA",
+    }
+    html = HTMLReportGenerator._render_error(error_log)
+    assert 'data-user="userA"' in html
+    assert "userA" in html
+    assert "未找到目标文字" in html
+
+    logs = [
+        {
+            "time": "10:00:01.000",
+            "type": "aw_call",
+            "aw_name": "LoginAW",
+            "method": "do_login",
+            "args": {"user_id": "userA"},
+            "success": False,
+            "result": {"error": "失败"},
+            "duration_ms": 10,
+            "is_business_method": True,
+            "call_id": "c1",
+            "display_name": "执行登录操作",
+        },
+        {
+            "time": "10:00:02.000",
+            "type": "aw_call",
+            "aw_name": "LoginAW",
+            "method": "do_login",
+            "args": {"user_id": "userB"},
+            "success": True,
+            "result": {"status": "success"},
+            "duration_ms": 10,
+            "is_business_method": True,
+            "call_id": "c2",
+            "display_name": "执行登录操作",
+        },
+        error_log,
+    ]
+    report_path = SimpleNamespace(html="")
+    report_path.write_text = lambda content, encoding="utf-8": setattr(report_path, "html", content)
+    HTMLReportGenerator.generate(
+        report_path,
+        "test_error_filter",
+        logs=logs,
+        status="failed",
+        user_details={
+            "userA": {"platform": "web", "display_platform": "web"},
+            "userB": {"platform": "windows", "display_platform": "windows"},
+        },
+    )
+    html = report_path.html
+    # 错误条目可按用户过滤
+    assert 'class="error-entry" data-user="userA"' in html
+    assert "error-entry:not(.match-user)" in html
+    assert "el.dataset.user === uid" in html
+
+
+def test_log_error_accepts_user_id():
+    """ReportLogger.log_error 应支持写入报错用户。"""
+    ReportLogger.reset()
+    logger = ReportLogger.get_current()
+    logger.log_error("某用户失败", user_id="userA")
+    logs = logger.get_logs()
+    assert len(logs) == 1
+    assert logs[0]["type"] == "error"
+    assert logs[0]["user_id"] == "userA"
+    assert logs[0]["error"] == "某用户失败"

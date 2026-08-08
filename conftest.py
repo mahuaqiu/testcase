@@ -6,7 +6,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 import pytest
 import json
@@ -208,7 +208,7 @@ def users(request) -> Dict[str, User]:
         for user_id, user in user_instances.items():
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
             try:
-                _execute_hooks(user, final_hooks.get("setup", []), hook_type="setup")
+                _execute_hooks(user, final_hooks.get("setup", []), hook_type="setup", user_id=user_id)
             except HookFailureError as e:
                 setup_failed = True
                 setup_error = e
@@ -227,7 +227,7 @@ def users(request) -> Dict[str, User]:
                 for user_id, user in _sort_users_for_teardown(user_instances):
                     final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
                     try:
-                        _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
+                        _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown", user_id=user_id)
                     except HookFailureError:
                         pass  # teardown 失障也记录，但不影响流程
 
@@ -255,7 +255,9 @@ def users(request) -> Dict[str, User]:
 
             final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
             try:
-                _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown")
+                _execute_hooks(
+                    user, final_hooks.get("teardown", []), hook_type="teardown", user_id=user_id
+                )
             except HookFailureError as e:
                 teardown_failed = True
                 teardown_error = e
@@ -326,7 +328,9 @@ def pytest_runtest_makereport(item, call):
                     pass
 
             # 记录错误
-            logger.log_error(str(report.longrepr))
+            last_failed = logger.get_last_failed_aw()
+            error_user_id = last_failed.get("args", {}).get("user_id", "") if last_failed else ""
+            logger.log_error(str(report.longrepr), user_id=error_user_id)
 
 
 # ── 辅助函数 ─────────────────────────────────────────
@@ -441,8 +445,11 @@ def _generate_report(
     report_path = report_dir / f"{request.node.name}.html"
 
     # 将申请到的用户设备类型传给报告，避免仅依赖 AW 日志推断用户平台。
+    # API 用户仅在实际使用过时才写入报告，避免出现“未调用的 userB_api”。
     report_user_details = {}
     for user_id, user in user_instances.items():
+        if user.platform == "api" and not getattr(user, "_used", False):
+            continue
         report_user_details[user_id] = {
             "name": user.name,
             "ip": user.ip,
@@ -485,7 +492,7 @@ def _sort_users_for_teardown(user_instances: Dict[str, User]):
     return api_users + other_users
 
 
-def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
+def _execute_hooks(user: User, hooks: list, hook_type: str = "setup", user_id: Optional[str] = None) -> None:
     """执行 hooks 方法。
 
     支持两种格式：
@@ -496,6 +503,7 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
         user: User 实例。
         hooks: hooks 列表。
         hook_type: hook 类型 ("setup" 或 "teardown")，用于异常信息。
+        user_id: 用户ID，用于错误日志跟随用户显示。
 
     Raises:
         HookFailureError: hook 执行失障时抛出。
@@ -536,16 +544,16 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup") -> None:
 
                     if is_connection_closed and attempt < max_retries:
                         # 重试一次，打印日志便于排查
-                        logger.log_error(f"Hook [{hook_name}] 连接关闭，正在重试 (attempt {attempt + 1}/{max_retries}): {e}")
+                        logger.log_error(f"Hook [{hook_name}] 连接关闭，正在重试 (attempt {attempt + 1}/{max_retries}): {e}", user_id=user_id)
                         continue
 
                     # 重试失败或其他错误
                     if is_connection_closed:
                         # 重试后仍失败，记录但不算失障（worker 可能已关闭）
-                        logger.log_error(f"Hook [{hook_name}] 连接重试失败: {e}")
+                        logger.log_error(f"Hook [{hook_name}] 连接重试失败: {e}", user_id=user_id)
                         break
                     else:
-                        logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}")
+                        logger.log_error(f"Hook 执行失障 [{hook_name}]: {e}", user_id=user_id)
                         raise HookFailureError(hook_name, e, hook_type)
 
 

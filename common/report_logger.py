@@ -262,14 +262,22 @@ class ReportLogger:
                 "base64": base64_data
             })
 
-    def log_error(self, error: str) -> None:
-        """记录错误信息。"""
+    def log_error(self, error: str, user_id: Optional[str] = None) -> None:
+        """记录错误信息。
+
+        Args:
+            error: 错误信息。
+            user_id: 报错用户ID（可选，用于报告跟随用户显示）。
+        """
         with self._lock:
-            self._logs.append({
+            log_entry = {
                 "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
                 "type": "error",
                 "error": error
-            })
+            }
+            if user_id:
+                log_entry["user_id"] = user_id
+            self._logs.append(log_entry)
 
     def get_logs(self) -> List[Dict[str, Any]]:
         """获取所有日志。"""

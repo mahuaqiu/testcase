@@ -637,11 +637,19 @@ class HTMLReportGenerator:
 
     @staticmethod
     def _render_error(log: Dict[str, Any]) -> str:
-        """渲染 error 类型日志。"""
+        """渲染 error 类型日志（带 user_id，切换用户时只显示对应错误）。"""
         time_str = log.get("time", "")
         error = HTMLReportGenerator._clean_text_for_display(log.get("error", ""))
+        user_id = log.get("user_id", "") or ""
+        user_tag = ""
+        if user_id:
+            color = HTMLReportGenerator._get_user_color(user_id)
+            user_tag = (
+                f'<span class="u-tag" style="background:{color};margin-right:8px">'
+                f'{_esc(user_id)}</span>'
+            )
         return f'''
-    <div class="error-entry"><span class="t">{_esc(time_str)}</span> ⚠ {_esc(error)}</div>'''
+    <div class="error-entry" data-user="{_esc(user_id)}">{user_tag}<span class="t">{_esc(time_str)}</span> ⚠ {_esc(error)}</div>'''
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
@@ -690,11 +698,35 @@ class HTMLReportGenerator:
     </div>'''
 
     @staticmethod
+    def _active_user_ids_from_logs(logs: List[Dict[str, Any]]) -> set:
+        """从执行日志中收集真正有活动的用户 ID。
+
+        用于过滤未调用过的 API 用户（如自动创建的 userB_api）。
+        """
+        active: set = set()
+        for log in logs:
+            log_type = log.get("type", "")
+            if log_type in {"aw_call", "aw_log"}:
+                user_id = (log.get("args") or {}).get("user_id", "")
+                if user_id:
+                    active.add(user_id)
+            elif log_type in {"screenshot", "error"}:
+                user_id = log.get("user_id", "")
+                if user_id:
+                    active.add(user_id)
+        return active
+
+    @staticmethod
     def _collect_user_details(
         logs: List[Dict[str, Any]],
         user_details: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Dict[str, Any]]:
-        """合并资源申请信息和 AW 日志中的用户信息。"""
+        """合并资源申请信息和 AW 日志中的用户信息。
+
+        规则：
+        - UI 用户：保留（资源申请 / 详情 / 日志均可出现）
+        - API 用户（*_api）：仅当日志中确有活动时才保留，避免未调用却出现在过滤按钮里
+        """
         collected: Dict[str, Dict[str, Any]] = {}
         for user_id, detail in (user_details or {}).items():
             collected[user_id] = dict(detail or {})
@@ -740,7 +772,13 @@ class HTMLReportGenerator:
                 if value not in (None, "") and not current.get(key):
                     current[key] = value
 
-        return collected
+        # 未使用的 API 用户不进报告过滤按钮 / 用户列表
+        active_ids = HTMLReportGenerator._active_user_ids_from_logs(logs)
+        return {
+            user_id: detail
+            for user_id, detail in collected.items()
+            if (not user_id.endswith("_api")) or (user_id in active_ids)
+        }
 
     @staticmethod
     def _build_resource_summary_html(
@@ -1158,6 +1196,8 @@ body {
 /* ── 过滤态 ── */
 body.only-fail .group.ok, body.only-fail .phase, body.only-fail .phase-wrap { display: none; }
 body.filter-user .group:not(.match-user) { display: none; }
+/* 错误堆栈跟随报错用户：切换到其他用户时隐藏 */
+body.filter-user .error-entry:not(.match-user) { display: none; }
 """
 
 # ── 交互脚本 ─────────────────────────────────────────────
@@ -1176,12 +1216,16 @@ function filterUser(btn, uid) {
     btn.classList.add('active');
     if (!uid) {
         document.body.classList.remove('filter-user');
-        document.querySelectorAll('.group').forEach(g => g.classList.remove('match-user'));
+        document.querySelectorAll('.group, .error-entry').forEach(el => el.classList.remove('match-user'));
         return;
     }
     document.body.classList.add('filter-user');
     document.querySelectorAll('.group').forEach(g => {
         g.classList.toggle('match-user', g.dataset.user === uid);
+    });
+    // 错误条目只跟随报错用户；无 user_id 的旧数据在单用户过滤时隐藏
+    document.querySelectorAll('.error-entry').forEach(el => {
+        el.classList.toggle('match-user', el.dataset.user === uid);
     });
 }
 function showImage(src) {
