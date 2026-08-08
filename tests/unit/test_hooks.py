@@ -66,7 +66,8 @@ def test_execute_hooks_preserves_order_and_supports_boolean_flag_for_no_arg_hook
         def log_step(self, message):
             pass
 
-        def log_error(self, message):
+        def log_error(self, message, user_id=None):
+            """兼容 log_error(user_id=...)"""
             pass
 
     class User:

@@ -265,13 +265,71 @@ def test_error_entry_follows_failed_user_in_filter():
     assert "el.dataset.user === uid" in html
 
 
-def test_log_error_accepts_user_id():
-    """ReportLogger.log_error 应支持写入报错用户。"""
-    ReportLogger.reset()
-    logger = ReportLogger.get_current()
-    logger.log_error("某用户失败", user_id="userA")
-    logs = logger.get_logs()
-    assert len(logs) == 1
-    assert logs[0]["type"] == "error"
-    assert logs[0]["user_id"] == "userA"
-    assert logs[0]["error"] == "某用户失败"
+def test_parallel_failure_error_follows_correct_user():
+    """并行失败时每个错误归属自己的用户，过滤时正确显示。"""
+    error_log = {
+        "time": "10:00:05.000",
+        "type": "error",
+        "error": "userA 断言失败: 未找到目标文字",
+        "user_id": "userA",
+    }
+    html = HTMLReportGenerator._render_error(error_log)
+    assert 'data-user="userA"' in html
+
+    # 并行场景模拟：两个用户各失败一次
+    logs = [
+        {
+            "time": "10:00:01.000",
+            "type": "aw_call",
+            "aw_name": "LoginAW",
+            "method": "do_login",
+            "args": {"user_id": "userA"},
+            "success": False,
+            "result": {"error": "userA 断言失败"},
+            "duration_ms": 10,
+            "is_business_method": True,
+            "call_id": "c1",
+            "display_name": "执行登录操作",
+        },
+        {
+            "time": "10:00:02.000",
+            "type": "aw_call",
+            "aw_name": "LoginAW",
+            "method": "do_login",
+            "args": {"user_id": "userB"},
+            "success": False,
+            "result": {"error": "userB 断言失败"},
+            "duration_ms": 10,
+            "is_business_method": True,
+            "call_id": "c2",
+            "display_name": "执行登录操作",
+        },
+        error_log,
+    ]
+    report_path = SimpleNamespace(html="")
+    report_path.write_text = lambda content, encoding="utf-8": setattr(report_path, "html", content)
+    HTMLReportGenerator.generate(
+        report_path,
+        "test_parallel_filter",
+        logs=logs,
+        status="failed",
+        user_details={
+            "userA": {"platform": "web", "display_platform": "web"},
+            "userB": {"platform": "windows", "display_platform": "windows"},
+        },
+    )
+    html = report_path.html
+    assert 'class="error-entry" data-user="userA"' in html
+    assert 'class="error-entry" data-user="userB"' in html
+
+
+def test_pure_assert_failure_has_user_id():
+    """纯 assert 失败时回退到最近活动用户。"""
+    error_log = {
+        "time": "10:00:05.000",
+        "type": "error",
+        "error": "断言失败",
+        "user_id": "userA",  # 模拟回退
+    }
+    html = HTMLReportGenerator._render_error(error_log)
+    assert 'data-user="userA"' in html

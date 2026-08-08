@@ -879,10 +879,11 @@ class HTMLReportGenerator:
 
         resource_summary_html = HTMLReportGenerator._build_resource_summary_html(users)
 
-        error_box = ""
-        if error_msg:
-            clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
-            error_box = f'<div class="error-box">{_esc(clean_error)}</div>'
+            if error_msg:
+                clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
+                error_box = f'<div class="error-box" data-user="{_esc(user_id)}">{_esc(clean_error)}</div>'
+            else:
+                error_box = ""
 
         # 用户过滤按钮
         user_btns = "".join(
@@ -1216,7 +1217,7 @@ function filterUser(btn, uid) {
     btn.classList.add('active');
     if (!uid) {
         document.body.classList.remove('filter-user');
-        document.querySelectorAll('.group, .error-entry').forEach(el => el.classList.remove('match-user'));
+        document.querySelectorAll('.group, .error-entry, .error-box').forEach(el => el.classList.remove('match-user'));
         return;
     }
     document.body.classList.add('filter-user');
