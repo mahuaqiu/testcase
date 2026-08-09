@@ -331,9 +331,12 @@ def pytest_runtest_makereport(item, call):
             last_failed = logger.get_last_failed_aw()
             error_user_id = last_failed.get("args", {}).get("user_id", "") if last_failed else ""
             logger.log_error(str(report.longrepr), user_id=error_user_id)
-            # 并行失败时拆分每个 action 错误（重要修复）
-            if "errors" in locals() and locals()["errors"]:
-                for err in locals()["errors"]:
+            # 并行失败时拆分每个 action 错误：实际异常在 call.excinfo.value 上，
+            # 而不是函数局部变量 errors（此前 locals() 检查永远为假，是死代码）。
+            raised = call.excinfo.value if call.excinfo else None
+            errors = getattr(raised, "errors", None)
+            if errors:
+                for err in errors:
                     if hasattr(err, "action") and err.action:
                         logger.log_error(str(err), user_id=err.action.user_id)
 

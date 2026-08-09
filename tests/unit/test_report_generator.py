@@ -267,16 +267,23 @@ def test_error_entry_follows_failed_user_in_filter():
 
 def test_parallel_failure_error_follows_correct_user():
     """并行失败时每个错误归属自己的用户，过滤时正确显示。"""
-    error_log = {
+    error_log_a = {
         "time": "10:00:05.000",
         "type": "error",
         "error": "userA 断言失败: 未找到目标文字",
         "user_id": "userA",
     }
-    html = HTMLReportGenerator._render_error(error_log)
+    error_log_b = {
+        "time": "10:00:06.000",
+        "type": "error",
+        "error": "userB 断言失败: 未找到目标文字",
+        "user_id": "userB",
+    }
+    html = HTMLReportGenerator._render_error(error_log_a)
     assert 'data-user="userA"' in html
 
-    # 并行场景模拟：两个用户各失败一次
+    # 并行场景模拟：两个用户各失败一次，conftest 会为每个失败的 action
+    # 各记录一条 error 日志（对应 ParallelExecutionError.errors 拆分逻辑）。
     logs = [
         {
             "time": "10:00:01.000",
@@ -304,7 +311,8 @@ def test_parallel_failure_error_follows_correct_user():
             "call_id": "c2",
             "display_name": "执行登录操作",
         },
-        error_log,
+        error_log_a,
+        error_log_b,
     ]
     report_path = SimpleNamespace(html="")
     report_path.write_text = lambda content, encoding="utf-8": setattr(report_path, "html", content)

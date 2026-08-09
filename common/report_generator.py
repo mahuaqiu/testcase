@@ -879,11 +879,11 @@ class HTMLReportGenerator:
 
         resource_summary_html = HTMLReportGenerator._build_resource_summary_html(users)
 
-            if error_msg:
-                clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
-                error_box = f'<div class="error-box" data-user="{_esc(user_id)}">{_esc(clean_error)}</div>'
-            else:
-                error_box = ""
+        error_box = ""
+        if error_msg:
+            clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
+            error_user_id = first_failed.get("user_id", "") if first_failed else ""
+            error_box = f'<div class="error-box" data-user="{_esc(error_user_id)}">{_esc(clean_error)}</div>'
 
         # 用户过滤按钮
         user_btns = "".join(
@@ -1199,6 +1199,7 @@ body.only-fail .group.ok, body.only-fail .phase, body.only-fail .phase-wrap { di
 body.filter-user .group:not(.match-user) { display: none; }
 /* 错误堆栈跟随报错用户：切换到其他用户时隐藏 */
 body.filter-user .error-entry:not(.match-user) { display: none; }
+body.filter-user .error-box:not(.match-user) { display: none; }
 """
 
 # ── 交互脚本 ─────────────────────────────────────────────
@@ -1225,7 +1226,7 @@ function filterUser(btn, uid) {
         g.classList.toggle('match-user', g.dataset.user === uid);
     });
     // 错误条目只跟随报错用户；无 user_id 的旧数据在单用户过滤时隐藏
-    document.querySelectorAll('.error-entry').forEach(el => {
+    document.querySelectorAll('.error-entry, .error-box').forEach(el => {
         el.classList.toggle('match-user', el.dataset.user === uid);
     });
 }
