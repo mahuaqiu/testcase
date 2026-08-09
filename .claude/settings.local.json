@@ -10,7 +10,10 @@
       "Bash(python3 *)",
       "Bash(xargs ls -lt)",
       "Bash(python *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Read(//c/Users/Administrator/.claude/skills/using-superpowers/**)",
+      "Bash(git *)",
+      "Bash(awk 'NR==822,NR==896' \"D:\\\\code\\\\testcase\\\\common\\\\report_generator.py\")"
     ]
   }
 }
