@@ -290,6 +290,8 @@ def pytest_runtest_makereport(item, call):
             "passed": report.passed,
             "failed": report.failed,
             "error_msg": str(report.longrepr) if report.failed else "",
+            "error_user_id": "",
+            "suppress_error_box": False,
         }
 
         # 失败时截图
@@ -327,21 +329,66 @@ def pytest_runtest_makereport(item, call):
                 except Exception:
                     pass
 
-            # 记录错误
-            last_failed = logger.get_last_failed_aw()
-            error_user_id = last_failed.get("args", {}).get("user_id", "") if last_failed else ""
-            logger.log_error(str(report.longrepr), user_id=error_user_id)
-            # 并行失败时拆分每个 action 错误：实际异常在 call.excinfo.value 上，
-            # 而不是函数局部变量 errors（此前 locals() 检查永远为假，是死代码）。
+        if report.failed:
             raised = call.excinfo.value if call.excinfo else None
-            errors = getattr(raised, "errors", None)
-            if errors:
-                for err in errors:
-                    if hasattr(err, "action") and err.action:
-                        logger.log_error(str(err), user_id=err.action.user_id)
+            _test_results[item.nodeid].update(
+                _record_test_failure(logger, str(report.longrepr), raised)
+            )
 
 
 # ── 辅助函数 ─────────────────────────────────────────
+
+def _record_test_failure(
+    logger: ReportLogger,
+    error_text: str,
+    raised: Optional[BaseException] = None,
+) -> Dict[str, Any]:
+    """记录测试调用阶段的失败，并尽量关联到实际报错用户。
+
+    并行异常按 action 分别记录，避免把包含全部用户错误的 traceback
+    随机归到最后完成的用户。测试方法中的直接 assert 等无 AW 归属错误
+    作为全局错误记录，用户过滤时仍然可见。
+
+    Args:
+        logger: 当前用例的报告日志收集器。
+        error_text: pytest 生成的完整错误文本。
+        raised: 测试调用阶段抛出的原始异常。
+
+    Returns:
+        错误框展示范围，包括用户归属和是否抑制聚合错误框。
+    """
+    parallel_errors = getattr(raised, "errors", None)
+    if parallel_errors:
+        for error in parallel_errors:
+            action = getattr(error, "action", None)
+            user_id = getattr(action, "user_id", "") if action else ""
+            logger.log_error(str(error), user_id=user_id or None)
+        return {"error_user_id": "", "suppress_error_box": True}
+
+    # 只有当前异常确实从 AW 包装器抛出时，才沿用失败 AW 的用户归属。
+    # 避免测试先捕获 AW 异常、随后直接 assert 时误绑到历史失败用户。
+    traceback = raised.__traceback__ if raised else None
+    originates_from_aw = False
+    while traceback:
+        frame = traceback.tb_frame
+        if (
+            frame.f_globals.get("__name__") == "aw.base_aw"
+            and frame.f_code.co_name == "wrapper"
+        ):
+            originates_from_aw = True
+            break
+        traceback = traceback.tb_next
+
+    last_failed = logger.get_last_failed_aw() if originates_from_aw else None
+    error_user_id = (
+        last_failed.get("args", {}).get("user_id", "") if last_failed else ""
+    )
+    logger.log_error(error_text, user_id=error_user_id or None)
+    return {
+        "error_user_id": error_user_id,
+        "suppress_error_box": False,
+    }
+
 
 def _get_case_hooks(node) -> Dict[str, Any]:
     """获取用例级别的 hooks 标记。"""
@@ -429,7 +476,16 @@ def _generate_report(
         error_msg: 错误信息（用于 hook 失障）。
     """
     # 获取测试结果
-    result = _test_results.get(request.node.nodeid, {"passed": True, "failed": False, "error_msg": ""})
+    result = _test_results.get(
+        request.node.nodeid,
+        {
+            "passed": True,
+            "failed": False,
+            "error_msg": "",
+            "error_user_id": "",
+            "suppress_error_box": False,
+        },
+    )
 
     # hook 失障时，保留原始测试错误，追加 hook 错误
     if force_failed:
@@ -437,13 +493,20 @@ def _generate_report(
         if original_error:
             # 有原始测试错误，追加 hook 错误
             result = {
+                **result,
                 "passed": False,
                 "failed": True,
-                "error_msg": original_error + "\n\n--- Hook 错误 ---\n" + error_msg
+                "error_msg": original_error + "\n\n--- Hook 错误 ---\n" + error_msg,
             }
         else:
             # 无原始错误（如 setup 失障），直接显示 hook 错误
-            result = {"passed": False, "failed": True, "error_msg": error_msg}
+            result = {
+                "passed": False,
+                "failed": True,
+                "error_msg": error_msg,
+                "error_user_id": "",
+                "suppress_error_box": False,
+            }
 
     # 生成报告（始终在项目根目录下）
     timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -477,6 +540,8 @@ def _generate_report(
         error_msg=result["error_msg"],
         is_api_failure=logger.is_api_failure(),
         user_details=report_user_details,
+        error_user_id=result.get("error_user_id", ""),
+        suppress_error_box=result.get("suppress_error_box", False),
     )
 
     # 清理测试结果

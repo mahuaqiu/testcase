@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from aw.base_aw import BaseAW
 from common.report_generator import HTMLReportGenerator
 from common.report_logger import ReportLogger
+from common.parallel import Action, ParallelActionError, ParallelExecutionError
+from conftest import _record_test_failure
 
 
 class DemoAW(BaseAW):
@@ -15,6 +17,16 @@ class DemoAW(BaseAW):
     def do_demo(self):
         """执行演示操作。"""
         self.log("XXXX")
+
+
+class FailingDemoAW(BaseAW):
+    """用于验证 AW 失败归属的测试 AW。"""
+
+    PLATFORM = "windows"
+
+    def should_fail(self):
+        """断言演示失败。"""
+        assert False, "未找到目标文字"
 
 
 def _user(user_id="userA", platform="windows"):
@@ -267,20 +279,30 @@ def test_error_entry_follows_failed_user_in_filter():
 
 def test_parallel_failure_error_follows_correct_user():
     """并行失败时每个错误归属自己的用户，过滤时正确显示。"""
-    error_log_a = {
-        "time": "10:00:05.000",
-        "type": "error",
-        "error": "userA 断言失败: 未找到目标文字",
-        "user_id": "userA",
-    }
-    error_log_b = {
-        "time": "10:00:06.000",
-        "type": "error",
-        "error": "userB 断言失败: 未找到目标文字",
-        "user_id": "userB",
-    }
-    html = HTMLReportGenerator._render_error(error_log_a)
-    assert 'data-user="userA"' in html
+    ReportLogger.reset()
+    logger = ReportLogger.get_current()
+    action_a = Action(
+        action_data={}, aw_name="LoginAW", method="do_login", log_args={},
+        user_id="userA", user_name="甲", user_account="a", user_ip="1.1.1.1",
+        platform="web", client=None,
+    )
+    action_b = Action(
+        action_data={}, aw_name="LoginAW", method="do_login", log_args={},
+        user_id="userB", user_name="乙", user_account="b", user_ip="1.1.1.2",
+        platform="windows", client=None,
+    )
+    raised = ParallelExecutionError([
+        ParallelActionError(action_a, AssertionError("userA 断言失败")),
+        ParallelActionError(action_b, AssertionError("userB 断言失败")),
+    ])
+    failure_scope = _record_test_failure(
+        logger, "包含全部用户的 pytest traceback", raised
+    )
+    error_logs = [log for log in logger.get_logs() if log.get("type") == "error"]
+
+    assert [log.get("user_id") for log in error_logs] == ["userA", "userB"]
+    assert all("包含全部用户" not in log["error"] for log in error_logs)
+    assert failure_scope["suppress_error_box"] is True
 
     # 并行场景模拟：两个用户各失败一次，conftest 会为每个失败的 action
     # 各记录一条 error 日志（对应 ParallelExecutionError.errors 拆分逻辑）。
@@ -311,8 +333,7 @@ def test_parallel_failure_error_follows_correct_user():
             "call_id": "c2",
             "display_name": "执行登录操作",
         },
-        error_log_a,
-        error_log_b,
+        *error_logs,
     ]
     report_path = SimpleNamespace(html="")
     report_path.write_text = lambda content, encoding="utf-8": setattr(report_path, "html", content)
@@ -321,6 +342,8 @@ def test_parallel_failure_error_follows_correct_user():
         "test_parallel_filter",
         logs=logs,
         status="failed",
+        error_msg="包含全部用户的 pytest traceback",
+        suppress_error_box=failure_scope["suppress_error_box"],
         user_details={
             "userA": {"platform": "web", "display_platform": "web"},
             "userB": {"platform": "windows", "display_platform": "windows"},
@@ -329,15 +352,108 @@ def test_parallel_failure_error_follows_correct_user():
     html = report_path.html
     assert 'class="error-entry" data-user="userA"' in html
     assert 'class="error-entry" data-user="userB"' in html
+    assert "包含全部用户的 pytest traceback" not in html
 
 
-def test_pure_assert_failure_has_user_id():
-    """纯 assert 失败时回退到最近活动用户。"""
-    error_log = {
-        "time": "10:00:05.000",
-        "type": "error",
-        "error": "断言失败",
-        "user_id": "userA",  # 模拟回退
+def test_pure_assert_failure_is_global():
+    """AW 外的直接 assert 失败应作为全局错误展示。"""
+    ReportLogger.reset()
+    logger = ReportLogger.get_current()
+    logger.log_aw_call(
+        aw_name="LoginAW",
+        method="do_login",
+        args={"user_id": "userA"},
+        success=True,
+        result={},
+        duration_ms=10,
+        is_business_method=True,
+        call_id="success-1",
+    )
+    failure_scope = _record_test_failure(
+        logger, "assert actual == expected", AssertionError()
+    )
+    error_log = next(
+        log for log in logger.get_logs() if log.get("type") == "error"
+    )
+
+    assert "user_id" not in error_log
+    assert failure_scope == {
+        "error_user_id": "",
+        "suppress_error_box": False,
     }
     html = HTMLReportGenerator._render_error(error_log)
-    assert 'data-user="userA"' in html
+    assert 'class="error-entry global-error"' in html
+    assert 'data-user=""' in html
+
+    report_path = SimpleNamespace(html="")
+    report_path.write_text = lambda content, encoding="utf-8": setattr(report_path, "html", content)
+    HTMLReportGenerator.generate(
+        report_path,
+        "test_direct_assert",
+        logs=[error_log],
+        status="failed",
+        error_msg="assert actual == expected",
+        user_details={"userA": {"platform": "web"}},
+        error_user_id=failure_scope["error_user_id"],
+        suppress_error_box=failure_scope["suppress_error_box"],
+    )
+
+    assert '<div class="error-box global-error">' in report_path.html
+    assert "error-entry:not(.match-user):not(.global-error)" in report_path.html
+    assert "error-box:not(.match-user):not(.global-error)" in report_path.html
+
+
+def test_aw_failure_keeps_error_user_scope():
+    """单用户 AW 失败的错误仍应跟随该用户过滤。"""
+    ReportLogger.reset()
+    logger = ReportLogger.get_current()
+    raised = None
+    try:
+        FailingDemoAW(None, _user()).should_fail()
+    except AssertionError as error:
+        raised = error
+
+    assert raised is not None
+
+    failure_scope = _record_test_failure(
+        logger, "完整 pytest traceback", raised
+    )
+
+    assert failure_scope == {
+        "error_user_id": "userA",
+        "suppress_error_box": False,
+    }
+    error_log = next(
+        log for log in logger.get_logs() if log.get("type") == "error"
+    )
+    assert error_log["user_id"] == "userA"
+
+
+def test_direct_assert_does_not_reuse_previous_failed_aw_user():
+    """直接 assert 不应继承之前已被捕获的 AW 失败用户。"""
+    ReportLogger.reset()
+    logger = ReportLogger.get_current()
+    logger.log_aw_call(
+        aw_name="LoginAW",
+        method="should_login_success",
+        args={"user_id": "userA"},
+        success=False,
+        result={"error": "已被测试捕获的 AW 失败"},
+        duration_ms=10,
+        is_business_method=True,
+        call_id="caught-failure",
+    )
+
+    raised = None
+    try:
+        assert False, "测试方法直接断言失败"
+    except AssertionError as error:
+        raised = error
+
+    failure_scope = _record_test_failure(
+        logger, "测试方法直接断言失败", raised
+    )
+    error_logs = [log for log in logger.get_logs() if log.get("type") == "error"]
+
+    assert failure_scope["error_user_id"] == ""
+    assert "user_id" not in error_logs[-1]

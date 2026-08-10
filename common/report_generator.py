@@ -641,6 +641,7 @@ class HTMLReportGenerator:
         time_str = log.get("time", "")
         error = HTMLReportGenerator._clean_text_for_display(log.get("error", ""))
         user_id = log.get("user_id", "") or ""
+        scope_class = "" if user_id else " global-error"
         user_tag = ""
         if user_id:
             color = HTMLReportGenerator._get_user_color(user_id)
@@ -649,7 +650,7 @@ class HTMLReportGenerator:
                 f'{_esc(user_id)}</span>'
             )
         return f'''
-    <div class="error-entry" data-user="{_esc(user_id)}">{user_tag}<span class="t">{_esc(time_str)}</span> ⚠ {_esc(error)}</div>'''
+    <div class="error-entry{scope_class}" data-user="{_esc(user_id)}">{user_tag}<span class="t">{_esc(time_str)}</span> ⚠ {_esc(error)}</div>'''
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
@@ -829,6 +830,8 @@ class HTMLReportGenerator:
         error_msg: str = "",
         is_api_failure: bool = False,
         user_details: Optional[Dict[str, Dict[str, Any]]] = None,
+        error_user_id: str = "",
+        suppress_error_box: bool = False,
     ) -> None:
         """生成 HTML 报告。"""
         timeline = HTMLReportGenerator._build_timeline(logs)
@@ -880,10 +883,16 @@ class HTMLReportGenerator:
         resource_summary_html = HTMLReportGenerator._build_resource_summary_html(users)
 
         error_box = ""
-        if error_msg:
+        if error_msg and not suppress_error_box:
             clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
-            error_user_id = first_failed.get("user_id", "") if first_failed else ""
-            error_box = f'<div class="error-box" data-user="{_esc(error_user_id)}">{_esc(clean_error)}</div>'
+            if error_user_id:
+                error_box = (
+                    f'<div class="error-box" data-user="{_esc(error_user_id)}">'
+                    f'{_esc(clean_error)}</div>'
+                )
+            else:
+                # 直接 assert、框架异常等没有用户归属，切换用户时仍需显示。
+                error_box = f'<div class="error-box global-error">{_esc(clean_error)}</div>'
 
         # 用户过滤按钮
         user_btns = "".join(
@@ -1197,9 +1206,9 @@ body {
 /* ── 过滤态 ── */
 body.only-fail .group.ok, body.only-fail .phase, body.only-fail .phase-wrap { display: none; }
 body.filter-user .group:not(.match-user) { display: none; }
-/* 错误堆栈跟随报错用户：切换到其他用户时隐藏 */
-body.filter-user .error-entry:not(.match-user) { display: none; }
-body.filter-user .error-box:not(.match-user) { display: none; }
+/* 有归属的错误跟随用户过滤；直接 assert 等全局错误始终显示。 */
+body.filter-user .error-entry:not(.match-user):not(.global-error) { display: none; }
+body.filter-user .error-box:not(.match-user):not(.global-error) { display: none; }
 """
 
 # ── 交互脚本 ─────────────────────────────────────────────
@@ -1225,7 +1234,7 @@ function filterUser(btn, uid) {
     document.querySelectorAll('.group').forEach(g => {
         g.classList.toggle('match-user', g.dataset.user === uid);
     });
-    // 错误条目只跟随报错用户；无 user_id 的旧数据在单用户过滤时隐藏
+    // 有用户归属的错误跟随用户过滤；无 user_id 的全局错误由 CSS 保持显示
     document.querySelectorAll('.error-entry, .error-box').forEach(el => {
         el.classList.toggle('match-user', el.dataset.user === uid);
     });
