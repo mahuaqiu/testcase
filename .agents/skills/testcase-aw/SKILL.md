@@ -54,7 +54,7 @@ description: "AW新增/扩展/修改。与用户确认平台和操作步骤，�
 1. **先读清单再写代码**：步骤中的方法必须在平台索引或主索引的公共 AW 中存在
 2. **不确定就问**：方法不存在时，询问用户而非编造
 3. **便捷方法**：用 `self.ocr_click()` 而非 `self.client.ocr_click()`
-4. **禁止使用 time.sleep**：AW 中必须使用 `self.wait(seconds)` 而非 `time.sleep()`，单位为秒（与 time.sleep 一致），否则在 `with parallel()` 并行执行时 sleep 会提前执行导致时序错乱
+4. **禁止使用 time.sleep**：AW 中必须使用 `self.wait(seconds)` 而非 `time.sleep()`，单位为秒（与 time.sleep 一致），否则在 `with parallel()` 并行执行时 sleep 会提前执行导致时序错乱。**测试用例（testcase）中**如需固定等待，直接使用 `time.sleep(x)` 而非 `self.wait()`——用例代码不通过 AW 的并行代理层，`self.wait()` 在用例中不适用。
 5. **跨 AW 类调用**：调用其他 AW 类的方法时，必须用 `self.user.xxx()` 而非 `self.xxx()`。例如 `MeetingJoinAW` 中调用 `MeetingControlAW.do_trigger_control_bar()`，应写 `self.user.do_trigger_control_bar()`
 6. **新增限制**：AW 新增时，**只允许生成一个方法**，不能一次生成多个方法
 7. **修改限制**：AW 扩展或修改时，**只允许在原方法上修改**，不允许生成新方法

@@ -54,7 +54,7 @@ class HTMLReportGenerator:
                 count = len(value) if isinstance(value, list) else 0
                 if count > 0:
                     cleaned[key] = f"[{count}张截图]"
-            elif key in ("error_screenshot", "screenshot") and isinstance(value, str) and len(value) > 100:
+            elif key in ("error_screenshot", "screenshot", "region_screenshot") and isinstance(value, str) and len(value) > 100:
                 cleaned[key] = "[截图数据]"
             elif key == "ocr_info":
                 continue  # OCR 结果单独渲染为 chips
@@ -513,15 +513,21 @@ class HTMLReportGenerator:
             if chips:
                 parts.append(f'<div class="ocr-box"><div class="k">OCR 识别结果</div><div>{"".join(chips)}</div></div>')
 
-        # 截图（失败时）
+        # 截图（失败时）；同时检查 region_screenshot（区域截图）
         if not success:
             shots = []
             error_screenshot = result.get("error_screenshot", "")
+            region_screenshot = result.get("region_screenshot", "")
             target_image = log.get("target_image", "")
             if error_screenshot and len(error_screenshot) > 100:
                 shots.append(
                     f'<div class="shot" onclick="showImage(this.querySelector(\'img\').src);event.stopPropagation()">'
                     f'<img src="data:image/png;base64,{error_screenshot}"><span class="cap">当前屏幕</span></div>'
+                )
+            if region_screenshot and len(region_screenshot) > 100:
+                shots.append(
+                    f'<div class="shot shot-region" onclick="showImage(this.querySelector(\'img\').src);event.stopPropagation()">'
+                    f'<img src="data:image/png;base64,{region_screenshot}"><span class="cap">🔍 查找区域</span></div>'
                 )
             if target_image and len(target_image) > 100:
                 shots.append(
@@ -797,17 +803,21 @@ class HTMLReportGenerator:
         cards = []
         for user_id, detail in resource_users:
             platform = detail.get("display_platform") or detail.get("device_type") or detail.get("platform", "")
-            meta = " · ".join(
-                str(value) for value in (detail.get("name", ""), detail.get("ip", ""))
-                if value
+            name = str(detail.get("name", ""))
+            ip = str(detail.get("ip", ""))
+            # 姓名单独一行，IP 单独一行（醒目展示，方便查问题时快速定位机器）
+            name_html = f'<div class="resource-meta">{_esc(name)}</div>' if name else ""
+            ip_html = (
+                f'<div class="resource-ip">🖥 {_esc(ip)}</div>'
+                if ip else
+                '<div class="resource-meta">资源信息未返回</div>'
             )
-            meta_html = f'<div class="resource-meta">{_esc(meta or "资源信息未返回")}</div>'
             cards.append(
                 f'<div class="resource-card" data-user="{_esc(user_id)}">'
                 f'<div class="resource-card-top"><span class="dot" style="background:{HTMLReportGenerator._get_user_color(user_id)}"></span>'
                 f'<strong>{_esc(user_id)}</strong>'
                 f'<span class="platform-badge">{_esc(HTMLReportGenerator._format_platform(platform))}</span></div>'
-                f'{meta_html}</div>'
+                f'{name_html}{ip_html}</div>'
             )
 
         return (
@@ -1032,6 +1042,10 @@ body {
     margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: var(--ink-3); font-size: 11px;
 }
+.resource-ip {
+    margin-top: 4px; font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .progress-track { display: flex; gap: 3px; margin-top: 14px; height: 8px; }
 .progress-track a { flex: 1; border-radius: 3px; background: var(--green); opacity: .75; transition: .15s; }
 .progress-track a:hover { opacity: 1; transform: scaleY(1.5); }
@@ -1180,6 +1194,9 @@ body {
 .shot {
     width: 168px; height: 104px; border-radius: 8px; border: 1px solid var(--line);
     position: relative; cursor: zoom-in; overflow: hidden; background: #e2e8f0;
+}
+.shot.shot-region {
+    border-color: #f59e0b; border-width: 2px;
 }
 .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .shot .cap {

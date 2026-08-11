@@ -334,6 +334,7 @@ class TestClass:
 | 步骤注释 | 每个步骤标注编号 | `# 步骤 1: 并行登录` |
 | 并行操作 | `with parallel():` 包裹 | 并行登录等无依赖操作 |
 | 断言分离 | 验证步骤不在并行块内 | 先操作后断言 |
+| sleep 等待 | 用例中固定等待用 `time.sleep(x)` | `import time; time.sleep(3)` |
 
 #### 6.4 生成AW代码（需要时）
 

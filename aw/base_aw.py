@@ -559,6 +559,8 @@ class BaseAW:
             full_result["error_screenshot"] = action_result["error_screenshot"]
         if "ocr_info" in action_result:
             full_result["ocr_info"] = action_result["ocr_info"]
+        if "region_screenshot" in action_result:
+            full_result["region_screenshot"] = action_result["region_screenshot"]
         if request_id:
             # 携带 request_id，失败时随 AWError 透传给业务方法日志
             full_result["request_id"] = request_id
@@ -1067,6 +1069,8 @@ class BaseAW:
             "output": output,
             "exists": exists,
         }
+        if "ocr_info" in action_result:
+            full_result["ocr_info"] = action_result["ocr_info"]
 
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
@@ -1193,11 +1197,12 @@ class BaseAW:
         """构建 same_row 类 action 的通用参数。
 
         包含：anchor_index、target_index、row_tolerance
+        row_tolerance 默认 25，支持整数或 [top, bottom] 数组写法。
         """
         return {
             "anchor_index": kwargs.get("anchor_index", 0),
             "target_index": kwargs.get("target_index", 0),
-            "row_tolerance": kwargs.get("row_tolerance", 20),
+            "row_tolerance": kwargs.get("row_tolerance", 25),
         }
 
     # ── 执行包装层 ─────────────────────────────────────────
