@@ -15,7 +15,9 @@
       "Bash(git *)",
       "Bash(awk 'NR==822,NR==896' \"D:\\\\code\\\\testcase\\\\common\\\\report_generator.py\")",
       "Bash(Copy-Item *)",
-      "PowerShell(Copy-Item *)"
+      "PowerShell(Copy-Item *)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_harmony_platform.py -x -q)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/ -x -q -k \"action or result or timestamp or row_tolerance\")"
     ]
   }
 }
