@@ -1,5 +1,7 @@
 """公共检查 AW。"""
 
+from typing import Dict, Optional
+
 from aw.base_aw import BaseAW
 
 
