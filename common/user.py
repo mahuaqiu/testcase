@@ -5,6 +5,9 @@ from typing import Any, Dict, Optional
 from common.config_loader import ConfigLoader
 from common.testagent_client import TestagentClient
 
+# 需要 device_id 的平台（worker 端通过 device_id 定位设备）
+PLATFORMS_NEED_DEVICE_ID = ("ios", "android", "harmony_pc", "harmony_mobile")
+
 
 class User:
     """用户资源类，代理转发 AW 方法。
@@ -161,8 +164,8 @@ class User:
         if self.platform == "api" or self.client is None:
             return ""
 
-        # iOS/Android 需要传递 device_id
-        device_id = self.device_id if self.platform in ("ios", "android") else None
+        # 需要 device_id 的平台才透传
+        device_id = self.device_id if self.platform in PLATFORMS_NEED_DEVICE_ID else None
         result = self.client.screenshot(self.platform, device_id=device_id, level=level)
         # 从结果中提取 base64 数据
         if result.get("status") == "success" and result.get("actions"):

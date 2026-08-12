@@ -383,17 +383,21 @@ class HTMLReportGenerator:
         """渲染组内单条原子操作（紧凑行 + 可展开详情）。"""
         if log.get("type") == "aw_log":
             message = log.get("message", "")
+            level = log.get("level", "info")
+            if level not in ("info", "warning", "error"):
+                level = "info"
+            level_label = {"info": "日志", "warning": "警告", "error": "错误"}[level]
             row_html = (
-                '<div class="row aw-log" onclick="td(this)">'
+                f'<div class="row aw-log aw-log-{level}" onclick="td(this)">'
                 '<span class="log-dot">●</span>'
                 f'<span class="r-time">{_esc(log.get("time", ""))}</span>'
-                '<span class="r-method">日志</span>'
+                f'<span class="r-method">{level_label}</span>'
                 f'<span class="r-args">{_esc(message)}</span>'
                 '</div>'
             )
             detail_html = (
                 '<div class="row-detail log-detail">'
-                '<div class="k">AW 日志</div>'
+                f'<div class="k">AW 日志 · {level_label}</div>'
                 f'<div class="v">{_esc(message)}</div>'
                 '</div>'
             )
@@ -1159,6 +1163,17 @@ body {
 .row.aw-log .r-method { color: #b45309; }
 .row.aw-log .r-args { color: #92400e; }
 .log-dot { width: 7px; color: #f59e0b; font-size: 10px; flex-shrink: 0; }
+/* 日志级别配色：info（琥珀）/ warning（橙）/ error（红） */
+.row.aw-log-warning { background: #fff7ed; }
+.row.aw-log-warning:hover { background: #ffedd5; }
+.row.aw-log-warning .r-method { color: #c2410c; }
+.row.aw-log-warning .r-args { color: #9a3412; }
+.row.aw-log-warning .log-dot { color: #f97316; }
+.row.aw-log-error { background: #fef2f2; }
+.row.aw-log-error:hover { background: #fee2e2; }
+.row.aw-log-error .r-method { color: #b91c1c; }
+.row.aw-log-error .r-args { color: #991b1b; }
+.row.aw-log-error .log-dot { color: #dc2626; }
 .r-shot { font-size: 11px; color: var(--blue); flex-shrink: 0; }
 .r-dur { font-family: var(--mono); font-size: 11px; color: var(--ink-3); width: 56px; text-align: right; flex-shrink: 0; }
 .row.slow .r-dur { color: #d97706; font-weight: 700; }

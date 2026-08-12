@@ -115,6 +115,7 @@ class ReportLogger:
         parent_aw: str = "",
         parent_call_id: str = "",
         parent_display: str = "",
+        level: str = "info",
     ) -> None:
         """记录 AW 内的自定义日志，并归入当前业务方法步骤。
 
@@ -129,6 +130,8 @@ class ReportLogger:
             parent_aw: 当前业务方法标识。
             parent_call_id: 当前业务方法调用 ID。
             parent_display: 当前业务方法显示名。
+            level: 日志级别，info / warning / error，默认 info。
+                在 HTML 报告中按级别用不同颜色展示。
         """
         log_entry = {
             "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
@@ -136,6 +139,7 @@ class ReportLogger:
             "aw_name": aw_name,
             "method": parent_aw.rsplit(".", 1)[-1] if parent_aw else "log",
             "message": str(message),
+            "level": level if level in ("info", "warning", "error") else "info",
             "args": {
                 "user_id": user_id,
                 "user_account": user_account,

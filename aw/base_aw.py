@@ -12,6 +12,7 @@ from common.testagent_client import TestagentClient, is_retryable_transport_erro
 from common.report_logger import ReportLogger
 from common.parallel import is_collecting, get_action_queue, Action
 from common.utils import load_image_as_base64
+from common.user import PLATFORMS_NEED_DEVICE_ID
 
 if TYPE_CHECKING:
     from common.user import User
@@ -329,7 +330,10 @@ class BaseAW:
         self.user = user
         self._aw_name = self.__class__.__name__
 
-    def log(self, message: str) -> None:
+    # 支持的日志级别（渲染时按级别取不同颜色）
+    LOG_LEVELS = ("info", "warning", "error")
+
+    def log(self, message: str, level: str = "info") -> None:
         """记录一行 AW 日志，并展示在当前业务步骤中。
 
         在业务 AW 中直接调用 ``self.log("日志内容")``。如果当前正在执行
@@ -338,7 +342,11 @@ class BaseAW:
 
         Args:
             message: 要记录的日志内容。
+            level: 日志级别，可选 info / warning / error，默认 info。
+                在 HTML 报告中以不同颜色展示。
         """
+        # 非法级别归一化为 info，避免渲染异常
+        level = level if level in self.LOG_LEVELS else "info"
         parent_aw, parent_call_id, parent_display = self._parent_call_info()
         user_id = self.user.user_id if self.user else ""
         user_account = self.user.account if self.user else ""
@@ -348,6 +356,7 @@ class BaseAW:
 
         ReportLogger.get_current().log_aw_message(
             message=str(message),
+            level=level,
             aw_name=self._aw_name,
             user_id=user_id,
             user_account=user_account,
@@ -458,9 +467,9 @@ class BaseAW:
 
         try:
             # 调用 client.execute（批量接口，传入单个 action）
-            # iOS/Android 平台需要 device_id
+            # 需要 device_id 的平台才透传
             device_id = None
-            if platform in ("ios", "android") and self.user:
+            if platform in PLATFORMS_NEED_DEVICE_ID and self.user:
                 device_id = self.user.device_id
             result = self.client.execute(platform, [action_data], device_id=device_id, window=window)
         except Exception as e:
@@ -843,7 +852,7 @@ class BaseAW:
             anchor_index: 锚点文本索引（从 0 开始），默认 0。
             target_index: 目标图片索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             timeout: 超时时间（秒），默认 5。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
@@ -858,7 +867,7 @@ class BaseAW:
             "anchor_text": anchor_text,
             "image_base64": image_base64,
             **self._same_row_params(kwargs),
-            "threshold": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.9),
             "timeout": kwargs.get("timeout", 5) * 1000,
         }
         if "offset" in kwargs:
@@ -915,7 +924,7 @@ class BaseAW:
             anchor_index: 锚点文本索引（从 0 开始），默认 0。
             target_index: 目标图片索引（从 0 开始），默认 0。
             row_tolerance: 水平带范围（像素），默认 20。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             timeout: 超时时间（秒），默认 5。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
 
@@ -931,7 +940,7 @@ class BaseAW:
             "anchor_text": anchor_text,
             "image_base64": image_base64,
             **self._same_row_params(kwargs),
-            "threshold": kwargs.get("confidence", 0.8),
+            "threshold": kwargs.get("confidence", 0.9),
             "timeout": kwargs.get("timeout", 5) * 1000,
         }
         resolved = self._resolve_region(kwargs.get("region"))
@@ -1015,9 +1024,9 @@ class BaseAW:
         logger = ReportLogger.get_current()
         start_time = time.time()
 
-        # iOS/Android 需要传递 device_id
+        # 需要 device_id 的平台才透传
         device_id = None
-        if platform in ("ios", "android") and self.user:
+        if platform in PLATFORMS_NEED_DEVICE_ID and self.user:
             device_id = self.user.device_id
 
         try:
@@ -1173,11 +1182,11 @@ class BaseAW:
     def _image_params(self, kwargs: dict) -> dict:
         """构建 Image 类 action 的通用参数。
 
-        包含：timeout、threshold(默认0.8)、index、offset、region、level、monitor
+        包含：timeout、threshold(默认0.9)、index、offset、region、level、monitor
         """
         params = {
             "timeout": kwargs.get("timeout", 5) * 1000,
-            "threshold": kwargs.get("confidence", 0.8),  # alias
+            "threshold": kwargs.get("confidence", 0.9),  # alias
         }
         if "index" in kwargs:
             params["index"] = kwargs["index"]
@@ -1286,7 +1295,7 @@ class BaseAW:
             image_path: 图片路径。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
@@ -1313,7 +1322,7 @@ class BaseAW:
             image_path: 图片路径。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
@@ -1334,7 +1343,7 @@ class BaseAW:
             image_path: 图片路径。
             negate: 断言不存在，True 时断言图像不存在。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
@@ -1356,7 +1365,7 @@ class BaseAW:
             text: 文本内容。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             max_distance: 最大搜索距离（像素），默认 500。
             click_duration: 点击持续时间（毫秒），用于长按。0=普通点击，>0=长按指定时间。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
@@ -1380,7 +1389,7 @@ class BaseAW:
             image_path: 图片路径。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 移动偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
@@ -1403,7 +1412,7 @@ class BaseAW:
             image_path: 图片路径。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             index: 选择第几个匹配结果（从 0 开始）。
             offset: 点击偏移量 {"x": 0, "y": 0}。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
@@ -1426,7 +1435,7 @@ class BaseAW:
             image_path: 图片路径。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             index: 选择第几个匹配结果（从 0 开始）。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
@@ -1451,7 +1460,7 @@ class BaseAW:
             image_path: 图片路径。
             window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}。
             timeout: 超时时间（秒），默认 5。
-            confidence: 匹置信度（0-1），默认 0.8。
+            confidence: 匹置信度（0-1），默认 0.9。
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
             level: 执行层级（仅 Web），browser 或 system。
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
@@ -1658,12 +1667,17 @@ class BaseAW:
         """关闭当前页面（Web 端专用）。"""
         return self._exec("close_page", {}, {})
 
-    def cmd_exec(self, command: str, **kwargs) -> dict:
-        """在宿主机执行命令。"""
+    def cmd_exec(self, command: str, background: bool = False, **kwargs) -> dict:
+        """在宿主机执行命令。
+
+        Args:
+            command: 要执行的命令字符串。
+            background: 是否后台异步执行（不等待结果直接返回），默认 False。
+        """
         timeout_ms = kwargs.get("timeout", 30) * 1000
         return self._exec("cmd_exec",
-            {"value": command, "timeout": timeout_ms},
-            {"command": command, **kwargs})
+            {"value": command, "timeout": timeout_ms, "background": background},
+            {"command": command, "background": background, **kwargs})
 
     def activate_window(self, value: str, match_by: str = "title", name: Optional[str] = None) -> dict:
         """激活窗口（Windows/Mac/Web 平台支持）。
@@ -1708,9 +1722,9 @@ class BaseAW:
             platform = self.user.platform
 
         user_id = self.user.user_id if self.user else None
-        # iOS/Android 需要传递 device_id
+        # 需要 device_id 的平台才透传
         device_id = None
-        if platform in ("ios", "android") and self.user:
+        if platform in PLATFORMS_NEED_DEVICE_ID and self.user:
             device_id = self.user.device_id
 
         action_data = {

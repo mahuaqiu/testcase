@@ -84,7 +84,7 @@
 | `new_page()` | 创建新空白标签页（Web 端专用） |
 | `switched_page(page_index)` | 切换到指定页面（Web 端专用） |
 | `close_page()` | 关闭当前页面（Web 端专用） |
-| `cmd_exec(command, **kwargs)` | 在宿主机执行命令 |
+| `cmd_exec(command, background=False, **kwargs)` | 在宿主机执行命令；background=True 后台异步执行不等待结果 |
 | `screenshot()` | 截图并返回 base64 |
 | `activate_window(value, match_by="title", name=None)` | 激活窗口（Windows/Mac/Web），match_by 支持 title/class，name 可过滤进程 exe |
 
