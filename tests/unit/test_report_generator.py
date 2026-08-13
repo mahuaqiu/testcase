@@ -457,3 +457,94 @@ def test_direct_assert_does_not_reuse_previous_failed_aw_user():
 
     assert failure_scope["error_user_id"] == ""
     assert "user_id" not in error_logs[-1]
+
+
+def test_user_tag_tooltip_shows_ip_account_name():
+    """用户标签悬停 TIP 应显示 IP / 账号 / 姓名，缺省字段不渲染空行。"""
+    group = {
+        "ok": True,
+        "rows": [],
+        "children": [],
+        "user_id": "userA",
+        "user_platform": "windows",
+        "title": "执行登录操作",
+        "method_label": "LoginAW.do_login",
+        "duration_ms": 10,
+        "total_rows": 0,
+        "fail_total": 0,
+        "fail_rows": 0,
+    }
+    html = HTMLReportGenerator._render_group(
+        group,
+        "g1",
+        user_details={
+            "userA": {
+                "platform": "windows",
+                "display_platform": "windows",
+                "ip": "10.8.3.21",
+                "account": "138****2211",
+                "name": "张三",
+            }
+        },
+    )
+
+    assert "u-tip" in html
+    assert "10.8.3.21" in html
+    assert "138****2211" in html
+    assert "张三" in html
+
+
+def test_user_tag_tooltip_omits_missing_fields():
+    """无 IP 的用户（如 API 用户）TIP 只显示有值的字段，不出现空行。"""
+    group = {
+        "ok": True,
+        "rows": [],
+        "children": [],
+        "user_id": "userA_api",
+        "user_platform": "",
+        "title": "创建会议",
+        "method_label": "MeetingManageAW.do_create_meeting",
+        "duration_ms": 10,
+        "total_rows": 0,
+        "fail_total": 0,
+        "fail_rows": 0,
+    }
+    html = HTMLReportGenerator._render_group(
+        group,
+        "g1",
+        user_details={
+            "userA_api": {
+                "is_api": True,
+                "account": "138****2211",
+                "name": "张三",
+            }
+        },
+    )
+
+    assert "u-tip" in html
+    assert "138****2211" in html
+    assert "张三" in html
+
+
+def test_user_tag_tooltip_absent_when_no_user_info():
+    """用户信息全空时不渲染空 TIP。"""
+    group = {
+        "ok": True,
+        "rows": [],
+        "children": [],
+        "user_id": "userA",
+        "user_platform": "windows",
+        "title": "执行登录操作",
+        "method_label": "LoginAW.do_login",
+        "duration_ms": 10,
+        "total_rows": 0,
+        "fail_total": 0,
+        "fail_rows": 0,
+    }
+    html = HTMLReportGenerator._render_group(
+        group,
+        "g1",
+        user_details={"userA": {"platform": "windows"}},
+    )
+
+    assert "u-tip" not in html

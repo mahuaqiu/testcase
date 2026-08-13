@@ -524,6 +524,7 @@ def _generate_report(
         report_user_details[user_id] = {
             "name": user.name,
             "ip": user.ip,
+            "account": user.account,
             "platform": user.platform,
             # API 用户只用于 HTTP 数据操作，不展示关联 UI 用户的设备类型。
             "display_platform": "" if user.platform == "api" else user.platform,

@@ -576,8 +576,20 @@ class HTMLReportGenerator:
         user_label = user_id
         if platform and user_id:
             user_label = f"{user_id} · {HTMLReportGenerator._format_platform(platform)}"
+        # 悬停 TIP：补充 u-tag 未显示的 IP / 账号 / 姓名，有值才加行
+        tip_rows = []
+        for label, val in (
+            ("IP", detail.get("ip", "")),
+            ("账号", detail.get("account", "")),
+            ("姓名", detail.get("name", "")),
+        ):
+            if val:
+                tip_rows.append(
+                    f'<span class="u-tip-row"><b>{label}</b>{_esc(val)}</span>'
+                )
+        tip_html = f'<span class="u-tip">{"".join(tip_rows)}</span>' if tip_rows else ""
         user_tag = (
-            f'<span class="u-tag" style="background:{user_color}">{_esc(user_label)}</span>'
+            f'<span class="u-tag" style="background:{user_color}">{_esc(user_label)}{tip_html}</span>'
             if user_id else ""
         )
         method_label = (
@@ -778,6 +790,7 @@ class HTMLReportGenerator:
             for key, value in {
                 "name": args.get("user_name", ""),
                 "ip": args.get("user_ip", ""),
+                "account": args.get("user_account", ""),
                 "platform": args.get("user_platform", "") or args.get("platform", ""),
             }.items():
                 if value not in (None, "") and not current.get(key):
@@ -1132,6 +1145,25 @@ body {
 .g-title { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .g-method { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .u-tag { color: white; padding: 2px 9px; border-radius: 6px; font-weight: 600; font-size: 11.5px; flex-shrink: 0; }
+/* 用户标签悬停 TIP：报告较长时无需滚回顶部即可查看 IP/账号/姓名 */
+.u-tag { position: relative; cursor: default; }
+.u-tip {
+    display: none; position: absolute; top: calc(100% + 8px); left: 50%;
+    transform: translateX(-50%);
+    background: white; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; box-shadow: 0 4px 12px rgba(15,23,42,.12);
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+    white-space: nowrap; z-index: 20; min-width: 160px;
+    opacity: 0; transition: opacity .12s;
+    pointer-events: none;
+}
+.u-tip::before {
+    content: ""; position: absolute; top: -5px; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-bottom-color: white; border-top: 0;
+}
+.u-tag:hover .u-tip { display: block; opacity: 1; }
+.u-tip-row { display: flex; gap: 10px; line-height: 1.7; }
+.u-tip-row b { color: var(--ink-3); font-weight: 700; min-width: 28px; }
 .g-meta { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .g-meta .cnt b { color: var(--ink-2); }
 .g-meta .cnt .f { color: var(--red); font-weight: 700; }
