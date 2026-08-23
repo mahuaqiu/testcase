@@ -476,7 +476,11 @@ class HTMLReportGenerator:
             }
             if request_parts:
                 request_text = HTMLReportGenerator._format_value_for_display(request_parts)
-                kv_parts.append(f'<div><div class="k">HTTP 请求</div><pre class="v code-block">{_esc(request_text)}</pre></div>')
+                kv_parts.append(
+                    f'<div class="detail-block"><div class="k">HTTP 请求'
+                    f'<button class="copy-btn" onclick="copyText(this);event.stopPropagation()" title="复制">📋</button></div>'
+                    f'<pre class="v code-block">{_esc(request_text)}</pre></div>'
+                )
 
             status_code = result.get("status_code", "-")
             try:
@@ -486,7 +490,8 @@ class HTMLReportGenerator:
             body = HTMLReportGenerator._parse_json_value(result.get("body", ""))
             body_text = HTMLReportGenerator._format_value_for_display(body)
             response_html = (
-                '<div><div class="k">HTTP 响应</div>'
+                '<div class="detail-block"><div class="k">HTTP 响应'
+                '<button class="copy-btn" onclick="copyText(this);event.stopPropagation()" title="复制">📋</button></div>'
                 f'<div class="http-status {status_class}">状态码 {_esc(status_code)}</div>'
                 f'<pre class="v code-block http-body">{_esc(body_text or "（空响应体）")}</pre></div>'
             )
@@ -494,10 +499,18 @@ class HTMLReportGenerator:
         else:
             if clean_args:
                 request_text = HTMLReportGenerator._format_value_for_display(clean_args)
-                kv_parts.append(f'<div><div class="k">请求</div><pre class="v code-block">{_esc(request_text)}</pre></div>')
+                kv_parts.append(
+                    f'<div class="detail-block"><div class="k">请求'
+                    f'<button class="copy-btn" onclick="copyText(this);event.stopPropagation()" title="复制">📋</button></div>'
+                    f'<pre class="v code-block">{_esc(request_text)}</pre></div>'
+                )
             if clean_result:
                 result_text = HTMLReportGenerator._format_value_for_display(clean_result)
-                kv_parts.append(f'<div><div class="k">响应</div><pre class="v code-block">{_esc(result_text)}</pre></div>')
+                kv_parts.append(
+                    f'<div class="detail-block"><div class="k">响应'
+                    f'<button class="copy-btn" onclick="copyText(this);event.stopPropagation()" title="复制">📋</button></div>'
+                    f'<pre class="v code-block">{_esc(result_text)}</pre></div>'
+                )
         if kv_parts:
             parts.append(f'<div class="kv">{"".join(kv_parts)}</div>')
 
@@ -1217,7 +1230,15 @@ body {
 .row.fail + .row-detail { background: var(--red-bg); }
 .kv { display: flex; gap: 12px; flex-wrap: wrap; }
 .kv > div { flex: 1; min-width: 260px; }
-.k { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+.detail-block { position: relative; }
+.k { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+.copy-btn {
+    padding: 3px 8px; background: white; border: 1px solid var(--line); border-radius: 6px;
+    font-size: 11px; cursor: pointer; color: var(--ink-2); transition: .15s;
+    display: inline-flex; align-items: center; gap: 4px;
+}
+.copy-btn:hover { background: var(--ink); color: white; border-color: var(--ink); }
+.copy-btn.copied { background: var(--green); color: white; border-color: var(--green); }
 .row-detail .v, .err-box .v {
     background: white; border: 1px solid var(--line); border-radius: 8px;
     padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
@@ -1307,6 +1328,28 @@ function showImage(src) {
     const modal = document.getElementById('modal');
     document.getElementById('modal-img').src = src;
     modal.classList.add('show');
+}
+function copyText(btn) {
+    const block = btn.closest('.detail-block');
+    const pre = block.querySelector('pre.code-block');
+    if (!pre) return;
+
+    const text = pre.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = '✓ 已复制';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.classList.remove('copied');
+        }, 1500);
+    }).catch(err => {
+        console.error('复制失败:', err);
+        btn.textContent = '✗ 失败';
+        setTimeout(() => {
+            btn.textContent = '📋';
+        }, 1500);
+    });
 }
 document.getElementById('modal').addEventListener('click', function() {
     this.classList.remove('show');
