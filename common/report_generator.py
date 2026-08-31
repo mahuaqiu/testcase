@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 # 不在报告中显示的参数（内部参数或 base64 大数据）
 _HIDDEN_ARGS = {
     "user_id", "user_account", "user_name", "user_ip",
+    "device_sn", "device_id",
     "target_image", "image_base64", "screenshot", "error_screenshot",
     "platform",
 }
@@ -595,6 +596,7 @@ class HTMLReportGenerator:
             ("IP", detail.get("ip", "")),
             ("账号", detail.get("account", "")),
             ("姓名", detail.get("name", "")),
+            ("SN", detail.get("device_sn", "") or detail.get("device_id", "") or detail.get("sn", "")),
         ):
             if val:
                 tip_rows.append(
@@ -786,7 +788,7 @@ class HTMLReportGenerator:
                     continue
                 current = collected.setdefault(user_id, {})
                 for key, value in resource.items():
-                    if value not in (None, "") and key not in current:
+                    if value not in (None, "") and not current.get(key):
                         current[key] = value
                 if resource.get("device_type") and not current.get("platform"):
                     current["platform"] = resource["device_type"]
@@ -805,6 +807,7 @@ class HTMLReportGenerator:
                 "ip": args.get("user_ip", ""),
                 "account": args.get("user_account", ""),
                 "platform": args.get("user_platform", "") or args.get("platform", ""),
+                "device_sn": args.get("device_sn", "") or args.get("device_id", "") or args.get("sn", ""),
             }.items():
                 if value not in (None, "") and not current.get(key):
                     current[key] = value

@@ -460,7 +460,7 @@ def test_direct_assert_does_not_reuse_previous_failed_aw_user():
 
 
 def test_user_tag_tooltip_shows_ip_account_name():
-    """用户标签悬停 TIP 应显示 IP / 账号 / 姓名，缺省字段不渲染空行。"""
+    """用户标签悬停 TIP 应显示 IP / 账号 / 姓名 / SN，缺省字段不渲染空行。"""
     group = {
         "ok": True,
         "rows": [],
@@ -484,6 +484,7 @@ def test_user_tag_tooltip_shows_ip_account_name():
                 "ip": "10.8.3.21",
                 "account": "138****2211",
                 "name": "张三",
+                "device_sn": "WIN-SN-001",
             }
         },
     )
@@ -492,6 +493,38 @@ def test_user_tag_tooltip_shows_ip_account_name():
     assert "10.8.3.21" in html
     assert "138****2211" in html
     assert "张三" in html
+    assert "WIN-SN-001" in html
+    assert "<b>SN</b>" in html
+
+
+def test_user_tag_tooltip_omits_empty_sn():
+    """用户 SN 为空时，悬停 TIP 不显示 SN 字段。"""
+    group = {
+        "ok": True,
+        "rows": [],
+        "children": [],
+        "user_id": "userA",
+        "user_platform": "windows",
+        "title": "执行登录操作",
+        "method_label": "LoginAW.do_login",
+        "duration_ms": 10,
+        "total_rows": 0,
+        "fail_total": 0,
+        "fail_rows": 0,
+    }
+    html = HTMLReportGenerator._render_group(
+        group,
+        "g1",
+        user_details={
+            "userA": {
+                "platform": "windows",
+                "display_platform": "windows",
+                "device_sn": "",
+            }
+        },
+    )
+
+    assert "<b>SN</b>" not in html
 
 
 def test_user_tag_tooltip_omits_missing_fields():
