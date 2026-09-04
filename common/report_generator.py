@@ -668,7 +668,9 @@ class HTMLReportGenerator:
             return f'''
     <div class="phase-wrap">
         <div class="phase clickable" onclick="tp(this)"><span class="t">{_esc(time_str)}</span> {_esc(step_name)} <span class="phase-more">详情 ▾</span></div>
-        <pre class="phase-detail">{_esc(clean_detail)}</pre>
+        <div class="phase-detail-block"><div class="k">详情<button class="copy-btn" onclick="copyText(this);event.stopPropagation()" title="复制">📋</button></div>
+            <pre class="phase-detail">{_esc(clean_detail)}</pre>
+        </div>
     </div>'''
         return f'<div class="phase"><span class="t">{_esc(time_str)}</span> {_esc(step_name)}</div>'
 
@@ -1119,13 +1121,14 @@ body {
 .phase .t { font-weight: 400; font-variant-numeric: tabular-nums; }
 .phase.clickable { cursor: pointer; }
 .phase-more { color: var(--blue); font-weight: 400; }
+.phase-detail-block { display: none; margin: 6px 20px 4px; }
+.phase-wrap.open .phase-detail-block { display: block; }
 .phase-detail {
-    display: none; margin: 6px 20px 4px; padding: 10px 12px; background: white;
+    margin: 0; padding: 10px 12px; background: white;
     border: 1px solid var(--line); border-radius: 8px;
     font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
     white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto;
 }
-.phase-wrap.open .phase-detail { display: block; }
 .error-entry {
     padding: 8px 14px; background: var(--red-bg); border: 1px solid #fca5a5;
     border-radius: 10px; font-size: 12.5px; color: var(--red);
@@ -1134,20 +1137,22 @@ body {
 .empty-logs { text-align: center; color: var(--ink-3); padding: 40px 0; }
 
 /* ── 业务方法分组卡 ── */
+/* 不设 overflow: hidden，否则收起状态会裁掉 u-tag 悬停 TIP；圆角由 header/末行自带的 radius 补齐 */
 .group {
     background: white; border: 1px solid var(--line); border-radius: 12px;
-    overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    box-shadow: 0 1px 2px rgba(15,23,42,.04);
 }
 .group.failed { border-color: #fca5a5; box-shadow: 0 1px 6px rgba(220,38,38,.08); }
 /* 嵌套子卡片（AW 调用其它 AW） */
 .group.sub { margin: 6px 14px 6px 40px; border-radius: 10px; border-left: 3px solid var(--line); }
 .group.sub.failed { border-left-color: var(--red); }
-.group.sub > .group-header { padding: 8px 12px; }
+.group.sub > .group-header { padding: 8px 12px; border-radius: 9px 9px 0 0; }
 .group.sub .g-title { font-size: 13px; }
 .group.sub .row { padding-left: 32px; }
 .group-header {
     display: flex; align-items: center; gap: 10px; padding: 10px 14px;
     cursor: pointer; user-select: none; transition: background .15s;
+    border-radius: 11px 11px 0 0;
 }
 .group-header:hover { background: #f8fafc; }
 .chevron { color: var(--ink-3); font-size: 11px; transition: transform .2s; width: 12px; flex-shrink: 0; }
@@ -1192,6 +1197,9 @@ body {
 /* ── 组内原子操作行 ── */
 .rows { display: none; border-top: 1px solid var(--line); }
 .group.open .rows { display: block; }
+/* 卡片底部圆角由最后一个可见元素补齐（group 自身不再 overflow: hidden） */
+.rows > :last-child { border-radius: 0 0 11px 11px; }
+.group.sub > .rows > :last-child { border-radius: 0 0 9px 9px; }
 .row {
     display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 40px;
     font-size: 12.5px; cursor: pointer; border-top: 1px solid #f1f5f9; transition: background .1s;
@@ -1333,8 +1341,8 @@ function showImage(src) {
     modal.classList.add('show');
 }
 function copyText(btn) {
-    const block = btn.closest('.detail-block');
-    const pre = block.querySelector('pre.code-block');
+    const block = btn.closest('.detail-block, .phase-detail-block');
+    const pre = block ? block.querySelector('pre') : null;
     if (!pre) return;
 
     const text = pre.textContent;
