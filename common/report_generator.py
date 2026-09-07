@@ -45,6 +45,26 @@ class HTMLReportGenerator:
         return re.sub(r'iVBORw0KGgo[A-Za-z0-9+/=]{100,}', '[截图数据]', text)
 
     @staticmethod
+    def _format_error_body_html(text: str) -> str:
+        """把多行错误文本转为保留换行的 HTML，并按 pytest 风格分级高亮。
+
+        E 开头的行是真正的报错（加粗标红），纯 ^/~ 下划线行弱化，
+        其余 traceback 上下文行保持常规配色。
+        """
+        raw = HTMLReportGenerator._clean_text_for_display(text or "")
+        if not raw:
+            return ""
+        parts = []
+        for line in _esc(raw).split("\n"):
+            if re.match(r"^\s*[\^~]+\s*$", line):
+                parts.append(f'<span class="ec">{line}</span>')
+            elif line.lstrip().startswith("E ") or line.rstrip() == "E":
+                parts.append(f'<span class="ee">{line}</span>')
+            else:
+                parts.append(line)
+        return "\n".join(parts)
+
+    @staticmethod
     def _clean_response_for_display(response: Dict[str, Any]) -> Dict[str, Any]:
         """清理响应数据，移除大型 base64 数据用于显示。"""
         if not isinstance(response, dict):
@@ -678,18 +698,22 @@ class HTMLReportGenerator:
     def _render_error(log: Dict[str, Any]) -> str:
         """渲染 error 类型日志（带 user_id，切换用户时只显示对应错误）。"""
         time_str = log.get("time", "")
-        error = HTMLReportGenerator._clean_text_for_display(log.get("error", ""))
         user_id = log.get("user_id", "") or ""
         scope_class = "" if user_id else " global-error"
         user_tag = ""
         if user_id:
             color = HTMLReportGenerator._get_user_color(user_id)
             user_tag = (
-                f'<span class="u-tag" style="background:{color};margin-right:8px">'
+                f'<span class="u-tag" style="background:{color}">'
                 f'{_esc(user_id)}</span>'
             )
-        return f'''
-    <div class="error-entry{scope_class}" data-user="{_esc(user_id)}">{user_tag}<span class="t">{_esc(time_str)}</span> ⚠ {_esc(error)}</div>'''
+        return (
+            f'<div class="error-entry{scope_class}" data-user="{_esc(user_id)}">'
+            f'<div class="err-head">{user_tag}<span class="t">{_esc(time_str)}</span>'
+            f'<span class="err-badge">⚠ 错误</span></div>'
+            f'<pre class="err-body">{HTMLReportGenerator._format_error_body_html(log.get("error", ""))}</pre>'
+            '</div>'
+        )
 
     @staticmethod
     def _build_screenshots_html(logs: List[Dict[str, Any]], is_api_failure: bool = False) -> str:
@@ -929,15 +953,15 @@ class HTMLReportGenerator:
 
         error_box = ""
         if error_msg and not suppress_error_box:
-            clean_error = HTMLReportGenerator._clean_text_for_display(error_msg)
+            error_html = HTMLReportGenerator._format_error_body_html(error_msg)
             if error_user_id:
                 error_box = (
                     f'<div class="error-box" data-user="{_esc(error_user_id)}">'
-                    f'{_esc(clean_error)}</div>'
+                    f'{error_html}</div>'
                 )
             else:
                 # 直接 assert、框架异常等没有用户归属，切换用户时仍需显示。
-                error_box = f'<div class="error-box global-error">{_esc(clean_error)}</div>'
+                error_box = f'<div class="error-box global-error">{error_html}</div>'
 
         # 用户过滤按钮
         user_btns = "".join(
@@ -1088,9 +1112,11 @@ body {
 .error-box {
     margin-top: 14px; padding: 10px 14px; background: var(--red-bg);
     border: 1px solid #fca5a5; border-radius: 10px;
-    font-family: var(--mono); font-size: 12px; color: var(--red);
-    white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow: auto;
+    font-family: var(--mono); font-size: 12px; color: var(--red); line-height: 1.6;
+    white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto;
 }
+.error-box .ee { font-weight: 700; }
+.error-box .ec { opacity: .7; }
 
 /* ── 工具栏 ── */
 .toolbar {
@@ -1130,10 +1156,23 @@ body {
     white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto;
 }
 .error-entry {
-    padding: 8px 14px; background: var(--red-bg); border: 1px solid #fca5a5;
-    border-radius: 10px; font-size: 12.5px; color: var(--red);
+    padding: 10px 12px; background: var(--red-bg); border: 1px solid #fca5a5;
+    border-radius: 10px;
 }
-.error-entry .t { font-family: var(--mono); font-size: 11px; margin-right: 8px; color: var(--ink-3); }
+.error-entry .err-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.error-entry .t { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.err-badge {
+    font-size: 11px; font-weight: 700; color: var(--red);
+    background: var(--red-soft); padding: 2px 8px; border-radius: 5px;
+}
+.err-body {
+    margin: 0; padding: 10px 12px; background: white; border: 1px solid #fecaca;
+    border-radius: 8px; font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+    color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere;
+    max-height: 320px; overflow: auto;
+}
+.err-body .ee { color: var(--red); font-weight: 700; }
+.err-body .ec { color: #f87171; }
 .empty-logs { text-align: center; color: var(--ink-3); padding: 40px 0; }
 
 /* ── 业务方法分组卡 ── */
