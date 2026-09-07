@@ -1,8 +1,5 @@
 # testcase 工程配置文件
 
-# 运行环境配置（可通过 --exeParam='{"env":"prod","namespace":"xxx","env_auth":"xxx"}' 覆盖）
-env: "test"
-
 # 资源管理服务配置
 resource_manager:
   # 资源管理服务地址，为空时使用 mock_users 本地调试
@@ -66,8 +63,3 @@ hooks:
 testagent:
   connect_timeout: 15  # TCP 连接超时（秒）
   read_timeout: 125    # 读取响应超时（秒）
-
-# 测试配置
-test:
-  screenshot_dir: "screenshots"
-  screenshot_on_failure: true

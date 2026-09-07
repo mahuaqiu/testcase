@@ -148,12 +148,6 @@ class ConfigLoader:
                 os.environ["RESOURCE_MANAGER_URL"]
             )
 
-        # testagent 服务地址
-        if os.environ.get("TESTAGENT_URL"):
-            self._config.setdefault("testagent", {})["base_url"] = (
-                os.environ["TESTAGENT_URL"]
-            )
-
         # 超时时间
         if os.environ.get("RESOURCE_MANAGER_TIMEOUT"):
             self._config.setdefault("resource_manager", {})["timeout"] = int(
