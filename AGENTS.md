@@ -348,10 +348,17 @@ hooks:
   windows:
     setup: ["start_app"]
     teardown: ["stop_app"]
+    # app_type: hook 目标方法签名含 app_type 参数时自动注入的值；
+    # 未配置的平台不传该参数（目前仅 windows 配置）
+    app_type: "TestAapp1"
   api:
     setup: []
     teardown: ["cancel_all_meetings"]
 ```
+
+`app_type` 与 `setup` / `teardown` 同级。执行 hook 时若目标方法
+（`do_{name}`）签名中声明了 `app_type` 参数且平台配置了该值，框架自动
+以 kwargs 传入；方法没有该参数或平台未配置时不传。
 
 ### 7.3 用例级别覆盖
 
@@ -368,22 +375,47 @@ hooks:
 # 组合
 @pytest.mark.hooks(setup=["-start_app", "+custom_hook"])
 
-# 带参数
+# 带单个参数
 @pytest.mark.hooks(setup=[{"start_app": "edge"}])
+
+# 带多个参数（列表按位置参数展开）
+@pytest.mark.hooks(setup=[{"set_waiting_room": ["cid", "pwd", True]}])
 ```
+
+hook 项参数格式：
+
+| 格式 | 调用方式 |
+|------|----------|
+| `"hook"` | `do_hook()` |
+| `{"hook": "edge"}` | `do_hook("edge")` |
+| `{"hook": ["a", "b", True]}` | `do_hook("a", "b", True)` |
+| `{"hook": True}` | `do_hook()`（布尔标记，启用无参 hook） |
 
 ### 7.4 按用户 / 按平台控制（多用户场景）
 
 多端或多用户时，可在 `@pytest.mark.hooks` 中按 **user_id** 或 **platform** 精细控制谁执行哪些 setup/teardown。
 
-**合并优先级**（对每个用户独立计算）：
+**合并优先级**（对每个用户独立计算，共五类层）：
 
 ```
-① config.yaml 平台默认
-② 用例全局 setup / teardown
-③ 用例平台键（如 windows=...）
-④ 用例用户键（如 userA=...）← 最终层
+① config.yaml 平台默认                    ← 优先级最低
+② 用例目录 conftest 层（外层 → 内层）
+③ 用例全局 setup / teardown
+④ 用例平台键（如 windows=...）
+⑤ 用例用户键（如 userA=...）              ← 优先级最高
 ```
+
+所有层**全部叠加生效**：不重复的 hook 都会执行；重复声明的按上述顺序
+覆盖（用例层 > 内层 conftest > 外层 conftest > config.yaml）。②③④⑤
+每层的键结构与合并规则完全一致（`+` 增量、`-` 移除、无前缀覆盖、字典
+参数），目录 conftest 层可理解为「写在 conftest 里的
+@pytest.mark.hooks」。
+
+**teardown 执行顺序**：跨用户保持 API 用户优先；同一用户内，**用例
+标记层（③④⑤）声明的 teardown 增量项先于 conftest 层/平台默认层的
+teardown 执行**（前插且保持声明顺序），例如用例写 `teardown=["+leave"]`
+时最终顺序为 `leave → stop_app`。conftest 各层与平台默认之间按常规
+顺序执行（外层 conftest 先于内层）。setup 不前插，按层顺序正常追加。
 
 ```python
 @pytest.mark.users({"userA": "windows", "userB": "mac"})
@@ -409,10 +441,35 @@ hooks:
 |------|------|
 | 仅写 user 键 | 允许；其它用户只吃平台默认 |
 | API 用户独立 | `userA` 不影响 `userA_api`；改 API 需写 `userA_api=...` 或 `api=...` |
-| 未知 user 键 | 直接 fail（必须在 `users` 中声明） |
-| hook 项格式 | 与全局相同：`"+x"` / `"-x"` / `{"x": arg}` |
+| 未知 user 键 | 直接 fail（必须在 `users` 中声明，conftest 层同样校验） |
+| hook 项格式 | 与全局相同：`"+x"` / `"-x"` / `{"x": arg}` / `{"x": [a, b]}` |
 
-### 7.5 自定义 Hook 方法
+### 7.5 目录级 conftest hooks（可选的公共层）
+
+用例目录下可放一个 `conftest.py`，定义 `get_hooks()`，为该目录下所有
+用例提供一层公共 hooks，避免每个用例重复声明。用法与用例标记完全一致：
+
+```python
+# testcases/web/waitingroom/conftest.py
+def get_hooks():
+    return {
+        "setup": ["+prepare_env"],          # 全局层
+        "web": {"teardown": ["+cleanup_env"]},  # 平台键
+        # userA={"setup": ["+login"]},      # 用户键同样支持
+    }
+```
+
+规则：
+
+- **多级全部生效**：用例目录到工程根之间所有定义了 `get_hooks()` 的
+  conftest 层全部叠加，由外到内依次应用，内层优先级高于外层
+  （不重复的都执行，重复的按层级覆盖）
+- 未定义 `get_hooks()` 或返回非字典的层跳过，不影响其它层
+- 与 `get_namespace()` 可在同一目录 conftest 中共存（namespace 仍为
+  就近取一层）
+- 不需要目录 conftest 时不用建；仅当需要公共层时自行添加
+
+### 7.6 自定义 Hook 方法
 
 在 AW 层创建 `do_{hook_name}` 方法：
 
@@ -428,6 +485,11 @@ class InitAW(BaseAW):
     def do_stop_app(self, browser: str = "chrome") -> None:
         """关闭浏览器。"""
         self.stop_app(browser)
+
+    # 需要 app_type 时，签名中声明该参数即可自动接收平台配置值
+    def do_start_with_type(self, app_type: str = None) -> None:
+        """按 app_type 启动应用。"""
+        ...
 ```
 
 配置中使用不带前缀的名称：`start_app` → 调用 `do_start_app()`

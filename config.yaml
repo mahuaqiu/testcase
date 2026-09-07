@@ -36,6 +36,9 @@ hooks:
   windows:
     setup: ["start_app"]
     teardown: ["stop_app"]
+    # app_type: hook 目标方法签名含 app_type 参数时自动注入的值，
+    # 未配置的平台不传该参数
+    app_type: "TestAapp1"
   web:
     setup: ["start_app"]
     teardown: ["stop_app"]

@@ -9,74 +9,121 @@ class HooksResolver:
     合并平台默认 hooks 和用例级别 hooks。
     支持字符串和字典格式的 hooks：
     - 字符串: "start_app" - 使用默认参数
-    - 字典: {"start_app": "edge"} - 传入参数
+    - 字典: {"start_app": "edge"} - 传入单个参数
+    - 字典: {"create_meeting": ["a", "b"]} - 列表按位置参数展开（多参数）
 
-    用例级支持四层合并：
-    平台默认 → 全局 setup/teardown → 平台键 → 用户键。
+    解析支持分层合并：
+    平台默认 → 目录 conftest 层 → 全局 setup/teardown → 平台键 → 用户键。
+    目录 conftest 层与用例标记层使用同一套键结构和合并规则，通过
+    resolve + apply_case 两遍组合实现叠加。
     """
 
     @staticmethod
     def resolve(
         platform: str,
-        default_hooks: Dict[str, Dict[str, List[Any]]],
+        default_hooks: Dict[str, Dict[str, Any]],
         case_hooks: Dict[str, Any] = None,
         user_id: str = None,
-    ) -> Dict[str, List[Any]]:
-        """解析最终的 hooks 列表。
-
-        支持四层合并：平台默认 → 全局 case → 平台键 → 用户键。
+    ) -> Dict[str, Any]:
+        """在平台默认 hooks 上叠加一层 case hooks。
 
         Args:
             platform: 用户所在平台。
-            default_hooks: 平台默认 hooks 配置。
-            case_hooks: 用例级别的 hooks 标记（含 setup/teardown/userX/platformY 等键）。
+            default_hooks: 平台默认 hooks 配置（config.yaml 的 hooks 段）。
+            case_hooks: 一层 case hooks（目录 conftest 的 get_hooks() 或用例标记）。
             user_id: 当前用户 ID（用于定位用户层覆盖）。
 
         Returns:
-            最终的 hooks 字典: {"setup": [...], "teardown": [...]}
+            最终的 hooks 字典: {"setup": [...], "teardown": [...], "app_type": ...}
         """
-        result = {"setup": [], "teardown": []}
-
-        # 1. 获取平台默认 hooks
         platform_defaults = default_hooks.get(platform, {})
-        result["setup"] = list(platform_defaults.get("setup", []))
-        result["teardown"] = list(platform_defaults.get("teardown", []))
+        base = {
+            "setup": list(platform_defaults.get("setup", [])),
+            "teardown": list(platform_defaults.get("teardown", [])),
+        }
+        if platform_defaults.get("app_type"):
+            base["app_type"] = platform_defaults["app_type"]
+        return HooksResolver.apply_case(
+            base, case_hooks, list(default_hooks.keys()),
+            platform=platform, user_id=user_id
+        )
+
+    @staticmethod
+    def apply_case(
+        base: Dict[str, Any],
+        case_hooks: Dict[str, Any],
+        known_platforms: Iterable[str],
+        platform: str = None,
+        user_id: str = None,
+        teardown_prepend: bool = False,
+    ) -> Dict[str, Any]:
+        """在已解析的 base 上叠加一层 case hooks（全局 → 平台键 → 用户键）。
+
+        Args:
+            base: 底层 hooks（平台默认，或已叠加目录 conftest 层的结果）。
+            case_hooks: 一层 case hooks，键结构同 @pytest.mark.hooks。
+            known_platforms: 已知平台名集合（用于区分平台键和用户键）。
+            user_id: 当前用户 ID。
+            teardown_prepend: True 时本层 teardown 的增量项前插到列表头部，
+                即本层 teardown 先于 base 中的 teardown 执行。用于用例标记层
+                的 teardown 优先执行；setup 及目录 conftest 层不受影响。
+
+        Returns:
+            最终的 hooks 字典: {"setup": [...], "teardown": [...], "app_type": ...}
+        """
+        result = {
+            "setup": list(base.get("setup", [])),
+            "teardown": list(base.get("teardown", [])),
+        }
+        if base.get("app_type") is not None:
+            result["app_type"] = base["app_type"]
 
         if not case_hooks:
             return result
 
         # 拆分 case_hooks（全局 / 平台 / 用户）
         global_hooks, platform_hooks, user_hooks = HooksResolver.split_case_hooks(
-            case_hooks, list(default_hooks.keys())
+            case_hooks, known_platforms
         )
 
-        # 2. 全局层（setup/teardown）
+        # 1. 全局层（setup/teardown）
         for hook_type in ["setup", "teardown"]:
             case_list = global_hooks.get(hook_type, [])
             if case_list:
-                HooksResolver._apply_case_hooks(result, hook_type, case_list)
+                HooksResolver._apply_case_hooks(result, hook_type, case_list, prepend=teardown_prepend and hook_type == "teardown")
 
-        # 3. 平台键覆盖（windows/mac/web/api 等）
-        if platform in platform_hooks:
+        # 2. 平台键覆盖（windows/mac/web/api 等）
+        if platform and platform in platform_hooks:
             for hook_type in ["setup", "teardown"]:
                 case_list = platform_hooks[platform].get(hook_type, [])
                 if case_list:
-                    HooksResolver._apply_case_hooks(result, hook_type, case_list)
+                    HooksResolver._apply_case_hooks(result, hook_type, case_list, prepend=teardown_prepend and hook_type == "teardown")
 
-        # 4. 用户键覆盖（userA/userB/userA_api 等）
+        # 3. 用户键覆盖（userA/userB/userA_api 等）
         if user_id and user_id in user_hooks:
             for hook_type in ["setup", "teardown"]:
                 case_list = user_hooks[user_id].get(hook_type, [])
                 if case_list:
-                    HooksResolver._apply_case_hooks(result, hook_type, case_list)
+                    HooksResolver._apply_case_hooks(result, hook_type, case_list, prepend=teardown_prepend and hook_type == "teardown")
 
         return result
 
     @staticmethod
     def _apply_case_hooks(
-        result: Dict[str, List[Any]], hook_type: str, case_list: List[Any]
+        result: Dict[str, List[Any]],
+        hook_type: str,
+        case_list: List[Any],
+        prepend: bool = False,
     ) -> None:
-        """应用单层 case hooks（复用原有逻辑，避免四层重复代码）。"""
+        """应用单层 case hooks（复用原有逻辑，避免各层重复代码）。
+
+        Args:
+            result: 累积中的 hooks 字典。
+            hook_type: "setup" 或 "teardown"。
+            case_list: 本层该类型的 hooks 列表。
+            prepend: True 时增量项（+ 前缀）插入列表头部，保持声明顺序，
+                使本层 teardown 先于已有 teardown 执行。
+        """
         if not case_list:
             return
 
@@ -130,6 +177,7 @@ class HooksResolver:
                     h for h in result[hook_type]
                     if not (h == item or (isinstance(h, dict) and item in h))
                 ]
+            new_items = []
             for item in to_add:
                 # 添加新 hook（去除前缀）
                 if isinstance(item, dict):
@@ -149,10 +197,16 @@ class HooksResolver:
                 )
                 exists = any(
                     h == hook_name or (isinstance(h, dict) and hook_name in h)
-                    for h in result[hook_type]
+                    for h in result[hook_type] + new_items
                 )
                 if not exists:
-                    result[hook_type].append(clean_item)
+                    new_items.append(clean_item)
+            if new_items:
+                if prepend:
+                    # 前插且保持声明顺序
+                    result[hook_type][0:0] = new_items
+                else:
+                    result[hook_type].extend(new_items)
 
     @staticmethod
     def split_case_hooks(

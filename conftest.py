@@ -12,6 +12,7 @@ import pytest
 import json
 
 from common.config_loader import ConfigLoader
+from common.runtime import get_config, get_exe_param, set_exe_param
 from common.testagent_client import is_retryable_transport_error
 from common.user_manager import UserManager
 from common.user import User
@@ -35,25 +36,10 @@ class HookFailureError(Exception):
         super().__init__(f"Hook [{hook_type}/{hook_name}] 执行失障: {original_error}")
 
 
-# ── 全局配置 ─────────────────────────────────────────
+# ── 全局状态 ─────────────────────────────────────────
 
-_config = None
 _keepalive_managers: Dict[str, KeepAliveManager] = {}
 _test_results: Dict[str, Dict[str, Any]] = {}  # 存储测试结果
-_exe_param: Dict[str, Any] = {}  # 存储 exeParam 参数解析结果
-
-
-def get_config() -> Dict[str, Any]:
-    """获取全局配置（单例）。"""
-    global _config
-    if _config is None:
-        _config = ConfigLoader().load()
-    return _config
-
-
-def get_exe_param() -> Dict[str, Any]:
-    """获取 exeParam 参数（解析后的 JSON 字典）。"""
-    return _exe_param
 
 
 # ── 命令行参数注册 ─────────────────────────────────────────
@@ -72,8 +58,6 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """注册自定义标记，解析命令行参数。"""
-    global _exe_param
-
     # 注册自定义标记
     config.addinivalue_line(
         "markers", "users: 用户资源需求标记，如 @pytest.mark.users({'userA': 'web'})"
@@ -90,15 +74,17 @@ def pytest_configure(config):
     # 解析 exeParam 参数
     exe_param_str = config.getoption("--exeParam", default="{}")
     try:
-        _exe_param = json.loads(exe_param_str) if exe_param_str else {}
+        exe_param = json.loads(exe_param_str) if exe_param_str else {}
     except json.JSONDecodeError as e:
         print(f"[警告] exeParam 参数解析失败，将使用空字典: {e}")
-        _exe_param = {}
+        exe_param = {}
+
+    set_exe_param(exe_param)
 
     # exeParam 参数更新全局配置；namespace/env_auth 支持顶层短写。
-    if _exe_param:
+    if exe_param:
         cfg = get_config()  # 先加载配置
-        _apply_exe_param_overrides(cfg, _exe_param)
+        _apply_exe_param_overrides(cfg, exe_param)
 
 
 # ── 用户资源 Fixture ─────────────────────────────────
@@ -191,14 +177,18 @@ def users(request) -> Dict[str, User]:
         # 执行 setup hooks
         hooks_config = config.get("hooks", {})
         case_hooks = _get_case_hooks(request.node)
+        conftest_hook_layers = _get_conftest_hook_layers(request.node)
+        if conftest_hook_layers:
+            logger.log_step("加载目录 conftest hooks", json.dumps(conftest_hook_layers, ensure_ascii=False))
 
-        # 校验用户键合法性（引用未声明用户时直接 fail）
+        # 校验用户键合法性（引用未声明用户时直接 fail，各层 hooks 都校验）
         try:
-            HooksResolver.validate_user_keys(
-                case_hooks,
-                user_instances.keys(),
-                list(hooks_config.keys()),
-            )
+            for hooks_src in (*conftest_hook_layers, case_hooks):
+                HooksResolver.validate_user_keys(
+                    hooks_src,
+                    user_instances.keys(),
+                    list(hooks_config.keys()),
+                )
         except ValueError as e:
             pytest.fail(str(e))
 
@@ -206,9 +196,12 @@ def users(request) -> Dict[str, User]:
         setup_error = None
 
         for user_id, user in user_instances.items():
-            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
+            final_hooks = _resolve_final_hooks(user, user_id, hooks_config, conftest_hook_layers, case_hooks)
             try:
-                _execute_hooks(user, final_hooks.get("setup", []), hook_type="setup", user_id=user_id)
+                _execute_hooks(
+                    user, final_hooks.get("setup", []), hook_type="setup",
+                    user_id=user_id, app_type=final_hooks.get("app_type"),
+                )
             except HookFailureError as e:
                 setup_failed = True
                 setup_error = e
@@ -225,9 +218,12 @@ def users(request) -> Dict[str, User]:
                 # 非连接错误时，执行 teardown 清理资源
                 # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
                 for user_id, user in _sort_users_for_teardown(user_instances):
-                    final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
+                    final_hooks = _resolve_final_hooks(user, user_id, hooks_config, conftest_hook_layers, case_hooks)
                     try:
-                        _execute_hooks(user, final_hooks.get("teardown", []), hook_type="teardown", user_id=user_id)
+                        _execute_hooks(
+                            user, final_hooks.get("teardown", []), hook_type="teardown",
+                            user_id=user_id, app_type=final_hooks.get("app_type"),
+                        )
                     except HookFailureError:
                         pass  # teardown 失障也记录，但不影响流程
 
@@ -253,10 +249,11 @@ def users(request) -> Dict[str, User]:
             if not user._used:
                 continue
 
-            final_hooks = HooksResolver.resolve(user.platform, hooks_config, case_hooks, user_id=user_id)
+            final_hooks = _resolve_final_hooks(user, user_id, hooks_config, conftest_hook_layers, case_hooks)
             try:
                 _execute_hooks(
-                    user, final_hooks.get("teardown", []), hook_type="teardown", user_id=user_id
+                    user, final_hooks.get("teardown", []), hook_type="teardown",
+                    user_id=user_id, app_type=final_hooks.get("app_type"),
                 )
             except HookFailureError as e:
                 teardown_failed = True
@@ -398,6 +395,108 @@ def _get_case_hooks(node) -> Dict[str, Any]:
     return marker.args[0] if marker.args else marker.kwargs
 
 
+def _load_dir_conftest_modules(node, attr_name: str) -> list:
+    """收集用例目录到工程根之间所有定义了指定属性的目录级 conftest 模块。
+
+    从用例文件所在目录逐级向上（排除工程根 conftest），通过 importlib
+    加载。某个 conftest 加载失败时跳过继续向上，与 pytest 自身的
+    conftest 加载互不影响。
+
+    Args:
+        node: pytest node 对象。
+        attr_name: 需要的属性名，如 "get_namespace" / "get_hooks"。
+
+    Returns:
+        定义了该属性的模块列表，按从近到远排序。
+    """
+    import importlib.util
+
+    modules = []
+    test_file_path = Path(node.fspath) if hasattr(node, "fspath") else Path(node.path)
+    for parent in test_file_path.parents:
+        conftest_path = parent / "conftest.py"
+        if conftest_path.exists() and conftest_path != Path(__file__):
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "dir_conftest", conftest_path
+                )
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                if hasattr(module, attr_name):
+                    modules.append(module)
+            except Exception:
+                # 目录 conftest 加载失败，继续向上查找
+                continue
+    return modules
+
+
+def _get_namespace_dir_conftest(node):
+    """获取最近一个定义了 get_namespace 的目录 conftest 模块。"""
+    modules = _load_dir_conftest_modules(node, "get_namespace")
+    return modules[0] if modules else None
+
+
+def _get_conftest_hook_layers(node) -> list:
+    """收集目录级 conftest 定义的 hooks 层（多级全部生效）。
+
+    目录 conftest.py 中定义 `get_hooks()`，返回与 @pytest.mark.hooks
+    同构的字典（setup/teardown/平台键/用户键）。
+
+    Returns:
+        hooks 层列表，按从外到内（远→近）排序，内层优先级更高；
+        无目录 conftest 或均未定义 get_hooks 时为 []。
+    """
+    modules = _load_dir_conftest_modules(node, "get_hooks")
+    layers = []
+    for module in reversed(modules):
+        try:
+            hooks = module.get_hooks()
+        except Exception:
+            continue
+        if isinstance(hooks, dict):
+            layers.append(hooks)
+    return layers
+
+
+def _resolve_final_hooks(
+    user: User,
+    user_id: str,
+    hooks_config: Dict[str, Any],
+    conftest_hook_layers: list,
+    case_hooks: Dict[str, Any],
+) -> Dict[str, Any]:
+    """逐层合并出用户最终 hooks。
+
+    合并顺序（优先级从低到高，重复项按此顺序覆盖，不重复的全部执行）：
+
+    config.yaml 平台默认 → 最外层 conftest → … → 最内层 conftest
+    → 用例标记（全局 → 平台键 → 用户键）。
+
+    conftest 各层之间按正常顺序合并（teardown 外层先执行）；用例标记层
+    的 teardown 增量前插，保证用例里写的 teardown 优先执行。
+
+    Args:
+        user: User 实例。
+        user_id: 用户 ID。
+        hooks_config: config.yaml 的 hooks 段。
+        conftest_hook_layers: 目录 conftest hooks 层列表（远→近）。
+        case_hooks: 用例 @pytest.mark.hooks 标记。
+
+    Returns:
+        最终 hooks 字典: {"setup": [...], "teardown": [...], "app_type": ...}
+    """
+    known_platforms = list(hooks_config.keys())
+    base = HooksResolver.resolve(user.platform, hooks_config)
+    for layer in conftest_hook_layers:
+        base = HooksResolver.apply_case(
+            base, layer, known_platforms, platform=user.platform, user_id=user_id
+        )
+    return HooksResolver.apply_case(
+        base, case_hooks, known_platforms,
+        platform=user.platform, user_id=user_id, teardown_prepend=True,
+    )
+
+
 def _apply_exe_param_overrides(config: Dict[str, Any], exe_param: Dict[str, Any]) -> None:
     """将 exeParam 覆盖到全局配置。
 
@@ -434,24 +533,10 @@ def _get_namespace(node, config) -> str:
     if marker:
         return marker.args[0] if marker.args else marker.kwargs.get("value")
 
-    # 2. 目录级 conftest（向上查找最近的 conftest.py）
-    import importlib.util
-
-    test_file_path = Path(node.fspath) if hasattr(node, "fspath") else Path(node.path)
-    for parent in test_file_path.parents:
-        conftest_path = parent / "conftest.py"
-        if conftest_path.exists() and conftest_path != Path(__file__):
-            try:
-                spec = importlib.util.spec_from_file_location(
-                    "dir_conftest", conftest_path
-                )
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                if hasattr(module, "get_namespace"):
-                    return module.get_namespace()
-            except Exception:
-                # 目录 conftest 加载失败，继续向上查找
-                continue
+    # 2. 目录级 conftest（向上查找最近定义 get_namespace 的 conftest）
+    module = _get_namespace_dir_conftest(node)
+    if module is not None:
+        return module.get_namespace()
 
     # 3. 全局配置
     return config.get("resource_manager", {}).get("namespace", "default")
@@ -567,18 +652,27 @@ def _sort_users_for_teardown(user_instances: Dict[str, User]):
     return api_users + other_users
 
 
-def _execute_hooks(user: User, hooks: list, hook_type: str = "setup", user_id: Optional[str] = None) -> None:
+def _execute_hooks(
+    user: User,
+    hooks: list,
+    hook_type: str = "setup",
+    user_id: Optional[str] = None,
+    app_type: Optional[str] = None,
+) -> None:
     """执行 hooks 方法。
 
     支持两种格式：
     - 字符串: "start_app" - 使用默认参数
-    - 字典: {"start_app": "edge"} - 传入参数
+    - 字典: {"start_app": "edge"} - 传入单个参数
+    - 字典: {"create_meeting": ["a", "b"]} - 列表按位置参数展开（多参数）
 
     Args:
         user: User 实例。
         hooks: hooks 列表。
         hook_type: hook 类型 ("setup" 或 "teardown")，用于异常信息。
         user_id: 用户ID，用于错误日志跟随用户显示。
+        app_type: 平台默认配置的 app_type；目标方法签名含 app_type 参数
+            且该值存在时以 kwargs 自动注入。
 
     Raises:
         HookFailureError: hook 执行失障时抛出。
@@ -603,7 +697,7 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup", user_id: O
 
             for attempt in range(max_retries + 1):
                 try:
-                    _invoke_hook(method, hook_arg)
+                    _invoke_hook(method, hook_arg, app_type=app_type)
                     break  # 成功则跳出循环
                 except Exception as e:
                     import errno
@@ -632,19 +726,38 @@ def _execute_hooks(user: User, hooks: list, hook_type: str = "setup", user_id: O
                         raise HookFailureError(hook_name, e, hook_type)
 
 
-def _invoke_hook(method, hook_arg) -> None:
-    """调用 hook 方法，兼容无参方法使用布尔字典标记的写法。"""
+def _invoke_hook(method, hook_arg, app_type: Optional[str] = None) -> None:
+    """调用 hook 方法。
+
+    hook_arg 支持三种形式：
+    - None: 无参调用
+    - list/tuple: 按位置参数展开（多参数函数）；绑定失败直接抛错，不降级
+    - 其它单值: 单个位置参数；绑定失败时降级为无参调用（兼容
+      {"hook": True} 布尔标记写法）
+
+    app_type 来自平台默认配置（config.yaml hooks 段）；目标方法签名含
+    app_type 参数且配置有值时以 kwargs 注入，否则不传。
+    """
+    import inspect
+
+    sig = inspect.signature(method)
+    kwargs = {}
+    if app_type is not None and "app_type" in sig.parameters:
+        kwargs["app_type"] = app_type
+
     if hook_arg is None:
-        method()
+        method(**kwargs)
+        return
+
+    if isinstance(hook_arg, (list, tuple)):
+        method(*hook_arg, **kwargs)
         return
 
     # 字典格式通常表示一个位置参数；若目标 hook 本身是无参方法，
     # 允许使用 {"hook_name": True} 表示启用该 hook。
-    import inspect
-
     try:
-        inspect.signature(method).bind(hook_arg)
+        sig.bind(hook_arg, **kwargs)
     except (TypeError, ValueError):
-        method()
+        method(**kwargs)
     else:
-        method(hook_arg)
+        method(hook_arg, **kwargs)

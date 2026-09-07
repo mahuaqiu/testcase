@@ -69,11 +69,16 @@ hooks:
   web:
     setup: ["start_app"]
     teardown: ["stop_app"]
+  windows:
+    setup: ["start_app"]
+    teardown: ["stop_app"]
+    # app_type: hook 方法签名含 app_type 参数时自动注入，未配置不传
+    app_type: "TestAapp1"
   api:
     teardown: ["cancel_all_meetings"]
 ```
 
-用例级别覆盖：
+用例级别覆盖（参数支持单值、多参列表 `{"hook": ["a", "b"]}`）：
 ```python
 @pytest.mark.hooks(setup=["+custom_hook"], teardown=["-stop_app"])
 ```
@@ -88,7 +93,21 @@ hooks:
 )
 ```
 
-优先级：平台默认 → 全局 hooks → 平台键 → 用户键。`userA` 不影响 `userA_api`。
+优先级（全部叠加生效，重复时按序覆盖）：config.yaml 平台默认 → 外层
+目录 conftest → 内层目录 conftest → 全局 hooks → 平台键 → 用户键
+（用例层最高）。
+`userA` 不影响 `userA_api`。用例标记层的 teardown 增量项先于 conftest
+层/平台默认层的 teardown 执行（前插）；conftest 各层按外→内顺序执行；
+setup 按层顺序正常追加。
+
+目录 conftest 公共层：用例目录下的 `conftest.py` 定义 `get_hooks()`（键
+结构与用例标记一致），多级 conftest 全部叠加（内层优先），为该目录所有
+用例提供公共 hooks：
+```python
+# testcases/web/waitingroom/conftest.py
+def get_hooks():
+    return {"setup": ["+prepare_env"], "web": {"teardown": ["+cleanup_env"]}}
+```
 
 ## API AW
 
