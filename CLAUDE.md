@@ -1,150 +1,56 @@
 # CLAUDE.md
 
-## 项目概述
+多端自动化测试工程：testcases 层用 pytest 写用例，AW 层封装业务操作，通过 HTTP
+调用 testagent Worker 在 Web/Windows/Mac/iOS/Android 等多端执行。
 
-多端自动化测试框架，支持 Web/Windows/Mac/iOS/Android 五端。通过 HTTP 调用 testagent Worker 服务执行自动化操作。
+**完整规范见 [AGENTS.md](AGENTS.md)，本文档只是速查要点。**
 
-## 架构：两层结构
+## 核心规则速记
 
-```
-testcases/                    # 测试用例目录
-├── {平台}/                   # windows/web/mac/ios/android
-│   └── {业务模块}/           # 如 login, meeting, share 等
-│       └── test_*.py        # 测试用例文件
-└── integration/              # 跨平台集成测试
+- **一个测试文件 = 一条测试用例**：`test_{功能}_{场景}_{编号}.py`，类固定 `TestClass`，
+  方法 `test_{文件名}`
+- **AW 方法前缀**：业务 `do_`、断言 `should_`，中文 docstring（首行自动作为报告步骤标题）
+- **测试只调 User 实例**：`users["userA"].do_login()`，不直接调 testagent_client；
+  `userA_api` 随 `userA` 自动创建（API 数据准备/清理）
+- **用户声明**：`@pytest.mark.users({"userA": "web"})`，User 属性见 AGENTS.md 5.1
+- **并行**：`with parallel():` 块内只放操作（多用户登录/入会等），验证放块外顺序执行
+- **Hooks**：`@pytest.mark.hooks(setup=["+x", "-y", {"z": arg}])`；目录 conftest 用
+  `get_hooks()` 提供公共层，多级全部叠加，用例层 > 内层 conftest > 外层 > config.yaml
+- **配置读取**：用例/AW/目录 conftest 一律 `from common.runtime import get_config,
+  get_exe_param`，不要 `from conftest import`（模块名冲突）
 
-aw/                          # 业务操作封装层
-├── base_aw.py               # AW 基类
-├── common/                  # 公共 AW
-├── api/                     # API 平台 AW（HTTP 接口封装）
-└── {平台}/                   # windows/web/mac/ios/android
-    └── {业务模块}_aw.py      # 如 login_aw.py
-```
-
-**核心原则**：
-- 一个测试文件 = 一条测试用例
-- 测试用例通过 User 实例调用 AW 方法
-- AW 类继承 BaseAW，使用便捷方法（`self.ocr_click(text)` 而非 `self.client.ocr_click(platform, text)`）
-
-## 命名规范
-
-| 类型 | 命名规则 | 示例 |
-|------|----------|------|
-| AW 文件 | `{业务名}_aw.py` | `login_aw.py` |
-| AW 类 | `{业务名}AW` | `LoginAW` |
-| AW 业务方法 | `do_{动作}` | `do_login()` |
-| AW 断言方法 | `should_{期望}` | `should_login_success()` |
-| 测试文件 | `test_{功能}_{场景}_{编号}.py` | `test_login_success_001.py` |
-| 测试类 | `TestClass` | 固定名称 |
-| 测试方法 | `test_{文件名}` | `test_login_success_001` |
-
-## 用户资源与 User 代理
-
-测试用例通过 `@pytest.mark.users()` 声明用户需求，User 实例自动加载 AW 并代理转发方法调用：
+## 最小用例骨架
 
 ```python
+"""Web端登录成功测试用例。"""
+
+import pytest
+
+
 @pytest.mark.users({"userA": "web"})
 class TestClass:
-    def test_login_success_001(self, users):
-        userA = users["userA"]         # UI 用户
-        userA_api = users["userA_api"] # API 用户（自动创建）
+    """Web端登录成功测试。"""
 
-        # 直接通过 User 实例调用 AW 方法
+    def test_login_success_001(self, users):
+        """执行测试：正确账号密码登录，应登录成功。"""
+        userA = users["userA"]
         userA.do_login()
         userA.should_login_success()
-
-        # API 用户调用 API AW 方法
-        userA_api.do_create_meeting("test")
 ```
 
-**User 属性**：`user_id`, `platform`, `ip`, `account`, `password`
+## 详细规范索引
 
-## Hooks 配置
+| 主题 | AGENTS.md 章节 |
+|------|----------------|
+| 项目架构与目录结构 | 一 |
+| 命名规范 | 二 |
+| AW 层编码规范（BaseAW 便捷方法） | 三 |
+| testcase 层编码规范 | 四 |
+| 用户资源管理（User 代理 / namespace / exeParam） | 五 |
+| 并行执行模式（parallel） | 六 |
+| Hooks 配置（分层覆盖 / app_type / 目录 conftest） | 七 |
+| API AW 模块（BaseApiAW） | 八 |
+| Skill 生成代码检查清单 | 九 |
+| 完整示例 | 十 |
 
-Hooks 用于测试用例执行前后自动执行操作（如启动/关闭应用）：
-
-```yaml
-# config.yaml
-hooks:
-  web:
-    setup: ["start_app"]
-    teardown: ["stop_app"]
-  windows:
-    setup: ["start_app"]
-    teardown: ["stop_app"]
-    # app_type: hook 方法签名含 app_type 参数时自动注入，未配置不传
-    app_type: "TestAapp1"
-  api:
-    teardown: ["cancel_all_meetings"]
-```
-
-用例级别覆盖（参数支持单值、多参列表 `{"hook": ["a", "b"]}`）：
-```python
-@pytest.mark.hooks(setup=["+custom_hook"], teardown=["-stop_app"])
-```
-
-多用户/多端按用户或平台控制：
-```python
-@pytest.mark.users({"userA": "windows", "userB": "mac"})
-@pytest.mark.hooks(
-    userA={"setup": ["+login"]},           # 仅 userA
-    userB={"teardown": ["-stop_app"]},     # 仅 userB
-    # windows={"setup": ["+login"]},       # 该平台全部用户
-)
-```
-
-优先级（全部叠加生效，重复时按序覆盖）：config.yaml 平台默认 → 外层
-目录 conftest → 内层目录 conftest → 全局 hooks → 平台键 → 用户键
-（用例层最高）。
-`userA` 不影响 `userA_api`。用例标记层的 teardown 增量项先于 conftest
-层/平台默认层的 teardown 执行（前插）；conftest 各层按外→内顺序执行；
-setup 按层顺序正常追加。
-
-`app_type` 是标量而非列表，不走 `+`/`-` 合并：conftest 层/用例标记层的
-全局键、平台键、用户键均可声明，按同样层级顺序直接覆盖（用户键 > 平台
-键 > 全局），hook 方法签名含 `app_type` 参数时自动注入最终值。
-
-目录 conftest 公共层：用例目录下的 `conftest.py` 定义 `get_hooks()`（键
-结构与用例标记一致），多级 conftest 全部叠加（内层优先），为该目录所有
-用例提供公共 hooks：
-```python
-# testcases/web/waitingroom/conftest.py
-def get_hooks():
-    return {"setup": ["+prepare_env"], "web": {"teardown": ["+cleanup_env"]}}
-```
-
-## API AW
-
-API 平台用于数据准备和清理，无需 UI 操作：
-
-```python
-from aw.api.base_api_aw import BaseApiAW
-
-class MeetingManageAW(BaseApiAW):
-    def do_create_meeting(self, subject: str) -> MeetingInfo:
-        """创建会议。"""
-        result = self._post(CONFERENCE_URL, data={...})
-        return self._parse_meeting_info(result)
-```
-
-声明 `@pytest.mark.users({"userA": "web"})` 时，自动创建 `userA`（UI）和 `userA_api`（API）两个 User 实例。
-
-## 并行执行
-
-多用户并行执行使用 `parallel()` 上下文：
-
-```python
-from common.parallel import parallel
-
-with parallel():
-    userA.do_login()
-    userB.do_login()
-    userC.do_login()
-```
-
-详细规范见 [AGENTS.md](AGENTS.md) 第六章。
-
-## 详细规范
-
-- 编码规范见 [AGENTS.md](AGENTS.md)
-- AW 资源索引见 [aw/INDEX.md](aw/INDEX.md)
+AW 资源索引见 [aw/INDEX.md](aw/INDEX.md)。

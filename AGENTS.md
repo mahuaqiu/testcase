@@ -1,6 +1,10 @@
 # AGENTS.md — 测试用例工程项目规范
 
-本文档定义了 testcase 工程的架构、命名规范和编码约定。所有 Skill 生成的代码必须遵循本规范。
+多端自动化测试工程：testcases 层用 pytest 编写用例，AW 层封装业务操作，
+通过 HTTP 调用 testagent Worker 服务在 Web/Windows/Mac/iOS/Android 等多端执行。
+
+本文档是项目规范的唯一完整来源；CLAUDE.md 仅保留速查要点并链接至此。
+所有 Skill 生成的代码必须遵循本规范。
 
 ---
 
@@ -34,10 +38,16 @@
 ### 1.2 目录结构
 
 ```
+conftest.py                 # 根 fixture：申请用户资源、执行 hooks、生成报告
+config.yaml                 # 全局配置：resource_manager、hooks、报告等
+common/                     # 框架支撑：runtime、hooks 解析、并行、报告生成
+tests/                      # 框架自身的单元测试
+
 testcases/
 ├── {平台}/
 │   └── {业务模块}/
 │       └── test_*.py
+├── common/                 # 跨平台公共用例
 └── integration/
 
 aw/
@@ -202,6 +212,18 @@ class TestClass:
         userA.should_login_success()
 ```
 
+**User 常用属性**：
+
+| 属性 | 说明 |
+|------|------|
+| `user_id` | 用户标识，如 userA |
+| `platform` | 平台类型，如 web、windows |
+| `ip` / `port` | Worker 地址 |
+| `device_id` | 设备序列号（iOS/Android/鸿蒙设备） |
+| `account` / `password` | 登录账号密码 |
+| `name` | 与会者姓名 |
+| 其它资源字段 | 通过 `extra` 透传 |
+
 ### 5.2 多用户场景
 
 ```python
@@ -229,6 +251,46 @@ class TestClass:
         # API 用户用于数据准备/清理
         userA_api.do_create_meeting("test")
 ```
+
+### 5.4 资源命名空间（namespace）
+
+申请资源使用的命名空间按以下优先级取值：
+
+```
+① 用例标记 @pytest.mark.namespace(...)   ← 优先级最高
+② 目录 conftest 的 get_namespace()        ← 就近取一层
+③ config.yaml resource_manager.namespace  ← 默认 "default"
+```
+
+```python
+@pytest.mark.namespace("project_a")
+@pytest.mark.users({"userA": "web"})
+class TestClass:
+    ...
+```
+
+```python
+# testcases/web/conftest.py —— 该目录（及子目录）下所有用例共用
+def get_namespace():
+    return "project_a"
+```
+
+### 5.5 运行参数（exeParam）
+
+命令行以 JSON 注入运行参数并覆盖全局配置：
+
+```bash
+pytest --exeParam='{"namespace": "project_b", "log_level": "DEBUG"}'
+```
+
+覆盖规则：
+
+- `namespace` / `env_auth`：顶层短写，等价于写入 `resource_manager`
+- `resource_manager`：嵌套字典与全局配置深度合并
+- 其它键：直接覆盖 config.yaml 同名顶层配置
+- 用例 / AW / 目录 conftest 中通过 `common.runtime.get_exe_param()` 读取，
+  全局配置用 `common.runtime.get_config()`。**不要 `from conftest import`**：
+  目录 conftest 与根 conftest 模块同名，会解析到错误对象。
 
 ---
 
@@ -475,8 +537,8 @@ def get_hooks():
   conftest 层全部叠加，由外到内依次应用，内层优先级高于外层
   （不重复的都执行，重复的按层级覆盖）
 - 未定义 `get_hooks()` 或返回非字典的层跳过，不影响其它层
-- 与 `get_namespace()` 可在同一目录 conftest 中共存（namespace 仍为
-  就近取一层）
+- 与 `get_namespace()`（见 5.4）可在同一目录 conftest 中共存：
+  namespace 就近只取一层，get_hooks() 则多级全部叠加
 - 不需要目录 conftest 时不用建；仅当需要公共层时自行添加
 
 ### 7.6 自定义 Hook 方法
