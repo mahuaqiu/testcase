@@ -509,6 +509,120 @@ def test_app_type_survives_two_pass_compose():
     assert result["teardown"] == ["leave", "stop_app"]
 
 
+# ── app_type 分层覆盖测试 ─────────────────────────────────────────
+
+
+def test_case_marker_app_type_overrides_platform_default():
+    """用例标记层全局 app_type 覆盖平台默认配置。"""
+    defaults = {"windows": {"app_type": "FromConfig"}}
+    case_hooks = {"app_type": "FromCase"}
+
+    result = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userA")
+
+    assert result["app_type"] == "FromCase"
+
+
+def test_case_app_type_without_platform_default():
+    """平台默认未配置 app_type 时，用例层声明同样生效。"""
+    defaults = {"web": {"setup": ["start_app"]}}
+
+    result = HooksResolver.resolve("web", defaults, {"app_type": "FromCase"})
+
+    assert result["app_type"] == "FromCase"
+
+
+def test_case_app_type_none_keeps_base():
+    """用例层 app_type 为 None 视为未声明，不覆盖平台默认。"""
+    defaults = {"windows": {"app_type": "FromConfig"}}
+
+    result = HooksResolver.resolve("windows", defaults, {"app_type": None})
+
+    assert result["app_type"] == "FromConfig"
+
+
+def test_case_platform_key_app_type_scoped_and_beats_global():
+    """平台键 app_type 只对该平台生效，且覆盖同层全局值。"""
+    defaults = {"windows": {}, "web": {}}
+    case_hooks = {"app_type": "FromGlobal", "windows": {"app_type": "FromWindows"}}
+
+    result_win = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userA")
+    result_web = HooksResolver.resolve("web", defaults, case_hooks, user_id="userA")
+
+    assert result_win["app_type"] == "FromWindows"
+    assert result_web["app_type"] == "FromGlobal"
+
+
+def test_case_user_key_app_type_beats_platform_key():
+    """app_type 作用域优先级：用户键 > 平台键 > 全局。"""
+    defaults = {"windows": {}}
+    case_hooks = {
+        "app_type": "FromGlobal",
+        "windows": {"app_type": "FromWindows"},
+        "userA": {"app_type": "FromUser"},
+    }
+
+    result_a = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userA")
+    result_b = HooksResolver.resolve("windows", defaults, case_hooks, user_id="userB")
+
+    assert result_a["app_type"] == "FromUser"
+    assert result_b["app_type"] == "FromWindows"
+
+
+def test_app_type_layered_override_across_layers():
+    """app_type 分层覆盖：config.yaml 平台默认 < conftest 层 < 用例标记层。"""
+    defaults = {"windows": {"app_type": "FromConfig"}}
+    conftest_hooks = {"app_type": "FromConftest"}
+    user = SimpleNamespace(platform="windows")
+
+    result_conftest = _resolve_final_hooks(user, "userA", defaults, [conftest_hooks], {})
+    result_case = _resolve_final_hooks(
+        user, "userA", defaults, [conftest_hooks], {"app_type": "FromCase"}
+    )
+    result_no_conftest = _resolve_final_hooks(user, "userA", defaults, [], {})
+
+    assert result_conftest["app_type"] == "FromConftest"
+    assert result_case["app_type"] == "FromCase"
+    assert result_no_conftest["app_type"] == "FromConfig"
+
+
+def test_conftest_platform_key_app_type_applies_to_platform_users():
+    """conftest 层平台键中的 app_type 只作用于对应平台用户。"""
+    defaults = {"windows": {"app_type": "FromConfig"}, "mac": {}}
+    conftest_hooks = {"windows": {"app_type": "FromConftest"}}
+
+    result_win = _resolve_final_hooks(
+        SimpleNamespace(platform="windows"), "userA", defaults, [conftest_hooks], {}
+    )
+    result_mac = _resolve_final_hooks(
+        SimpleNamespace(platform="mac"), "userA", defaults, [conftest_hooks], {}
+    )
+
+    assert result_win["app_type"] == "FromConftest"
+    assert "app_type" not in result_mac
+
+
+def test_validate_user_keys_allows_app_type_key():
+    """app_type 是标量配置键而非用户键，校验时不应报未声明用户。"""
+    HooksResolver.validate_user_keys(
+        {"app_type": "FromCase", "userA": {"teardown": ["+leave"]}},
+        known_user_ids=["userA"],
+        known_platforms=["windows"],
+    )
+
+
+def test_split_case_hooks_returns_app_type_separately():
+    """split_case_hooks 应单独返回 app_type，不混入用户键。"""
+    global_hooks, platform_hooks, user_hooks, app_type = HooksResolver.split_case_hooks(
+        {"app_type": "FromCase", "setup": ["+login"], "windows": {"app_type": "FromWindows"}},
+        known_platforms=["windows"],
+    )
+
+    assert app_type == "FromCase"
+    assert global_hooks == {"setup": ["+login"]}
+    assert user_hooks == {}
+    assert platform_hooks["windows"]["app_type"] == "FromWindows"
+
+
 def test_get_conftest_hook_layers_collects_all_levels(tmp_path):
     """应收集所有层级目录 conftest 的 hooks，按从外到内排序。"""
     outer = tmp_path / "outer"

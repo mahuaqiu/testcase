@@ -100,6 +100,10 @@ hooks:
 层/平台默认层的 teardown 执行（前插）；conftest 各层按外→内顺序执行；
 setup 按层顺序正常追加。
 
+`app_type` 是标量而非列表，不走 `+`/`-` 合并：conftest 层/用例标记层的
+全局键、平台键、用户键均可声明，按同样层级顺序直接覆盖（用户键 > 平台
+键 > 全局），hook 方法签名含 `app_type` 参数时自动注入最终值。
+
 目录 conftest 公共层：用例目录下的 `conftest.py` 定义 `get_hooks()`（键
 结构与用例标记一致），多级 conftest 全部叠加（内层优先），为该目录所有
 用例提供公共 hooks：

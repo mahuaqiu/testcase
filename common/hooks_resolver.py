@@ -16,6 +16,10 @@ class HooksResolver:
     平台默认 → 目录 conftest 层 → 全局 setup/teardown → 平台键 → 用户键。
     目录 conftest 层与用例标记层使用同一套键结构和合并规则，通过
     resolve + apply_case 两遍组合实现叠加。
+
+    app_type 是标量（非空字符串）而非列表，不参与 setup/teardown 的
+    列表合并机制，由各层单独识别、直接覆盖：用户键 > 平台键 > 全局，
+    且每一层覆盖其 base（config.yaml 平台默认 → conftest 各层 → 用例标记）。
     """
 
     @staticmethod
@@ -59,6 +63,9 @@ class HooksResolver:
     ) -> Dict[str, Any]:
         """在已解析的 base 上叠加一层 case hooks（全局 → 平台键 → 用户键）。
 
+        app_type 为标量覆盖：本层全局/平台键/用户键中声明的非空值按
+        用户键 > 平台键 > 全局取最具体者，覆盖 base 透传的值。
+
         Args:
             base: 底层 hooks（平台默认，或已叠加目录 conftest 层的结果）。
             case_hooks: 一层 case hooks，键结构同 @pytest.mark.hooks。
@@ -81,9 +88,9 @@ class HooksResolver:
         if not case_hooks:
             return result
 
-        # 拆分 case_hooks（全局 / 平台 / 用户）
-        global_hooks, platform_hooks, user_hooks = HooksResolver.split_case_hooks(
-            case_hooks, known_platforms
+        # 拆分 case_hooks（全局 / 平台 / 用户 / app_type）
+        global_hooks, platform_hooks, user_hooks, case_app_type = (
+            HooksResolver.split_case_hooks(case_hooks, known_platforms)
         )
 
         # 1. 全局层（setup/teardown）
@@ -105,6 +112,23 @@ class HooksResolver:
                 case_list = user_hooks[user_id].get(hook_type, [])
                 if case_list:
                     HooksResolver._apply_case_hooks(result, hook_type, case_list, prepend=teardown_prepend and hook_type == "teardown")
+
+        # 4. app_type 标量覆盖，作用域越具体优先级越高：
+        # 用户键 > 平台键 > 全局；本层声明的值直接覆盖 base 中的值。
+        if (
+            user_id
+            and user_id in user_hooks
+            and user_hooks[user_id].get("app_type")
+        ):
+            result["app_type"] = user_hooks[user_id]["app_type"]
+        elif (
+            platform
+            and platform in platform_hooks
+            and platform_hooks[platform].get("app_type")
+        ):
+            result["app_type"] = platform_hooks[platform]["app_type"]
+        elif case_app_type is not None:
+            result["app_type"] = case_app_type
 
         return result
 
@@ -216,10 +240,12 @@ class HooksResolver:
         Dict[str, List[Any]],
         Dict[str, Dict[str, List[Any]]],
         Dict[str, Dict[str, List[Any]]],
+        Any,
     ]:
-        """拆分 case_hooks 为 (global, platform, user)。
+        """拆分 case_hooks 为 (global, platform, user, app_type)。
 
         - setup/teardown → 全局层
+        - app_type → 全局层标量覆盖值（不是用户键）
         - 已知平台名 → 平台层
         - 其它键 → 用户层
         """
@@ -227,9 +253,13 @@ class HooksResolver:
         global_hooks: Dict[str, List[Any]] = {}
         platform_hooks: Dict[str, Dict[str, List[Any]]] = {}
         user_hooks: Dict[str, Dict[str, List[Any]]] = {}
+        app_type: Any = None
 
         for key, value in case_hooks.items():
-            if key in ("setup", "teardown"):
+            if key == "app_type":
+                if value is not None:
+                    app_type = value
+            elif key in ("setup", "teardown"):
                 if isinstance(value, list):
                     global_hooks[key] = value
             elif key in platform_set:
@@ -238,16 +268,18 @@ class HooksResolver:
                 # 用户键（userA、userB、userA_api 等）
                 user_hooks[key] = HooksResolver._normalize_scoped_hooks(value)
 
-        return global_hooks, platform_hooks, user_hooks
+        return global_hooks, platform_hooks, user_hooks, app_type
 
     @staticmethod
-    def _normalize_scoped_hooks(value: Any) -> Dict[str, List[Any]]:
-        """将平台/用户作用域值规范为 {setup, teardown} 字典。"""
-        scoped: Dict[str, List[Any]] = {}
+    def _normalize_scoped_hooks(value: Any) -> Dict[str, Any]:
+        """将平台/用户作用域值规范为 {setup, teardown, app_type} 字典。"""
+        scoped: Dict[str, Any] = {}
         if isinstance(value, dict):
             for hk in ("setup", "teardown"):
                 if hk in value and isinstance(value[hk], list):
                     scoped[hk] = value[hk]
+            if value.get("app_type"):
+                scoped["app_type"] = value["app_type"]
         elif isinstance(value, list):
             # 简写：直接给列表时视为 setup
             scoped["setup"] = value
@@ -267,7 +299,9 @@ class HooksResolver:
             return
 
         known_users = set(known_user_ids)
-        _, _, user_hooks = HooksResolver.split_case_hooks(case_hooks, known_platforms)
+        _, _, user_hooks, _ = HooksResolver.split_case_hooks(
+            case_hooks, known_platforms
+        )
         unknown = sorted(uid for uid in user_hooks if uid not in known_users)
         if unknown:
             raise ValueError(

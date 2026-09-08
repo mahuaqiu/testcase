@@ -357,8 +357,13 @@ hooks:
 ```
 
 `app_type` 与 `setup` / `teardown` 同级。执行 hook 时若目标方法
-（`do_{name}`）签名中声明了 `app_type` 参数且平台配置了该值，框架自动
-以 kwargs 传入；方法没有该参数或平台未配置时不传。
+（`do_{name}`）签名中声明了 `app_type` 参数且配置了该值，框架自动
+以 kwargs 传入；方法没有该参数或未配置时不传。
+
+`app_type` 是标量（非空字符串）而非列表，不支持 `+`/`-` 前缀，按层
+直接覆盖：用例标记层 > 目录 conftest 层 > config.yaml 平台默认；同层内
+用户键 > 平台键 > 全局。conftest 的 `get_hooks()` 与用例标记中的全局键、
+平台键、用户键均可声明 `app_type`。
 
 ### 7.3 用例级别覆盖
 
@@ -411,6 +416,10 @@ hook 项参数格式：
 参数），目录 conftest 层可理解为「写在 conftest 里的
 @pytest.mark.hooks」。
 
+**app_type 覆盖**：`app_type` 与 setup/teardown 同级声明（全局键、平台键、
+用户键内均可），按同样的层级顺序直接覆盖，但它是标量而非列表——不走
+`+`/`-` 合并，取声明该值的最具体一层。
+
 **teardown 执行顺序**：跨用户保持 API 用户优先；同一用户内，**用例
 标记层（③④⑤）声明的 teardown 增量项先于 conftest 层/平台默认层的
 teardown 执行**（前插且保持声明顺序），例如用例写 `teardown=["+leave"]`
@@ -456,6 +465,7 @@ def get_hooks():
         "setup": ["+prepare_env"],          # 全局层
         "web": {"teardown": ["+cleanup_env"]},  # 平台键
         # userA={"setup": ["+login"]},      # 用户键同样支持
+        # "app_type": "TestAapp1",          # app_type 同样支持（标量覆盖）
     }
 ```
 
