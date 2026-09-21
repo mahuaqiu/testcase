@@ -410,17 +410,18 @@ hooks:
   windows:
     setup: ["start_app"]
     teardown: ["stop_app"]
-    # app_type: hook 目标方法签名含 app_type 参数时自动注入的值；
-    # 未配置的平台不传该参数（目前仅 windows 配置）
+    # app_type: 分层解析后挂到 User 的 app_type 属性，AW 内通过
+    # self.user.app_type 读取（目前仅 windows 配置）
     app_type: "TestAapp1"
   api:
     setup: []
     teardown: ["cancel_all_meetings"]
 ```
 
-`app_type` 与 `setup` / `teardown` 同级。执行 hook 时若目标方法
-（`do_{name}`）签名中声明了 `app_type` 参数且配置了该值，框架自动
-以 kwargs 传入；方法没有该参数或未配置时不传。
+`app_type` 与 `setup` / `teardown` 同级。各层解析出的 `app_type` 在
+fixture 中挂到 `User` 实例的 `app_type` 属性，所有 AW 方法（含
+`do_{name}` hook 方法）通过 `self.user.app_type` 读取；未配置的平台
+该属性为 `None`，方法签名无需声明 `app_type` 参数。
 
 `app_type` 是标量（非空字符串）而非列表，不支持 `+`/`-` 前缀，按层
 直接覆盖：用例标记层 > 目录 conftest 层 > config.yaml 平台默认；同层内
@@ -558,9 +559,11 @@ class InitAW(BaseAW):
         """关闭浏览器。"""
         self.stop_app(browser)
 
-    # 需要 app_type 时，签名中声明该参数即可自动接收平台配置值
-    def do_start_with_type(self, app_type: str = None) -> None:
+    # 需要 app_type 时直接读取 self.user.app_type
+    # （config.yaml / 目录 conftest / 用例标记分层覆盖后的最终值）
+    def do_start_with_type(self) -> None:
         """按 app_type 启动应用。"""
+        app_type = self.user.app_type
         ...
 ```
 

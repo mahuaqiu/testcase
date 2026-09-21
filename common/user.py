@@ -24,6 +24,8 @@ class User:
         account: 登录账号。
         password: 登录密码。
         name: 与会者姓名。
+        app_type: hooks 各层解析出的应用类型（未配置为 None），
+            AW 方法通过 self.user.app_type 读取。
         extra: 扩展信息。
     """
 
@@ -62,6 +64,7 @@ class User:
         self.account = account
         self.password = password
         self.name = name
+        self.app_type: Optional[str] = None  # hooks 各层解析出的 app_type，conftest fixture 中填充
         self.extra = extra
         self._ui_user_id = _ui_user_id  # 独立属性，不存入 extra
         self._user_instances_ref: Optional[Dict[str, "User"]] = None  # 新增：user_instances 引用

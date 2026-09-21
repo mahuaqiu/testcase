@@ -317,73 +317,43 @@ def test_execute_hooks_single_arg_still_falls_back_to_no_arg(monkeypatch):
     assert calls == ["leave"]
 
 
-# ── app_type 注入测试 ─────────────────────────────────────────
+# ── app_type 挂载到 User 属性测试 ─────────────────────────────────────────
 
 
-def test_execute_hooks_injects_app_type_when_method_has_param(monkeypatch):
-    """方法签名含 app_type 且配置有值时，应自动以 kwargs 注入。"""
+def test_hook_method_reads_app_type_from_user(monkeypatch):
+    """hook 方法通过 self.app_type / user.app_type 读取分层解析出的 app_type。"""
     calls = []
 
     class User:
         """测试用用户对象。"""
 
-        def do_start_app(self, app_type=None):
-            calls.append(app_type)
+        app_type = "TestAapp1"
+
+        def do_start_app(self):
+            calls.append(self.app_type)
 
     monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
 
-    _execute_hooks(User(), ["start_app"], app_type="TestAapp1")
+    _execute_hooks(User(), ["start_app"], hook_type="setup")
 
     assert calls == ["TestAapp1"]
 
 
-def test_execute_hooks_app_type_combined_with_positional_arg(monkeypatch):
-    """位置参数与 app_type 注入可组合。"""
+def test_execute_hooks_no_longer_injects_app_type_kwargs(monkeypatch):
+    """执行器不再按方法签名注入 app_type kwarg，需要时方法自行读 user.app_type。"""
     calls = []
 
     class User:
         """测试用用户对象。"""
 
-        def do_start_app(self, browser, app_type=None):
-            calls.append((browser, app_type))
-
-    monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
-
-    _execute_hooks(User(), [{"start_app": "edge"}], app_type="TestAapp1")
-
-    assert calls == [("edge", "TestAapp1")]
-
-
-def test_execute_hooks_skips_app_type_when_method_lacks_param(monkeypatch):
-    """方法签名没有 app_type 参数时不应传，即使配置有值。"""
-    calls = []
-
-    class User:
-        """测试用用户对象。"""
-
-        def do_start_app(self):
-            calls.append("ok")
-
-    monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
-
-    _execute_hooks(User(), ["start_app"], app_type="TestAapp1")
-
-    assert calls == ["ok"]
-
-
-def test_execute_hooks_skips_app_type_when_not_configured(monkeypatch):
-    """平台未配置 app_type 时（None），方法即使有该参数也不传。"""
-    calls = []
-
-    class User:
-        """测试用用户对象。"""
+        app_type = "TestAapp1"
 
         def do_start_app(self, app_type=None):
             calls.append(app_type)
 
     monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
 
-    _execute_hooks(User(), ["start_app"], app_type=None)
+    _execute_hooks(User(), ["start_app"], hook_type="setup")
 
     assert calls == [None]
 

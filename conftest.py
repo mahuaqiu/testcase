@@ -195,12 +195,20 @@ def users(request) -> Dict[str, User]:
         setup_failed = False
         setup_error = None
 
+        # 逐用户解析最终 hooks；解析出的 app_type 挂到 User 属性，
+        # 用例与 AW（含 hook 方法）均通过 user.app_type 读取
+        final_hooks_map: Dict[str, Dict[str, Any]] = {}
         for user_id, user in user_instances.items():
             final_hooks = _resolve_final_hooks(user, user_id, hooks_config, conftest_hook_layers, case_hooks)
+            final_hooks_map[user_id] = final_hooks
+            user.app_type = final_hooks.get("app_type")
+
+        for user_id, user in user_instances.items():
+            final_hooks = final_hooks_map[user_id]
             try:
                 _execute_hooks(
                     user, final_hooks.get("setup", []), hook_type="setup",
-                    user_id=user_id, app_type=final_hooks.get("app_type"),
+                    user_id=user_id,
                 )
             except HookFailureError as e:
                 setup_failed = True
@@ -218,11 +226,11 @@ def users(request) -> Dict[str, User]:
                 # 非连接错误时，执行 teardown 清理资源
                 # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
                 for user_id, user in _sort_users_for_teardown(user_instances):
-                    final_hooks = _resolve_final_hooks(user, user_id, hooks_config, conftest_hook_layers, case_hooks)
+                    final_hooks = final_hooks_map[user_id]
                     try:
                         _execute_hooks(
                             user, final_hooks.get("teardown", []), hook_type="teardown",
-                            user_id=user_id, app_type=final_hooks.get("app_type"),
+                            user_id=user_id,
                         )
                     except HookFailureError:
                         pass  # teardown 失障也记录，但不影响流程
@@ -249,11 +257,11 @@ def users(request) -> Dict[str, User]:
             if not user._used:
                 continue
 
-            final_hooks = _resolve_final_hooks(user, user_id, hooks_config, conftest_hook_layers, case_hooks)
+            final_hooks = final_hooks_map[user_id]
             try:
                 _execute_hooks(
                     user, final_hooks.get("teardown", []), hook_type="teardown",
-                    user_id=user_id, app_type=final_hooks.get("app_type"),
+                    user_id=user_id,
                 )
             except HookFailureError as e:
                 teardown_failed = True
@@ -657,7 +665,6 @@ def _execute_hooks(
     hooks: list,
     hook_type: str = "setup",
     user_id: Optional[str] = None,
-    app_type: Optional[str] = None,
 ) -> None:
     """执行 hooks 方法。
 
@@ -666,13 +673,14 @@ def _execute_hooks(
     - 字典: {"start_app": "edge"} - 传入单个参数
     - 字典: {"create_meeting": ["a", "b"]} - 列表按位置参数展开（多参数）
 
+    hook 方法需要 app_type 时直接读取 self.user.app_type（框架已把
+    各层解析出的 app_type 挂到 User 属性上）。
+
     Args:
         user: User 实例。
         hooks: hooks 列表。
         hook_type: hook 类型 ("setup" 或 "teardown")，用于异常信息。
         user_id: 用户ID，用于错误日志跟随用户显示。
-        app_type: 平台默认配置的 app_type；目标方法签名含 app_type 参数
-            且该值存在时以 kwargs 自动注入。
 
     Raises:
         HookFailureError: hook 执行失障时抛出。
@@ -697,7 +705,7 @@ def _execute_hooks(
 
             for attempt in range(max_retries + 1):
                 try:
-                    _invoke_hook(method, hook_arg, app_type=app_type)
+                    _invoke_hook(method, hook_arg)
                     break  # 成功则跳出循环
                 except Exception as e:
                     import errno
@@ -726,7 +734,7 @@ def _execute_hooks(
                         raise HookFailureError(hook_name, e, hook_type)
 
 
-def _invoke_hook(method, hook_arg, app_type: Optional[str] = None) -> None:
+def _invoke_hook(method, hook_arg) -> None:
     """调用 hook 方法。
 
     hook_arg 支持三种形式：
@@ -735,29 +743,24 @@ def _invoke_hook(method, hook_arg, app_type: Optional[str] = None) -> None:
     - 其它单值: 单个位置参数；绑定失败时降级为无参调用（兼容
       {"hook": True} 布尔标记写法）
 
-    app_type 来自平台默认配置（config.yaml hooks 段）；目标方法签名含
-    app_type 参数且配置有值时以 kwargs 注入，否则不传。
+    hook 方法需要 app_type 时直接读取 self.user.app_type，框架不再
+    按方法签名注入 app_type 参数。
     """
-    import inspect
-
-    sig = inspect.signature(method)
-    kwargs = {}
-    if app_type is not None and "app_type" in sig.parameters:
-        kwargs["app_type"] = app_type
-
     if hook_arg is None:
-        method(**kwargs)
+        method()
         return
 
     if isinstance(hook_arg, (list, tuple)):
-        method(*hook_arg, **kwargs)
+        method(*hook_arg)
         return
 
     # 字典格式通常表示一个位置参数；若目标 hook 本身是无参方法，
     # 允许使用 {"hook_name": True} 表示启用该 hook。
+    import inspect
+
     try:
-        sig.bind(hook_arg, **kwargs)
+        inspect.signature(method).bind(hook_arg)
     except (TypeError, ValueError):
-        method(**kwargs)
+        method()
     else:
-        method(hook_arg, **kwargs)
+        method(hook_arg)
