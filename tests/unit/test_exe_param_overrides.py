@@ -64,4 +64,5 @@ def test_harmony_platforms_have_default_hooks():
         assert HooksResolver.resolve(platform, defaults) == {
             "setup": ["start_app"],
             "teardown": ["stop_app"],
+            "teardown_priority": [],
         }

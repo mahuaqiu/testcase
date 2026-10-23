@@ -10,6 +10,7 @@ from conftest import (
     _execute_hooks,
     _get_conftest_hook_layers,
     _resolve_final_hooks,
+    _run_teardown_phase,
 )
 
 
@@ -693,3 +694,185 @@ def test_multi_level_conftest_teardown_order_with_marker_prepend():
     result = _resolve_final_hooks(user, "userA", defaults, [outer_layer, inner_layer], case_hooks)
 
     assert result["teardown"] == ["leave", "stop_app", "outer_cleanup", "inner_cleanup"]
+
+
+# ── 优先级 teardown（+@ 插队）测试 ─────────────────────────────────────────
+
+
+def test_priority_teardown_addition_routes_to_priority_list():
+    """teardown 增量 "+@save_trace" 进入优先级列表，普通列表保持不变。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    case_hooks = {"teardown": ["+@save_trace"]}
+
+    result = HooksResolver.resolve("web", defaults, case_hooks)
+
+    assert result["teardown_priority"] == ["save_trace"]
+    assert result["teardown"] == ["stop_app"]
+
+
+def test_priority_teardown_dict_form_keeps_args():
+    """"+@hook" 的字典写法应保留参数并去掉优先级标记。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    case_hooks = {"teardown": [{"+@upload_logs": ["bucket", "trace.zip"]}]}
+
+    result = HooksResolver.resolve("web", defaults, case_hooks)
+
+    assert result["teardown_priority"] == [{"upload_logs": ["bucket", "trace.zip"]}]
+    assert result["teardown"] == ["stop_app"]
+
+
+def test_priority_teardown_moves_existing_hook_from_normal_list():
+    """普通列表已有的 hook 用 +@ 声明时为移动（插队）而非重复执行。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    case_hooks = {"teardown": ["+@stop_app"]}
+
+    result = HooksResolver.resolve("web", defaults, case_hooks)
+
+    assert result["teardown_priority"] == ["stop_app"]
+    assert result["teardown"] == []
+
+
+def test_priority_teardown_marker_layer_runs_before_conftest_layer():
+    """conftest 层与用例层都声明优先级 hook 时，用例层在前（同 teardown 前插语义）。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    conftest_hooks = {"teardown": ["+@cleanup_env"]}
+    case_hooks = {"teardown": ["+@save_trace"]}
+    user = SimpleNamespace(platform="web")
+
+    result = _resolve_final_hooks(user, "userA", defaults, [conftest_hooks], case_hooks)
+
+    assert result["teardown_priority"] == ["save_trace", "cleanup_env"]
+    assert result["teardown"] == ["stop_app"]
+
+
+def test_minus_hook_also_removes_from_priority_list():
+    """"-x" 同时从普通列表和优先级列表移除。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    conftest_hooks = {"teardown": ["+@cleanup_env"]}
+    case_hooks = {"teardown": ["-cleanup_env"]}
+    user = SimpleNamespace(platform="web")
+
+    result = _resolve_final_hooks(user, "userA", defaults, [conftest_hooks], case_hooks)
+
+    assert result["teardown_priority"] == []
+    assert result["teardown"] == ["stop_app"]
+
+
+def test_setup_at_marker_degrades_to_normal_addition():
+    """setup 无插队语义，"+@warmup" 按普通 "+warmup" 处理。"""
+    defaults = {"web": {"setup": ["start_app"], "teardown": ["stop_app"]}}
+    case_hooks = {"setup": ["+@warmup"]}
+
+    result = HooksResolver.resolve("web", defaults, case_hooks)
+
+    assert result["setup"] == ["start_app", "warmup"]
+
+
+def test_user_key_supports_priority_teardown():
+    """用户键同样支持 +@ 优先级语法，且只作用于该用户。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    case_hooks = {"userA": {"teardown": ["+@save_trace"]}}
+
+    result_a = HooksResolver.resolve("web", defaults, case_hooks, user_id="userA")
+    result_b = HooksResolver.resolve("web", defaults, case_hooks, user_id="userB")
+
+    assert result_a["teardown_priority"] == ["save_trace"]
+    assert result_b["teardown_priority"] == []
+
+
+def test_no_priority_syntax_keeps_empty_priority_list():
+    """未使用 +@ 时优先级列表为空列表，普通行为不变。"""
+    defaults = {"web": {"teardown": ["stop_app"]}}
+    case_hooks = {"teardown": ["+leave"]}
+
+    result = HooksResolver.resolve("web", defaults, case_hooks)
+
+    assert result["teardown_priority"] == []
+    # resolve 本身不前插（前插发生在 _resolve_final_hooks 的用例标记层）
+    assert result["teardown"] == ["stop_app", "leave"]
+
+
+def _make_phase_user(user_id, platform, used, method_names, calls, fail_on=None):
+    """构造带 do_* 方法的假 User，记录调用顺序。"""
+
+    class FakeUser:
+        """测试用用户对象。"""
+
+        def __init__(self):
+            self.user_id = user_id
+            self.platform = platform
+            self._used = used
+
+    for name in method_names:
+
+        def make(n):
+            def hook(self):
+                calls.append(f"{user_id}:{n}")
+                if fail_on and n == fail_on:
+                    raise ValueError(f"{n} 失障")
+
+            return hook
+
+        setattr(FakeUser, f"do_{name}", make(name))
+    return FakeUser()
+
+
+def test_run_teardown_phase_priority_runs_before_api_normal(monkeypatch):
+    """优先级 hook 先于所有普通 teardown（含 API 用户）执行。"""
+    calls = []
+    user_a = _make_phase_user("userA", "web", True, ["save_trace", "stop_app"], calls)
+    user_api = _make_phase_user("userA_api", "api", True, ["cancel_all_meetings"], calls)
+    users = {"userA": user_a, "userA_api": user_api}
+    hooks_map = {
+        "userA": {"teardown_priority": ["save_trace"], "teardown": ["stop_app"]},
+        "userA_api": {"teardown": ["cancel_all_meetings"]},
+    }
+
+    monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
+
+    priority_error = _run_teardown_phase(users, hooks_map, "teardown_priority")
+    normal_error = _run_teardown_phase(users, hooks_map, "teardown")
+
+    assert priority_error is None
+    assert normal_error is None
+    assert calls == ["userA:save_trace", "userA_api:cancel_all_meetings", "userA:stop_app"]
+
+
+def test_run_teardown_phase_skips_unused_users(monkeypatch):
+    """普通阶段跳过未使用过的用户；未使用用户的优先级 hook 同样跳过。"""
+    calls = []
+    user_a = _make_phase_user("userA", "web", True, ["stop_app"], calls)
+    user_b = _make_phase_user("userB", "web", False, ["save_trace", "stop_app"], calls)
+    users = {"userA": user_a, "userB": user_b}
+    hooks_map = {
+        "userA": {"teardown": ["stop_app"]},
+        "userB": {"teardown_priority": ["save_trace"], "teardown": ["stop_app"]},
+    }
+
+    monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
+
+    _run_teardown_phase(users, hooks_map, "teardown_priority")
+    _run_teardown_phase(users, hooks_map, "teardown")
+
+    assert calls == ["userA:stop_app"]
+
+
+def test_run_teardown_phase_continues_after_hook_failure(monkeypatch):
+    """单个用户 teardown 失障不阻断其它用户，并返回失障错误。"""
+    calls = []
+    user_a = _make_phase_user(
+        "userA", "web", True, ["stop_app"], calls, fail_on="stop_app"
+    )
+    user_b = _make_phase_user("userB", "web", True, ["leave"], calls)
+    users = {"userA": user_a, "userB": user_b}
+    hooks_map = {
+        "userA": {"teardown": ["stop_app"]},
+        "userB": {"teardown": ["leave"]},
+    }
+
+    monkeypatch.setattr("conftest.ReportLogger.get_current", lambda: _SilentLogger())
+
+    error = _run_teardown_phase(users, hooks_map, "teardown")
+
+    assert isinstance(error, HookFailureError)
+    assert calls == ["userA:stop_app", "userB:leave"]

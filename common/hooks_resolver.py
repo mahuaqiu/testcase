@@ -17,6 +17,12 @@ class HooksResolver:
     目录 conftest 层与用例标记层使用同一套键结构和合并规则，通过
     resolve + apply_case 两遍组合实现叠加。
 
+    teardown 增量项支持 "+@hook" 优先级写法（字符串或字典键均可）：
+    该 hook 不进普通 teardown 列表，而是进入 teardown_priority 列表，
+    由框架在所有普通 teardown（含 API 用户）之前执行；同名 hook 若
+    已存在于普通列表则移动而非重复添加。"-hook" 移除时对两个列表
+    同时生效。setup 无插队语义，"+@hook" 按普通 "+hook" 处理。
+
     app_type 是标量（非空字符串）而非列表，不参与 setup/teardown 的
     列表合并机制，由各层单独识别、直接覆盖：用户键 > 平台键 > 全局，
     且每一层覆盖其 base（config.yaml 平台默认 → conftest 各层 → 用例标记）。
@@ -38,12 +44,14 @@ class HooksResolver:
             user_id: 当前用户 ID（用于定位用户层覆盖）。
 
         Returns:
-            最终的 hooks 字典: {"setup": [...], "teardown": [...], "app_type": ...}
+            最终的 hooks 字典: {"setup": [...], "teardown": [...],
+            "teardown_priority": [...], "app_type": ...}
         """
         platform_defaults = default_hooks.get(platform, {})
         base = {
             "setup": list(platform_defaults.get("setup", [])),
             "teardown": list(platform_defaults.get("teardown", [])),
+            "teardown_priority": list(platform_defaults.get("teardown_priority", [])),
         }
         if platform_defaults.get("app_type"):
             base["app_type"] = platform_defaults["app_type"]
@@ -76,11 +84,13 @@ class HooksResolver:
                 的 teardown 优先执行；setup 及目录 conftest 层不受影响。
 
         Returns:
-            最终的 hooks 字典: {"setup": [...], "teardown": [...], "app_type": ...}
+            最终的 hooks 字典: {"setup": [...], "teardown": [...],
+            "teardown_priority": [...], "app_type": ...}
         """
         result = {
             "setup": list(base.get("setup", [])),
             "teardown": list(base.get("teardown", [])),
+            "teardown_priority": list(base.get("teardown_priority", [])),
         }
         if base.get("app_type") is not None:
             result["app_type"] = base["app_type"]
@@ -141,15 +151,41 @@ class HooksResolver:
     ) -> None:
         """应用单层 case hooks（复用原有逻辑，避免各层重复代码）。
 
+        teardown 列表中的 "+@hook" 优先级项进入 result["teardown_priority"]，
+        不参与普通列表的覆盖/合并；"-hook" 对两个列表同时移除。
+
         Args:
             result: 累积中的 hooks 字典。
             hook_type: "setup" 或 "teardown"。
             case_list: 本层该类型的 hooks 列表。
             prepend: True 时增量项（+ 前缀）插入列表头部，保持声明顺序，
-                使本层 teardown 先于已有 teardown 执行。
+                使本层 teardown 先于已有 teardown 执行（优先级项同理前插）。
         """
         if not case_list:
             return
+
+        if hook_type == "teardown":
+            # "+@hook" 优先级项拆出单独进入 teardown_priority，
+            # 不参与普通列表的覆盖/合并逻辑。
+            priority_items, case_list = HooksResolver._split_priority_hooks(case_list)
+            if priority_items:
+                HooksResolver._apply_priority_hooks(
+                    result, priority_items, prepend=prepend
+                )
+            # "-hook" / "-@hook" 同时从优先级列表移除（覆盖模式也生效）
+            removed_names = {
+                name[1:].lstrip("@")
+                for name in map(HooksResolver._hook_name, case_list)
+                if name.startswith("-")
+            }
+            if removed_names:
+                result["teardown_priority"] = [
+                    h for h in result["teardown_priority"]
+                    if HooksResolver._hook_name(h) not in removed_names
+                ]
+        else:
+            # setup 无插队语义，"+@hook" 降级为普通 "+hook"
+            case_list = [HooksResolver._demote_priority_marker(i) for i in case_list]
 
         # 分析前缀。无前缀字典是一个可执行 hook，不能像无前缀字符串
         # 一样把同一列表中的 + hook 过滤掉。
@@ -168,7 +204,7 @@ class HooksResolver:
             if hook_name.startswith("+"):
                 to_add.append(item)
             elif hook_name.startswith("-"):
-                to_remove.append(hook_name[1:])
+                to_remove.append(hook_name[1:].lstrip("@"))
             elif isinstance(item, dict):
                 has_unprefixed_dict = True
             else:
@@ -213,15 +249,18 @@ class HooksResolver:
                     # 字符串格式："+hook_name" → "hook_name"
                     clean_item = item[1:]  # 去除前缀
 
-                # 检查是否已存在
+                # 检查是否已存在（普通列表、优先级列表均算已存在，避免重复执行）
                 hook_name = (
                     clean_item
                     if isinstance(clean_item, str)
                     else next(iter(clean_item.keys()))
                 )
+                existing = list(result[hook_type]) + list(new_items)
+                if hook_type == "teardown":
+                    existing += result.get("teardown_priority", [])
                 exists = any(
                     h == hook_name or (isinstance(h, dict) and hook_name in h)
-                    for h in result[hook_type] + new_items
+                    for h in existing
                 )
                 if not exists:
                     new_items.append(clean_item)
@@ -231,6 +270,73 @@ class HooksResolver:
                     result[hook_type][0:0] = new_items
                 else:
                     result[hook_type].extend(new_items)
+
+    @staticmethod
+    def _split_priority_hooks(case_list: List[Any]) -> tuple[List[Any], List[Any]]:
+        """拆出 teardown 列表中的 "+@name" 优先级项。
+
+        Returns:
+            (优先级项列表（已去标记）, 普通项列表)。
+        """
+        priority_items = []
+        normal_items = []
+        for item in case_list:
+            if HooksResolver._hook_name(item).startswith("+@"):
+                priority_items.append(HooksResolver._clean_priority_item(item))
+            else:
+                normal_items.append(item)
+        return priority_items, normal_items
+
+    @staticmethod
+    def _apply_priority_hooks(
+        result: Dict[str, Any],
+        priority_items: List[Any],
+        prepend: bool = False,
+    ) -> None:
+        """把优先级项加入 teardown_priority 列表。
+
+        同名 hook 若已在普通 teardown 列表中则移动到优先级列表
+        （插队而非重复执行）；优先级列表内按声明顺序去重。
+        """
+        priority_list = result.setdefault("teardown_priority", [])
+        new_items = []
+        for item in priority_items:
+            name = HooksResolver._hook_name(item)
+            if any(
+                HooksResolver._hook_name(h) == name
+                for h in priority_list + new_items
+            ):
+                continue
+            result["teardown"] = [
+                h for h in result["teardown"]
+                if HooksResolver._hook_name(h) != name
+            ]
+            new_items.append(item)
+        if new_items:
+            if prepend:
+                priority_list[0:0] = new_items
+            else:
+                priority_list.extend(new_items)
+
+    @staticmethod
+    def _clean_priority_item(item: Any) -> Any:
+        """去掉 "+@name" 优先级标记："+@x" → "x"，{"+@x": a} → {"x": a}。"""
+        if isinstance(item, dict):
+            name, arg = next(iter(item.items()))
+            return {name[2:]: arg}
+        return item[2:]
+
+    @staticmethod
+    def _demote_priority_marker(item: Any) -> Any:
+        """setup 列表中的 "+@x" / "-@x" 降级为普通 "+x" / "-x"。"""
+        if isinstance(item, dict):
+            name, arg = next(iter(item.items()))
+            if name.startswith(("+@", "-@")):
+                return {name[0] + name[2:]: arg}
+            return item
+        if isinstance(item, str) and item.startswith(("+@", "-@")):
+            return item[0] + item[2:]
+        return item
 
     @staticmethod
     def split_case_hooks(

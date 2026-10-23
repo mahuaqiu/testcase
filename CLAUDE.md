@@ -15,7 +15,8 @@
 - **用户声明**：`@pytest.mark.users({"userA": "web"})`，User 属性见 AGENTS.md 5.1
 - **并行**：`with parallel():` 块内只放操作（多用户登录/入会等），验证放块外顺序执行
 - **Hooks**：`@pytest.mark.hooks(setup=["+x", "-y", {"z": arg}])`；目录 conftest 用
-  `get_hooks()` 提供公共层，多级全部叠加，用例层 > 内层 conftest > 外层 > config.yaml
+  `get_hooks()` 提供公共层，多级全部叠加，用例层 > 内层 conftest > 外层 > config.yaml；
+  teardown 增量写 `"+@x"` 可插队到所有普通 teardown（含 API 用户）之前执行
 - **配置读取**：用例/AW/目录 conftest 一律 `from common.runtime import get_config,
   get_exe_param`，不要 `from conftest import`（模块名冲突）
 

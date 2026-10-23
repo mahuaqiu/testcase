@@ -65,7 +65,8 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "hooks: 用例级 hooks，支持全局/平台/用户。"
-        "如 @pytest.mark.hooks(setup=['+login'], userA={'teardown': ['+leave']})",
+        "如 @pytest.mark.hooks(setup=['+login'], userA={'teardown': ['+leave']})；"
+        "teardown 增量支持 '+@hook' 优先级写法，先于所有普通 teardown 执行。",
     )
     config.addinivalue_line(
         "markers", "namespace: namespace 标记，如 @pytest.mark.namespace('web_public')"
@@ -223,17 +224,14 @@ def users(request) -> Dict[str, User]:
                 is_connection_error = is_retryable_transport_error(setup_error.original_error)
 
             if not is_connection_error:
-                # 非连接错误时，执行 teardown 清理资源
-                # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
-                for user_id, user in _sort_users_for_teardown(user_instances):
-                    final_hooks = final_hooks_map[user_id]
-                    try:
-                        _execute_hooks(
-                            user, final_hooks.get("teardown", []), hook_type="teardown",
-                            user_id=user_id,
-                        )
-                    except HookFailureError:
-                        pass  # teardown 失障也记录，但不影响流程
+                # 非连接错误时，执行 teardown 清理资源；
+                # 优先级（+@）hook 最先，之后按 API 用户优先顺序执行普通 teardown
+                _run_teardown_phase(
+                    user_instances, final_hooks_map, "teardown_priority", only_used=False
+                )
+                _run_teardown_phase(
+                    user_instances, final_hooks_map, "teardown", only_used=False
+                )
 
             # 停止保活
             for user_id, keepalive in _keepalive_managers.items():
@@ -248,24 +246,13 @@ def users(request) -> Dict[str, User]:
         yield user_instances
 
         # 执行 teardown hooks - 只对实际使用过的用户
-        teardown_failed = False
-        teardown_error = None
-
-        # teardown 顺序：API 用户优先（数据清理），其它用户顺序执行
-        for user_id, user in _sort_users_for_teardown(user_instances):
-            # 过滤：跳过未被使用的用户
-            if not user._used:
-                continue
-
-            final_hooks = final_hooks_map[user_id]
-            try:
-                _execute_hooks(
-                    user, final_hooks.get("teardown", []), hook_type="teardown",
-                    user_id=user_id,
-                )
-            except HookFailureError as e:
-                teardown_failed = True
-                teardown_error = e
+        # teardown 顺序：优先级（+@）hook 最先，之后 API 用户优先（数据清理），
+        # 其它用户顺序执行
+        teardown_error = (
+            _run_teardown_phase(user_instances, final_hooks_map, "teardown_priority")
+            or _run_teardown_phase(user_instances, final_hooks_map, "teardown")
+        )
+        teardown_failed = teardown_error is not None
 
         # 停止保活
         for user_id, keepalive in _keepalive_managers.items():
@@ -481,7 +468,9 @@ def _resolve_final_hooks(
     → 用例标记（全局 → 平台键 → 用户键）。
 
     conftest 各层之间按正常顺序合并（teardown 外层先执行）；用例标记层
-    的 teardown 增量前插，保证用例里写的 teardown 优先执行。
+    的 teardown 增量前插，保证用例里写的 teardown 优先执行。teardown
+    增量项写 "+@hook" 时进入 teardown_priority 列表，由 fixture 在所有
+    普通 teardown（含 API 用户）之前执行。
 
     Args:
         user: User 实例。
@@ -491,7 +480,8 @@ def _resolve_final_hooks(
         case_hooks: 用例 @pytest.mark.hooks 标记。
 
     Returns:
-        最终 hooks 字典: {"setup": [...], "teardown": [...], "app_type": ...}
+        最终的 hooks 字典: {"setup": [...], "teardown": [...],
+        "teardown_priority": [...], "app_type": ...}
     """
     known_platforms = list(hooks_config.keys())
     base = HooksResolver.resolve(user.platform, hooks_config)
@@ -658,6 +648,42 @@ def _sort_users_for_teardown(user_instances: Dict[str, User]):
     api_users = [(uid, u) for uid, u in user_instances.items() if u.platform == "api"]
     other_users = [(uid, u) for uid, u in user_instances.items() if u.platform != "api"]
     return api_users + other_users
+
+
+def _run_teardown_phase(
+    user_instances: Dict[str, User],
+    final_hooks_map: Dict[str, Dict[str, Any]],
+    hooks_key: str,
+    only_used: bool = True,
+) -> Optional[HookFailureError]:
+    """执行一个 teardown 阶段（teardown_priority 或 teardown）。
+
+    优先级阶段（"+@hook" 解析结果）先于普通阶段调用，使优先级 hook
+    插队到包括 API 用户在内的所有普通 teardown 之前。用户顺序沿用
+    API 用户优先排序；单个用户 hook 失障不阻断其它用户，返回最后
+    一个失障错误（无失障返回 None）。
+
+    Args:
+        user_instances: 用户资源字典。
+        final_hooks_map: 用户 ID 到最终 hooks 的映射。
+        hooks_key: "teardown_priority" 或 "teardown"。
+        only_used: True 时跳过未被使用过的用户（setup 失障清理路径不过滤）。
+
+    Returns:
+        最后一个 HookFailureError，全部成功时为 None。
+    """
+    error: Optional[HookFailureError] = None
+    for user_id, user in _sort_users_for_teardown(user_instances):
+        if only_used and not user._used:
+            continue
+        hooks = final_hooks_map.get(user_id, {}).get(hooks_key, [])
+        if not hooks:
+            continue
+        try:
+            _execute_hooks(user, hooks, hook_type="teardown", user_id=user_id)
+        except HookFailureError as e:
+            error = e
+    return error
 
 
 def _execute_hooks(

@@ -418,6 +418,9 @@ hooks:
     teardown: ["cancel_all_meetings"]
 ```
 
+平台默认层还可直接配置 `teardown_priority: [...]` 列表（不常用，
+通常用各层的 `+@hook` 增量写法）。
+
 `app_type` 与 `setup` / `teardown` 同级。各层解析出的 `app_type` 在
 fixture 中挂到 `User` 实例的 `app_type` 属性，所有 AW 方法（含
 `do_{name}` hook 方法）通过 `self.user.app_type` 读取；未配置的平台
@@ -442,6 +445,9 @@ fixture 中挂到 `User` 实例的 `app_type` 属性，所有 AW 方法（含
 
 # 组合
 @pytest.mark.hooks(setup=["-start_app", "+custom_hook"])
+
+# teardown 优先级（插队）：先于所有普通 teardown（含 API 用户）执行
+@pytest.mark.hooks(teardown=["+@save_trace"])
 
 # 带单个参数
 @pytest.mark.hooks(setup=[{"start_app": "edge"}])
@@ -483,11 +489,26 @@ hook 项参数格式：
 用户键内均可），按同样的层级顺序直接覆盖，但它是标量而非列表——不走
 `+`/`-` 合并，取声明该值的最具体一层。
 
-**teardown 执行顺序**：跨用户保持 API 用户优先；同一用户内，**用例
-标记层（③④⑤）声明的 teardown 增量项先于 conftest 层/平台默认层的
-teardown 执行**（前插且保持声明顺序），例如用例写 `teardown=["+leave"]`
-时最终顺序为 `leave → stop_app`。conftest 各层与平台默认之间按常规
-顺序执行（外层 conftest 先于内层）。setup 不前插，按层顺序正常追加。
+**teardown 执行顺序**：优先级 hook 最先，之后跨用户保持 API 用户优先；
+同一用户内，**用例标记层（③④⑤）声明的 teardown 增量项先于 conftest
+层/平台默认层的 teardown 执行**（前插且保持声明顺序），例如用例写
+`teardown=["+leave"]` 时最终顺序为 `leave → stop_app`。conftest 各层与
+平台默认之间按常规顺序执行（外层 conftest 先于内层）。setup 不前插，
+按层顺序正常追加。
+
+**优先级 teardown（`+@` 插队）**：teardown 增量项写 `"+@hook"`（字典
+键同样支持，如 `{"+@upload_logs": ["bucket", "file"]}`）时，该 hook 脱离
+普通 teardown 队列，**先于所有普通 teardown（含 API 用户的
+cancel_all_meetings）执行**，用于「必须最先跑的收尾动作」（如保存
+trace、上传日志）。规则：
+
+- 各层（conftest 层 / 用例标记的全局、平台、用户键）均可声明，用例层
+  声明的排在 conftest 层之前（同 teardown 前插语义）
+- 同名 hook 已在普通 teardown 列表中时为**移动**（插队）而非重复执行，
+  例如默认有 `stop_app` 时写 `+@stop_app` 则 `stop_app` 提到最前
+- `"-hook"` 移除对普通和优先级两个列表同时生效（`-@hook` 亦可）
+- setup 无插队语义，`+@hook` 按普通 `+hook` 处理
+- 未使用的用户仍会跳过（与普通 teardown 的 `_used` 过滤一致）
 
 ```python
 @pytest.mark.users({"userA": "windows", "userB": "mac"})
@@ -514,7 +535,7 @@ teardown 执行**（前插且保持声明顺序），例如用例写 `teardown=[
 | 仅写 user 键 | 允许；其它用户只吃平台默认 |
 | API 用户独立 | `userA` 不影响 `userA_api`；改 API 需写 `userA_api=...` 或 `api=...` |
 | 未知 user 键 | 直接 fail（必须在 `users` 中声明，conftest 层同样校验） |
-| hook 项格式 | 与全局相同：`"+x"` / `"-x"` / `{"x": arg}` / `{"x": [a, b]}` |
+| hook 项格式 | 与全局相同：`"+x"` / `"-x"` / `"+@x"`（仅 teardown，插队最前）/ `{"x": arg}` / `{"x": [a, b]}` |
 
 ### 7.5 目录级 conftest hooks（可选的公共层）
 
