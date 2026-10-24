@@ -40,6 +40,18 @@ class ReportLogger:
         """重置当前线程的日志收集器。"""
         cls._local.logger = cls()
 
+    @classmethod
+    def set_current(cls, logger: "ReportLogger") -> None:
+        """将指定日志收集器绑定到当前线程。
+
+        并行执行线程通过此方法注入主线程的 logger，
+        使子线程的 AW 日志写入同一份报告。
+
+        Args:
+            logger: 要绑定的日志收集器实例。
+        """
+        cls._local.logger = logger
+
     def __init__(self):
         self._logs: List[Dict[str, Any]] = []
         self._start_time = datetime.now()
