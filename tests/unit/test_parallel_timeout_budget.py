@@ -125,3 +125,46 @@ def test_budget_exhausted_business_method_skips_screenshot():
 
     # 原子层不发请求 + 装饰器不补拍截图
     assert client.execute.call_count == 0
+
+
+class ExistBudgetAW(BaseAW):
+    """exist 预算传导演示 AW。"""
+
+    PLATFORM = "web"
+
+
+def exist_result(exists):
+    output = f'{{"exists": {str(exists).lower()}}}'
+    return {"actions": [{"status": "success", "output": output}]}
+
+
+def test_budget_passed_for_exist_ops():
+    """exist 类操作同样携带剩余预算与放大的 read_timeout。"""
+    client = Mock()
+    client.execute.return_value = exist_result(False)
+    aw = ExistBudgetAW(client, make_user())
+
+    try:
+        set_deadline(time.monotonic() + 60)
+        aw.ocr_exist("已登录")
+    finally:
+        set_deadline(None)
+
+    _, kwargs = client.execute.call_args
+    assert 55000 <= kwargs["config"]["timeout"] <= 60000  # 剩余毫秒
+    assert kwargs["timeout"] == 125.0  # max(125, 60+15)
+
+
+def test_exhausted_budget_raises_for_exist_ops():
+    """预算耗尽的 exist 操作不发请求，直接抛 AWError（不被降级为 exists=False）。"""
+    client = Mock()
+    aw = ExistBudgetAW(client, make_user())
+
+    try:
+        set_deadline(time.monotonic() - 1)  # 已过期
+        with pytest.raises(AWError, match="预算已耗尽"):
+            aw.ocr_exist("已登录")
+    finally:
+        set_deadline(None)
+
+    assert client.execute.call_count == 0

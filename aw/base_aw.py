@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient, is_retryable_transport_error
 from common.report_logger import ReportLogger
@@ -443,6 +443,31 @@ class BaseAW:
                 return None  # 收集模式标记，由 _exec 包装为 PendingCall
         return self._execute_sync(method, action_data, log_args, window=window)
 
+    def _budget_params(
+        self, method: str
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[float]]:
+        """计算并行预算传导参数，预算耗尽时抛出带哨兵的 AWError。
+
+        Args:
+            method: 原子操作方法名（用于错误定位）。
+
+        Returns:
+            (config, request_timeout) 二元组；非并行执行时均为 None。
+        """
+        deadline = get_deadline()
+        if deadline is None:
+            return None, None
+        remaining_ms = int((deadline - time.monotonic()) * 1000)
+        if remaining_ms <= 0:
+            budget_error = AWError(f"{self._aw_name}.{method}", {
+                "status": "failed",
+                "error": f"并行预算已耗尽，跳过 {method}",
+            })
+            # 哨兵属性：业务方法装饰器据此跳过补拍截图，避免再发 HTTP 请求
+            budget_error.budget_exhausted = True
+            raise budget_error
+        return {"timeout": remaining_ms}, max(125.0, (deadline - time.monotonic()) + 15.0)
+
     def _execute_sync(
         self,
         method: str,
@@ -473,21 +498,7 @@ class BaseAW:
         # 并放大 HTTP read_timeout 避免客户端先于 Worker 断连
         # （预算耗尽时必须在 try 外抛出：异常处理器会补拍截图，
         #   那会再发一次 HTTP 请求，违背预算约束）
-        deadline = get_deadline()
-        config = None
-        request_timeout = None
-        if deadline is not None:
-            remaining_ms = int((deadline - time.monotonic()) * 1000)
-            if remaining_ms <= 0:
-                budget_error = AWError(f"{self._aw_name}.{method}", {
-                    "status": "failed",
-                    "error": f"并行预算已耗尽，跳过 {method}",
-                })
-                # 哨兵属性：业务方法装饰器据此跳过补拍截图，避免再发 HTTP 请求
-                budget_error.budget_exhausted = True
-                raise budget_error
-            config = {"timeout": remaining_ms}
-            request_timeout = max(125.0, (deadline - time.monotonic()) + 15.0)
+        config, request_timeout = self._budget_params(method)
 
         try:
             result = self.client.execute(
@@ -1064,8 +1075,19 @@ class BaseAW:
         if platform in PLATFORMS_NEED_DEVICE_ID and self.user:
             device_id = self.user.device_id
 
+        # 并行预算传导：与 _execute_sync 一致。必须在 try 外抛出——
+        # 否则预算耗尽会被下方异常降级吞成 exists=False，轮询调用无法终止
+        config, request_timeout = self._budget_params(method)
+
         try:
-            result = self.client.execute(platform, [action_data], device_id=device_id, window=window)
+            result = self.client.execute(
+                platform,
+                [action_data],
+                device_id=device_id,
+                window=window,
+                config=config,
+                timeout=request_timeout,
+            )
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.log_aw_call(
