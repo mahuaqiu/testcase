@@ -9,6 +9,7 @@ from common.parallel import (
     CallTask,
     ParallelActionError,
     ParallelExecutionError,
+    ParallelNestingError,
     ParallelContext,
     PendingCall,
     parallel,
@@ -193,3 +194,16 @@ def test_pending_call_raises_on_any_consumption():
         list(pending)
     # repr 不抛错，便于调试输出
     assert "PendingCall" in repr(pending)
+
+
+def test_nested_top_level_parallel_raises():
+    """顶层直接嵌套 parallel() 显式抛 ParallelNestingError，外层任务不执行。"""
+    executed = []
+
+    with pytest.raises(ParallelNestingError):
+        with parallel() as context:
+            context._tasks.append(make_task(lambda: executed.append(1)))
+            with parallel():  # ← 顶层直接嵌套：立即抛错
+                pass
+
+    assert executed == []  # 异常退出外层块，已收集任务不执行

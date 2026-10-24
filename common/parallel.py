@@ -157,6 +157,22 @@ class ParallelCallError(Exception):
         super().__init__(msg)
 
 
+class ParallelNestingError(Exception):
+    """在 parallel() 块内顶层嵌套 parallel() 的异常。
+
+    顶层嵌套会使内层退出时关闭外层收集模式，导致外层剩余调用
+    退化为同步立即执行，故进入时即检测并显式报错。
+    """
+
+    def __init__(self):
+        super().__init__(
+            "不能在 parallel() 块内再使用 parallel() 块（顶层嵌套）。\n"
+            "解决：\n"
+            "  1) 将调用并列写进同一个 parallel() 块\n"
+            "  2) 需要分组执行时，使用两个连续的 parallel() 块"
+        )
+
+
 class PendingCall:
     """并行收集模式下的待定调用占位。
 
@@ -248,6 +264,8 @@ class ParallelContext:
 
     def __enter__(self) -> "ParallelContext":
         """进入上下文，开启收集模式。"""
+        if is_collecting():
+            raise ParallelNestingError()
         set_collecting(True)
         set_action_queue(self._tasks)
         return self
