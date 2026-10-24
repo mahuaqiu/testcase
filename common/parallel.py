@@ -1,38 +1,33 @@
 """
-并行执行上下文管理器。
+并行执行上下文管理器（线程级真并行）。
 
 提供优雅的多用户并行执行语法：
 
     with parallel():
         userA.do_login()
         userB.do_login()
-        userC.do_login()
 
 工作原理：
-1. 进入上下文时，设置全局收集模式
-2. AW 方法调用不立即执行，而是收集 action_data
-3. 退出上下文时，按用户分组，批量调用 execute_async
-4. 轮询 get_task 获取结果，记录日志
+1. 进入上下文时开启收集模式（线程本地）
+2. 块内 AW 调用（业务方法/原子操作）不立即执行，包装为 CallTask 入队
+3. 退出上下文时按用户分组，每用户一个线程完整同步执行其调用链，
+   AW 方法内的取值、分支、循环等 Python 逻辑在执行期真实运行
+4. 汇总各组首个异常，有失败抛 ParallelExecutionError
 """
 
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from common.report_logger import ReportLogger
-
-SUCCESS_STATUSES = {"success", "completed"}
-ACTIVE_STATUSES = {"accepted", "pending", "running", "cancelling"}
-FAILURE_STATUSES = {"failed", "timeout", "cancelled", "interrupted"}
-POLL_INTERVAL_SECONDS = 2.0
 
 if TYPE_CHECKING:
     from common.testagent_client import TestagentClient
 
 
-# ── 全局收集状态（线程安全）────────────────────────────────────
+# ── 全局收集状态（线程本地）────────────────────────────────────
 
 _collecting_state = threading.local()
 
@@ -55,50 +50,103 @@ def set_collecting(enabled: bool) -> None:
     _collecting_state.collecting = enabled
 
 
-def get_action_queue() -> Optional[List["Action"]]:
-    """获取当前线程的动作队列。
+def get_action_queue() -> Optional[List["CallTask"]]:
+    """获取当前线程的调用任务队列。
 
     Returns:
-        动作队列列表，如果不在收集模式则返回 None。
+        CallTask 列表，如果不在收集模式则返回 None。
     """
     if not is_collecting():
         return None
     return getattr(_collecting_state, "queue", None)
 
 
-def set_action_queue(queue: Optional[List["Action"]]) -> None:
-    """设置当前线程的动作队列。
+def set_action_queue(queue: Optional[List["CallTask"]]) -> None:
+    """设置当前线程的调用任务队列。
 
     Args:
-        queue: 动作队列列表。
+        queue: CallTask 列表。
     """
     _collecting_state.queue = queue
+
+
+# ── 并行预算（线程本地）──────────────────────────────────────
+# 执行线程内由 ParallelContext 注入截止时间；原子操作执行时读取，
+# 用于把剩余预算传导给 Worker（config.timeout）并放大 HTTP read_timeout。
+
+_deadline_state = threading.local()
+
+
+def set_deadline(deadline: Optional[float]) -> None:
+    """设置当前线程的并行预算截止时间。
+
+    Args:
+        deadline: time.monotonic() 时间戳（秒）；None 表示非并行执行。
+    """
+    _deadline_state.deadline = deadline
+
+
+def get_deadline() -> Optional[float]:
+    """获取当前线程的并行预算截止时间。
+
+    Returns:
+        截止时间戳，非并行执行时返回 None。
+    """
+    return getattr(_deadline_state, "deadline", None)
 
 
 # ── 数据类 ──────────────────────────────────────────────────────
 
 
 @dataclass
-class Action:
-    """待执行的动作。
+class CallTask:
+    """待执行的调用任务。
 
-    收集原始 action_data，用于批量发送给服务端。
+    fn 为闭包：在执行线程内同步调用，返回真实结果。
+    其余字段供 ParallelActionError 定位失败调用（字段名与旧版 Action 兼容）。
 
     Attributes:
-        action_data: 原始 action 数据（发给服务端）。
+        fn: 闭包，线程内同步执行的真实调用。
+        action_data: 兼容占位，恒为 None（不再收集原子动作数据）。
         platform: 平台类型。
         user_id: 用户标识（如 userA）。
         user_name: 用户姓名。
         user_account: 用户账号。
         user_ip: 用户 IP 地址。
         aw_name: AW 类名（如 LoginAW）。
-        method: 方法名（如 ocr_click）。
+        method: 方法名（如 do_login / ocr_click）。
         log_args: 用于日志记录的参数字典。
-        client: TestagentClient 实例（用于发送请求）。
-        parent_aw: 父级 AW 标识（如 LoginAW.do_login），用于日志聚合。
-        window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
+        client: TestagentClient 实例。
+        parent_aw: 父级业务方法标识（如 LoginAW.do_login），用于日志聚合。
+        window: 窗口定位参数（仅 Windows 平台）。
         parent_call_id: 父级业务方法本次调用的唯一 ID（用于报告精确分组）。
         parent_display: 父级业务方法显示名（docstring 首行）。
+    """
+
+    fn: Callable[[], Any]
+    action_data: Optional[Dict[str, Any]] = None
+    platform: str = ""
+    user_id: str = ""
+    user_name: str = ""
+    user_account: str = ""
+    user_ip: str = ""
+    aw_name: str = ""
+    method: str = ""
+    log_args: Dict[str, Any] = field(default_factory=dict)
+    client: Optional["TestagentClient"] = None
+    parent_aw: str = ""
+    window: Optional[Dict[str, Any]] = None
+    parent_call_id: str = ""
+    parent_display: str = ""
+
+
+@dataclass
+class Action:  # pragma: no cover - deprecated
+    """已废弃：旧收集模式的原子动作对象。
+
+    仅为本重构过渡期保留（base_aw 改造完成后删除），
+    新代码使用 CallTask。字段集与旧版保持一致，
+    供 base_aw 过渡期继续构造（Task 3 改造、Task 5 删除）。
     """
 
     action_data: Dict[str, Any]
@@ -111,24 +159,71 @@ class Action:
     method: str = ""
     log_args: Dict[str, Any] = field(default_factory=dict)
     client: Optional["TestagentClient"] = None
-    parent_aw: str = ""  # 父级 AW 标识，用于日志聚合
-    window: Optional[Dict[str, Any]] = None  # 窗口定位参数（仅 Windows 平台）
-    parent_call_id: str = ""  # 父级业务方法本次调用的唯一 ID
-    parent_display: str = ""  # 父级业务方法显示名（docstring 首行）
+    parent_aw: str = ""
+    window: Optional[Dict[str, Any]] = None
+    parent_call_id: str = ""
+    parent_display: str = ""
 
 
-# ── 异常类 ───────────────────────────────────────────────────────
+# ── 异常与保护对象 ───────────────────────────────────────────────
+
+
+class ParallelCallError(Exception):
+    """并行块内消费顶层调用返回值的异常。"""
+
+    def __init__(self, method: str, usage: str):
+        msg = (
+            f"不能在 parallel() 块内使用 {method} 返回值做 {usage}。\n"
+            f"原因：块内调用延迟到退出时才执行，返回值不存在。\n"
+            f"解决：\n"
+            f"  1) 将取值/判断逻辑封装进 AW 业务方法（do_*/should_*）后再并行\n"
+            f"  2) 将该调用移到 parallel() 上下文外顺序执行"
+        )
+        super().__init__(msg)
+
+
+class PendingCall:
+    """并行收集模式下的待定调用占位。
+
+    块内顶层调用的返回值被消费（条件判断、取文本、迭代等）时抛出
+    ParallelCallError，提示将逻辑封装进 AW 方法或移出并行块。
+    """
+
+    def __init__(self, method: str):
+        self._method = method
+
+    def __bool__(self):
+        raise ParallelCallError(self._method, "条件判断")
+
+    def __str__(self):
+        raise ParallelCallError(self._method, "字符串操作")
+
+    def __repr__(self):
+        return f"<PendingCall: {self._method}>"
+
+    def __len__(self):
+        raise ParallelCallError(self._method, "列表操作")
+
+    def __iter__(self):
+        raise ParallelCallError(self._method, "迭代操作")
+
+    def __getitem__(self, key):
+        raise ParallelCallError(self._method, "索引访问")
+
+    def get(self, key, default=None):
+        """dict-like get 方法，触发异常提示。"""
+        raise ParallelCallError(self._method, "数据访问")
 
 
 class ParallelActionError(Exception):
-    """单个动作执行失败的异常。
+    """单个调用执行失败的异常。
 
     Attributes:
-        action: 失败的动作对象。
+        action: 失败的 CallTask 对象。
         original_error: 原始异常。
     """
 
-    def __init__(self, action: Action, original_error: Exception):
+    def __init__(self, action: CallTask, original_error: Exception):
         self.action = action
         self.original_error = original_error
         super().__init__(
@@ -137,7 +232,7 @@ class ParallelActionError(Exception):
 
 
 class ParallelExecutionError(Exception):
-    """并行执行失败的异常（多个动作失败）。
+    """并行执行失败的异常（多个调用失败）。
 
     Attributes:
         errors: 所有失败的 ParallelActionError 列表。
@@ -157,82 +252,73 @@ class ParallelExecutionError(Exception):
 class ParallelContext:
     """并行执行上下文管理器。
 
-    收集所有 AW 方法调用，退出时按用户分组批量执行。
+    收集块内所有 AW 调用为 CallTask，退出时按用户分组，
+    每用户一个线程完整同步执行其调用链。
 
     Args:
         max_workers: 最大并发线程数，默认 10。
         timeout: 总超时时间（秒），默认 300。
 
     Usage:
-        with ParallelContext(max_workers=5) as ctx:
+        with ParallelContext(max_workers=5):
             userA.do_login()
             userB.do_login()
     """
 
-    def __init__(
-        self,
-        max_workers: int = 10,
-        timeout: float = 300,
-    ):
+    def __init__(self, max_workers: int = 10, timeout: float = 300):
         self.max_workers = max_workers
         self.timeout = timeout
-        self._actions: List[Action] = []
-        self._results: Dict[str, Any] = {}
+        self._tasks: List[CallTask] = []
         self._errors: List[ParallelActionError] = []
 
     def __enter__(self) -> "ParallelContext":
         """进入上下文，开启收集模式。"""
         set_collecting(True)
-        set_action_queue(self._actions)
+        set_action_queue(self._tasks)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
-        """退出上下文，关闭收集模式并执行所有动作。"""
-        # 恢复同步模式
+        """退出上下文，关闭收集模式并并行执行所有调用。"""
         set_collecting(False)
         set_action_queue(None)
 
-        # 如果进入时有异常，不执行
+        # 块内已有异常（如 Python 错误）时不执行
         if exc_type is not None:
             return False
 
-        # 并行执行所有收集的动作
         self._execute_parallel()
 
-        # 如果有执行错误，抛出
         if self._errors:
             raise ParallelExecutionError(self._errors)
 
         return False
 
+    # ── 分组与执行 ─────────────────────────────────────────
+
+    def _group_tasks(self) -> Dict[str, List[CallTask]]:
+        """按 user_id 分组，组内保持声明顺序。"""
+        groups: Dict[str, List[CallTask]] = {}
+        for task in self._tasks:
+            groups.setdefault(task.user_id or "_anonymous", []).append(task)
+        return groups
+
     def _execute_parallel(self) -> None:
-        """按用户分组，批量异步执行并共享同一个超时预算。"""
-        if not self._actions:
+        """按用户分组，每用户一个线程同步执行其调用链。"""
+        if not self._tasks:
             return
 
-        logger = ReportLogger.get_current()
-        user_batches: Dict[tuple, Dict[str, Any]] = {}
-        for action in self._actions:
-            key = (action.user_id, action.platform, id(action.client))
-            if key not in user_batches:
-                user_batches[key] = {
-                    "client": action.client,
-                    "platform": action.platform,
-                    "user_id": action.user_id,
-                    "actions": [],
-                    "action_objs": [],
-                    "window": action.window,
-                }
-            user_batches[key]["actions"].append(action.action_data)
-            user_batches[key]["action_objs"].append(action)
-
+        groups = self._group_tasks()
         deadline = time.monotonic() + self.timeout
-        executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        futures: Dict[Any, Dict[str, Any]] = {}
+        logger = ReportLogger.get_current()
+
+        executor = ThreadPoolExecutor(
+            max_workers=self.max_workers, thread_name_prefix="parallel"
+        )
+        futures: Dict[Any, List[CallTask]] = {}
         try:
-            for batch in user_batches.values():
-                future = executor.submit(self._execute_batch_async, batch, logger, deadline)
-                futures[future] = batch
+            for tasks in groups.values():
+                future = executor.submit(self._run_group, tasks, logger, deadline)
+                futures[future] = tasks
 
             while futures:
                 remaining = max(0.0, deadline - time.monotonic())
@@ -242,210 +328,52 @@ class ParallelContext:
                 if not done:
                     break
                 for future in done:
-                    batch = futures.pop(future)
+                    tasks = futures.pop(future)
                     try:
-                        self._results[batch["user_id"]] = future.result()
+                        future.result()
+                    except ParallelActionError as error:
+                        self._errors.append(error)
                     except Exception as error:
-                        self._record_batch_error(batch, error)
+                        # _run_group 自身的基础设施异常，关联到组内首个任务
+                        self._errors.append(ParallelActionError(tasks[0], error))
 
-            if futures:
-                for future, batch in list(futures.items()):
-                    future.cancel()
-                    self._record_batch_error(
-                        batch,
-                        TimeoutError(f"批量任务执行超时（等待超过 {self.timeout} 秒）"),
-                    )
+            # 超时未完成的组：记录 TimeoutError，执行线程后台自然结束
+            for tasks in futures.values():
+                self._errors.append(ParallelActionError(
+                    tasks[0],
+                    TimeoutError(
+                        f"用户 {tasks[0].user_id} 的调用链执行超时"
+                        f"（等待超过 {self.timeout} 秒）"
+                    ),
+                ))
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
 
-    def _record_batch_error(self, batch: Dict[str, Any], error: Exception) -> None:
-        """将批次异常稳定关联到一个动作，确保错误可定位。"""
-        from aw.base_aw import AWError
+    def _run_group(self, tasks: List[CallTask], logger, deadline: float) -> None:
+        """执行线程函数：同步执行单个用户的调用链。
 
-        action_objs = batch.get("action_objs", [])
-        if not action_objs:
-            return
-
-        action_index = 0
-        if isinstance(error, AWError):
-            action_results = error.result.get("actions", [])
-            if action_results:
-                action_index = min(len(action_results) - 1, len(action_objs) - 1)
-        self._errors.append(ParallelActionError(action_objs[action_index], error))
-
-    def _execute_batch_async(
-        self,
-        batch: Dict[str, Any],
-        logger: ReportLogger,
-        deadline: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
-        """提交并轮询一个批次，直到成功、失败或截止时间。"""
-        from aw.base_aw import AWError
-
-        client = batch["client"]
-        platform = batch["platform"]
-        actions = batch["actions"]
-        action_objs = batch["action_objs"]
-        window = batch.get("window")
-        if client is None:
-            raise ValueError("client 未设置")
-
-        deadline = deadline if deadline is not None else time.monotonic() + self.timeout
-        async_result = client.execute_async(platform, actions, window=window)
-        task_id = async_result.get("task_id")
-        if not task_id:
-            raise ValueError("execute_async 未返回 task_id")
-
-        def raise_terminal_error(status: str, task_result: Dict[str, Any]) -> None:
-            action_results = task_result.get("actions") or []
-            worker_screenshot = task_result.get("error_screenshot", "")
-            for index, action_result in enumerate(action_results):
-                if index < len(action_objs):
-                    is_last = index == len(action_results) - 1
-                    self._log_action_result(
-                        action_objs[index],
-                        action_result,
-                        logger,
-                        worker_error_screenshot=worker_screenshot if is_last else "",
-                    )
-
-            failed_result = action_results[-1] if action_results else {}
-            failed_error = (
-                failed_result.get("error")
-                or task_result.get("error")
-                or {
-                    "timeout": "批量任务执行超时",
-                    "cancelled": "批量任务已取消",
-                    "interrupted": "Worker 重启导致任务中断",
-                    "failed": "批量任务执行失败",
-                }.get(status, f"Worker 返回失败终态: {status}")
-            )
-            failed_index = min(len(action_results) - 1, len(action_objs) - 1) if action_results else 0
-            failed_action = action_objs[failed_index] if action_objs else None
-            method_name = (
-                f"{failed_action.aw_name}.{failed_action.method}"
-                if failed_action
-                else "ParallelTask.lifecycle"
-            )
-            result = {
-                "status": status,
-                "error": str(failed_error),
-                "task_id": task_id,
-                "failed_action": failed_result,
-                "actions": action_results,
-                "error_screenshot": worker_screenshot,
-            }
-            for key in ("code", "details", "request_id"):
-                if key in task_result:
-                    result[key] = task_result[key]
-            raise AWError(method_name, result)
-
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                try:
-                    client.cancel_task(task_id)
-                except Exception:
-                    pass
-                raise TimeoutError(f"批量任务 {task_id} 执行超时（等待超过 {self.timeout} 秒）")
-
-            task_result = client.get_task(task_id)
-            status = task_result.get("status")
-            if status in SUCCESS_STATUSES:
-                action_results = task_result.get("actions", [])
-                for index, action_obj in enumerate(action_objs):
-                    action_result = action_results[index] if index < len(action_results) else {}
-                    self._log_action_result(action_obj, action_result, logger)
-                return action_results
-            if status in FAILURE_STATUSES:
-                raise_terminal_error(status, task_result)
-            if status not in ACTIVE_STATUSES:
-                raise AWError(
-                    "ParallelTask.lifecycle",
-                    {
-                        "status": status,
-                        "error": f"Worker 返回未知任务状态: {status!r}",
-                        "task_id": task_id,
-                        "actions": task_result.get("actions", []),
-                    },
-                )
-
-            sleep_for = min(POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic()))
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-
-    def _log_action_result(
-        self,
-        action: Action,
-        action_result: Dict[str, Any],
-        logger: ReportLogger,
-        worker_error_screenshot: str = "",
-    ) -> None:
-        """记录单个 action 的执行结果日志。
-
-        Args:
-            action: Action 对象。
-            action_result: 服务端返回的 action 结果。
-            logger: 日志记录器。
-            worker_error_screenshot: Worker 返回的失败截图（base64）。
+        首个异常中止该组剩余任务；预算耗尽跳过剩余任务。
         """
-        success = action_result.get("status") == "success"
-
-        # 构建完整的 result 字段
-        result: Dict[str, Any] = {
-            "status": action_result.get("status"),
-            "duration_ms": action_result.get("duration_ms", 0),
-            "output": action_result.get("output", ""),
-            "error": action_result.get("error", ""),
-        }
-
-        # 如果有 OCR 信息，添加到 result
-        ocr_info = action_result.get("ocr_info")
-        if ocr_info:
-            result["ocr_info"] = ocr_info
-
-        # 如果有错误截图，添加到 result
-        # 优先使用 Worker 返回的 error_screenshot（失败瞬间的截图）
-        error_screenshot = worker_error_screenshot or action_result.get("error_screenshot") or action_result.get("screenshot")
-        if error_screenshot:
-            result["error_screenshot"] = error_screenshot
-        elif not success and action.client:
-            # Worker 没有返回截图时，手动截图
-            # Web 平台需要 system 级别截图（截取原生对话框）
-            try:
-                screenshot_kwargs = {}
-                if action.platform == "web":
-                    screenshot_kwargs["level"] = "system"
-                screenshot_result = action.client.screenshot(action.platform, **screenshot_kwargs)
-                if screenshot_result.get("status") == "success" and screenshot_result.get("actions"):
-                    screenshot_data = screenshot_result["actions"][0].get("screenshot") or screenshot_result["actions"][0].get("output", "")
-                    if screenshot_data:
-                        result["error_screenshot"] = screenshot_data
-            except Exception:
-                pass  # 截图失败不影响主流程
-
-        # 如果有目标图片路径（image_* 操作），尝试加载
-        target_image_base64 = ""
-        target_image_path = ""
-        if not success and action.method.startswith("image_") and "image_path" in action.log_args:
-            from common.utils import load_image_as_base64
-            target_image_path = action.log_args["image_path"]
-            target_image_base64 = load_image_as_base64(target_image_path) or ""
-
-        logger.log_aw_call(
-            aw_name=action.aw_name,
-            method=action.method,
-            args={"user_id": action.user_id, "user_name": action.user_name, "user_account": action.user_account, "user_ip": action.user_ip, **action.log_args},
-            success=success,
-            result=result,
-            duration_ms=action_result.get("duration_ms", 0),
-            target_image=target_image_base64,
-            target_image_path=target_image_path,
-            parent_aw=action.parent_aw,  # 传递 parent_aw 以支持日志聚合
-            request_id=action_result.get("request_id", ""),  # 新增：用于问题定位
-            parent_call_id=action.parent_call_id,
-            parent_display=action.parent_display,
-        )
+        set_collecting(False)
+        set_action_queue(None)
+        ReportLogger.set_current(logger)
+        set_deadline(deadline)
+        try:
+            for task in tasks:
+                if time.monotonic() >= deadline:
+                    raise ParallelActionError(
+                        task,
+                        TimeoutError(
+                            f"用户 {task.user_id} 的并行预算已耗尽，"
+                            f"跳过 {task.aw_name}.{task.method}"
+                        ),
+                    )
+                try:
+                    task.fn()
+                except Exception as error:
+                    raise ParallelActionError(task, error) from error
+        finally:
+            set_deadline(None)
 
 
 def parallel(
@@ -455,7 +383,7 @@ def parallel(
 
     Args:
         max_workers: 最大并发线程数，默认 10。
-        timeout: 总超时时间（秒），默认 300（用于等待所有用户完成）。
+        timeout: 总超时时间（秒），默认 300（所有用户的统一预算）。
 
     Returns:
         ParallelContext 实例。
@@ -465,12 +393,12 @@ def parallel(
             userA.do_login()
             userB.do_login()
 
-        # 自定义参数
         with parallel(max_workers=5, timeout=60):
             userA.do_login()
             userB.do_login()
 
     Note:
-        批量任务使用 parallel 的 timeout 作为统一截止时间，默认每2秒轮询一次。
+        块内调用延迟到退出时按用户分组并行执行；并行预算传导为每个
+        请求的 Worker 任务级超时（config.timeout）。
     """
     return ParallelContext(max_workers=max_workers, timeout=timeout)
