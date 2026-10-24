@@ -147,7 +147,11 @@ return None    # 由 _exec 包装为 PendingCall
 
 ### 4.7 嵌套 parallel
 
-外层收集模式下内层 `parallel()` 的块体属于被延迟的 Python 逻辑，实际不会在收集期执行；AW 方法内部若使用 `parallel()`，运行于该用户的执行线程中，threading.local 状态独立，天然正确。
+不支持顶层直接嵌套：外层收集模式下内层 `parallel()` 进入时检测到
+收集状态，立即抛 `ParallelNestingError`（2026-10-24 审查修复；修复前
+内层退出会静默关闭外层收集模式，外层剩余调用退化为同步立即执行）。
+`parallel()` 仅在用例层使用；AW 方法内部使用 `parallel()` 属非支持
+用法（当前线程模型下恰好可运行，不作为特性维护）。
 
 ## 五、性能特征
 
