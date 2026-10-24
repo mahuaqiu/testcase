@@ -148,10 +148,21 @@ class TestagentClient:
         data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """发送 HTTP 请求，并在连接中断时复用请求头重试一次。"""
+        """发送 HTTP 请求，并在连接中断时复用请求头重试一次。
+
+        Args:
+            method: HTTP 方法。
+            endpoint: 接口路径。
+            data: JSON 请求体。
+            params: URL 参数。
+            headers: 请求头。
+            timeout: 本次请求的读取超时（秒）；None 使用默认 read_timeout。
+        """
         url = f"{self.base_url}{endpoint}"
-        timeout = (self.connect_timeout, self.read_timeout)
+        read_timeout = self.read_timeout if timeout is None else timeout
+        request_timeout = (self.connect_timeout, read_timeout)
 
         def send() -> Dict[str, Any]:
             response = self.session.request(
@@ -159,7 +170,7 @@ class TestagentClient:
                 url=url,
                 json=data,
                 params=params,
-                timeout=timeout,
+                timeout=request_timeout,
                 headers=headers,
             )
             if not 200 <= response.status_code < 300:
@@ -176,7 +187,7 @@ class TestagentClient:
             ) from error
         except requests.exceptions.ReadTimeout as error:
             raise TestagentError(
-                f"读取超时: {url}（{self.read_timeout}秒）",
+                f"读取超时: {url}（{read_timeout}秒）",
                 code="READ_TIMEOUT",
                 retryable=True,
             ) from error
@@ -203,7 +214,7 @@ class TestagentClient:
                 ) from retry_error
             except requests.exceptions.ReadTimeout as retry_error:
                 raise TestagentError(
-                    f"读取超时: {url}（{self.read_timeout}秒）",
+                    f"读取超时: {url}（{read_timeout}秒）",
                     code="READ_TIMEOUT",
                     retryable=True,
                 ) from retry_error
@@ -248,6 +259,7 @@ class TestagentClient:
         config: Optional[Dict[str, Any]] = None,
         level: Optional[str] = None,
         window: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """同步执行任务。
 
@@ -259,6 +271,7 @@ class TestagentClient:
             config: 任务配置。
             level: 执行层级（仅 Web 平台，browser/system）。
             window: 窗口定位参数（仅 Windows 平台，如 {"class": "HwmMainWndClass"}）。
+            timeout: 本次请求的读取超时（秒）；None 使用默认 read_timeout。
 
         Returns:
             任务执行结果。
@@ -286,7 +299,7 @@ class TestagentClient:
         if window:
             task_request["window"] = window
 
-        return self._request("POST", "/task/execute", data=task_request)
+        return self._request("POST", "/task/execute", data=task_request, timeout=timeout)
 
     def execute_async(
         self,

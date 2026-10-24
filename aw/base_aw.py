@@ -14,6 +14,7 @@ from common.parallel import (
     CallTask,
     PendingCall,
     get_action_queue,
+    get_deadline,
     is_collecting,
 )
 from common.utils import load_image_as_base64
@@ -459,13 +460,38 @@ class BaseAW:
         logger = ReportLogger.get_current()
         start_time = time.time()
 
+        # 调用 client.execute（批量接口，传入单个 action）
+        # 需要 device_id 的平台才透传
+        device_id = None
+        if platform in PLATFORMS_NEED_DEVICE_ID and self.user:
+            device_id = self.user.device_id
+
+        # 并行执行时把剩余预算传导给 Worker 任务级 deadline，
+        # 并放大 HTTP read_timeout 避免客户端先于 Worker 断连
+        # （预算耗尽时必须在 try 外抛出：异常处理器会补拍截图，
+        #   那会再发一次 HTTP 请求，违背预算约束）
+        deadline = get_deadline()
+        config = None
+        request_timeout = None
+        if deadline is not None:
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                raise AWError(f"{self._aw_name}.{method}", {
+                    "status": "failed",
+                    "error": f"并行预算已耗尽，跳过 {method}",
+                })
+            config = {"timeout": remaining_ms}
+            request_timeout = max(125.0, (deadline - time.monotonic()) + 15.0)
+
         try:
-            # 调用 client.execute（批量接口，传入单个 action）
-            # 需要 device_id 的平台才透传
-            device_id = None
-            if platform in PLATFORMS_NEED_DEVICE_ID and self.user:
-                device_id = self.user.device_id
-            result = self.client.execute(platform, [action_data], device_id=device_id, window=window)
+            result = self.client.execute(
+                platform,
+                [action_data],
+                device_id=device_id,
+                window=window,
+                config=config,
+                timeout=request_timeout,
+            )
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
 
