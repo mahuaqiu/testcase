@@ -7,7 +7,7 @@ import pytest
 
 from aw.base_aw import BaseAW, AWError
 from common.parallel import set_deadline
-from common.testagent_client import TestagentClient
+from common.testagent_client import TestagentClient as _TestagentClient
 
 
 class BudgetAW(BaseAW):
@@ -43,7 +43,7 @@ def test_budget_passed_as_config_and_read_timeout():
     aw = BudgetAW(client, make_user())
 
     try:
-        set_deadline(time.monotonic() + 60)  # 剩余 60s > 125s 缓冲下限? 60+15=75 < 125
+        set_deadline(time.monotonic() + 60)  # 60+15=75 < 125，read_timeout 取下限 125
         aw.ocr_click("登录")
     finally:
         set_deadline(None)
@@ -100,7 +100,7 @@ def test_exhausted_budget_raises_before_request():
 
 def test_client_request_per_request_timeout():
     """TestagentClient._request 支持单请求覆盖 read_timeout。"""
-    client = TestagentClient("http://127.0.0.1:9", connect_timeout=5, read_timeout=10)
+    client = _TestagentClient("http://127.0.0.1:9", connect_timeout=5, read_timeout=10)
 
     with patch.object(client.session, "request") as request:
         request.side_effect = Exception("stop here")

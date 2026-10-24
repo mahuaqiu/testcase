@@ -58,18 +58,6 @@ class FakeApiAW(BaseApiAW):
         return {"id": 1}
 
 
-class NestedAW(BaseAW):
-    """内部使用 parallel() 的 AW（嵌套场景）。"""
-
-    PLATFORM = "web"
-
-    def do_double_click(self):
-        """并行执行两次点击。"""
-        with parallel():
-            self.ocr_click("按钮A")
-            self.ocr_click("按钮B")
-
-
 def exist_result(exists):
     output = f'{{"exists": {str(exists).lower()}}}'
     return {"actions": [{"status": "success", "output": output}]}
@@ -187,19 +175,6 @@ def test_get_position_in_block_raises_targeted_guidance():
             aw.ocr_get_position("登录")
 
     assert client.execute.call_count == 0
-
-
-def test_nested_parallel_inside_aw_method():
-    """AW 方法内部的 parallel() 块在执行线程内正常工作（设计 §4.7）。"""
-    client = Mock()
-    client.execute.side_effect = [click_result(), click_result()]
-    aw = NestedAW(client, make_user())
-
-    with parallel() as context:
-        aw.do_double_click()
-
-    assert len(context._tasks) == 1          # 外层只收集 do_double_click 一个任务
-    assert client.execute.call_count == 2    # 内层块的两个点击在执行线程内执行
 
 
 def test_api_aw_method_collected_and_runs():

@@ -316,6 +316,8 @@ class ParallelContext:
             while futures:
                 remaining = max(0.0, deadline - time.monotonic())
                 if remaining <= 0:
+                    # 边界竞态：此刻刚完成的组仍会在下方被记为超时，
+                    # 属共享 deadline 语义的固有近似（旧模型相同）
                     break
                 done, _ = wait(futures, timeout=remaining)
                 if not done:
@@ -327,7 +329,8 @@ class ParallelContext:
                     except ParallelActionError as error:
                         self._errors.append(error)
                     except Exception as error:
-                        # _run_group 自身的基础设施异常，关联到组内首个任务
+                        # _run_group 自身的基础设施异常（如 logger 注入失败），
+                        # 归因到组内首个任务——近似定位，极罕见路径
                         self._errors.append(ParallelActionError(tasks[0], error))
 
             # 超时未完成的组：记录 TimeoutError，执行线程后台自然结束
@@ -340,6 +343,9 @@ class ParallelContext:
                     ),
                 ))
         finally:
+            # 超时组不再等待：正在执行的 CallTask 在后台跑完（其请求携带
+            # 剩余预算，最晚在预算边界由 Worker 终止），迟到日志可能落在
+            # 错误抛出之后——设计已接受此行为
             executor.shutdown(wait=False, cancel_futures=True)
 
     def _run_group(self, tasks: List[CallTask], logger, deadline: float) -> None:
