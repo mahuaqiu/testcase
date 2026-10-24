@@ -333,7 +333,7 @@ class TestClass:
 | hooks 控制 | 多用户可按 user/platform 精细控制 | `@pytest.mark.hooks(userA={"setup": ["+login"]})` |
 | 步骤注释 | 每个步骤标注编号 | `# 步骤 1: 并行登录` |
 | 并行操作 | `with parallel():` 包裹 | 并行登录等无依赖操作 |
-| 断言分离 | 验证步骤不在并行块内 | 先操作后断言 |
+| 断言时机 | 跨用户依赖的断言放块外（避免时序竞态） | 先操作后断言 |
 | sleep 等待 | 用例中固定等待用 `time.sleep(x)` | `import time; time.sleep(3)` |
 
 #### 6.4 生成AW代码（需要时）
