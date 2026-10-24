@@ -10,7 +10,12 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from common.testagent_client import TestagentClient, is_retryable_transport_error
 from common.report_logger import ReportLogger
-from common.parallel import is_collecting, get_action_queue, Action
+from common.parallel import (
+    CallTask,
+    PendingCall,
+    get_action_queue,
+    is_collecting,
+)
 from common.utils import load_image_as_base64
 from common.user import PLATFORMS_NEED_DEVICE_ID
 
@@ -144,6 +149,34 @@ def _auto_log_aw_call(func):
             if k != "self"
         }
 
+        # 用户信息
+        user_id = self.user.user_id if self.user else ""
+        user_account = self.user.account if self.user else ""
+        user_name = self.user.name if self.user else ""
+        user_ip = self.user.ip if self.user else ""
+
+        # 并行收集模式：整个方法延迟到执行线程运行，Python 逻辑不提前执行
+        if is_collecting():
+            queue = get_action_queue()
+            if queue is not None:
+                call_stack = _business_call_stack()
+                parent_frame = call_stack[-1] if call_stack else None
+                queue.append(CallTask(
+                    fn=lambda: func(self, *args, **kwargs),
+                    platform=self._platform_of_user(),
+                    user_id=user_id,
+                    user_name=user_name,
+                    user_account=user_account,
+                    user_ip=user_ip,
+                    aw_name=self._aw_name,
+                    method=func.__name__,
+                    client=self.client,
+                    parent_aw=parent_frame["aw"] if parent_frame else "",
+                    parent_call_id=parent_frame["call_id"] if parent_frame else "",
+                    parent_display=parent_frame["display"] if parent_frame else "",
+                ))
+                return PendingCall(f"{self._aw_name}.{func.__name__}")
+
         # 从业务调用栈获取父级业务方法（嵌套调用时为外层业务方法）
         call_stack = _business_call_stack()
         parent_frame = call_stack[-1] if call_stack else None
@@ -158,61 +191,7 @@ def _auto_log_aw_call(func):
             "display": display_name,
         })
 
-        # 用户信息
-        user_id = self.user.user_id if self.user else ""
-        user_account = self.user.account if self.user else ""
-        user_name = self.user.name if self.user else ""
-        user_ip = self.user.ip if self.user else ""
-
-        # 收集模式下，收集模式也需要捕获异常
-        # 注意：原子操作在收集模式下不抛异常，但业务方法可能直接抛异常
         try:
-            if is_collecting():
-                try:
-                    return func(self, *args, **kwargs)
-                except Exception as e:
-                    # 失败：从异常中提取 error_screenshot（如果已有）
-                    error_screenshot = ""
-                    has_atomic_screenshot = False  # 标记截图是否来自原子操作
-
-                    if isinstance(e, AWError) and "error_screenshot" in e.result:
-                        error_screenshot = e.result.get("error_screenshot", "")
-                        has_atomic_screenshot = True  # 截图来自原子操作，业务方法日志不记录
-                    elif getattr(e, "error_screenshot", ""):
-                        # 原子操作异常分支已补拍并挂到异常上，避免重复补拍
-                        error_screenshot = getattr(e, "error_screenshot", "")
-                        has_atomic_screenshot = True
-                    if not error_screenshot:
-                        try:
-                            error_screenshot = self.screenshot()
-                        except Exception:
-                            pass
-
-                    error_result = {
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    }
-                    # 只有截图来自业务方法自身时才记录到业务方法日志
-                    if error_screenshot and not has_atomic_screenshot:
-                        error_result["error_screenshot"] = error_screenshot
-
-                    logger = ReportLogger.get_current()
-                    logger.log_aw_call(
-                        aw_name=self._aw_name,
-                        method=func.__name__,
-                        args={"user_id": user_id, "user_account": user_account, "user_name": user_name, "user_ip": user_ip, **method_args},
-                        success=False,
-                        result=error_result,
-                        duration_ms=0,
-                        parent_aw=parent_aw,
-                        is_business_method=True,
-                        request_id=_request_id_from_exception(e),  # 从异常透传 request_id
-                        call_id=call_id,
-                        parent_call_id=parent_call_id,
-                        display_name=display_name,
-                    )
-                    raise
-
             # 同步模式：记录日志
             logger = ReportLogger.get_current()
             start_time = time.time()
@@ -330,6 +309,13 @@ class BaseAW:
         self.user = user
         self._aw_name = self.__class__.__name__
 
+    def _platform_of_user(self) -> str:
+        """获取当前生效平台（公共 AW 继承 User 平台）。"""
+        platform = self.PLATFORM
+        if platform == "common" and self.user:
+            platform = self.user.platform
+        return platform
+
     # 支持的日志级别（渲染时按级别取不同颜色）
     LOG_LEVELS = ("info", "warning", "error")
 
@@ -410,7 +396,7 @@ class BaseAW:
     ) -> Dict[str, Any]:
         """执行操作并记录日志，失败时抛出异常。
 
-        在 parallel() 上下文中收集 action_data，否则立即执行。
+        在 parallel() 上下文中收集为 CallTask，否则立即执行。
 
         Args:
             method: 方法名。
@@ -419,47 +405,55 @@ class BaseAW:
             window: 窗口定位参数（仅 Windows 平台）。
 
         Returns:
-            执行结果（收集模式下返回空字典）。
+            执行结果（收集模式下返回 None，由 _exec 包装为 PendingCall）。
 
         Raises:
             AWError: 执行失败时抛出。
         """
-        # 公共 AW 继承 User 的平台
-        platform = self.PLATFORM
-        if platform == "common" and self.user:
-            platform = self.user.platform
-
-        # 检查是否处于收集模式（parallel 上下文）
         if is_collecting():
             queue = get_action_queue()
             if queue is not None:
-                # 构建 Action 对象并添加到队列
                 user_id = self.user.user_id if self.user else ""
                 user_name = self.user.name if self.user else ""
                 user_account = self.user.account if self.user else ""
                 user_ip = self.user.ip if self.user else ""
-                # 获取父级业务方法信息（用于日志聚合）
                 parent_aw, parent_call_id, parent_display = self._parent_call_info()
-                action_obj = Action(
-                    action_data=action_data,
-                    platform=platform,
+                queue.append(CallTask(
+                    fn=lambda: self._execute_sync(
+                        method, action_data, log_args, window=window
+                    ),
+                    platform=self._platform_of_user(),
                     user_id=user_id,
                     user_name=user_name,
                     user_account=user_account,
                     user_ip=user_ip,
                     aw_name=self._aw_name,
                     method=method,
-                    log_args=log_args,
                     client=self.client,
-                    parent_aw=parent_aw,  # 传递 parent_aw 以支持日志聚合
+                    parent_aw=parent_aw,
                     window=window,
                     parent_call_id=parent_call_id,
                     parent_display=parent_display,
-                )
-                queue.append(action_obj)
-                return None  # 收集模式标记
+                ))
+                return None  # 收集模式标记，由 _exec 包装为 PendingCall
+        return self._execute_sync(method, action_data, log_args, window=window)
 
-        # 同步执行模式
+    def _execute_sync(
+        self,
+        method: str,
+        action_data: Dict[str, Any],
+        log_args: Dict[str, Any],
+        window: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """同步执行原子操作并记录日志，失败时抛出 AWError。
+
+        （方法体为原 _execute_with_log 同步执行部分原样迁移：
+        开头 platform 计算改为 self._platform_of_user()，
+        其余从 "# 同步执行模式" 注释到原方法结尾保持不变。）
+        """
+        platform = self._platform_of_user()
+
+        # ——以下为原 _execute_with_log 的同步执行部分原样迁移——
         # 自动识别父级业务方法
         parent_aw, parent_call_id, parent_display = self._parent_call_info()
         logger = ReportLogger.get_current()
@@ -973,7 +967,7 @@ class BaseAW:
         """执行 exist 类型操作，不抛异常，返回 exists 结果。
 
         ocr_exist 和 image_exist 无论是否存在都返回 SUCCESS 状态，
-        不会抛出 AWError。
+        不会抛出 AWError。在 parallel() 上下文中收集为 CallTask，否则立即执行。
 
         Args:
             method: 方法名。
@@ -982,16 +976,9 @@ class BaseAW:
             window: 窗口定位参数（仅 Windows 平台）。
 
         Returns:
-            包含 exists 字段的结果字典。
+            包含 exists 字段的结果字典（收集模式下返回 None，
+            由 _exec_bool 包装为 PendingCall）。
         """
-        import json
-
-        # 公共 AW 继承 User 的平台
-        platform = self.PLATFORM
-        if platform == "common" and self.user:
-            platform = self.user.platform
-
-        # 检查是否处于收集模式
         if is_collecting():
             queue = get_action_queue()
             if queue is not None:
@@ -1000,26 +987,43 @@ class BaseAW:
                 user_account = self.user.account if self.user else ""
                 user_ip = self.user.ip if self.user else ""
                 parent_aw, parent_call_id, parent_display = self._parent_call_info()
-                action_obj = Action(
-                    action_data=action_data,
-                    platform=platform,
+                queue.append(CallTask(
+                    fn=lambda: self._execute_exist_sync(
+                        method, action_data, log_args, window=window
+                    ),
+                    platform=self._platform_of_user(),
                     user_id=user_id,
                     user_name=user_name,
                     user_account=user_account,
                     user_ip=user_ip,
                     aw_name=self._aw_name,
                     method=method,
-                    log_args=log_args,
                     client=self.client,
                     parent_aw=parent_aw,
                     window=window,
                     parent_call_id=parent_call_id,
                     parent_display=parent_display,
-                )
-                queue.append(action_obj)
-                return None  # 收集模式标记
+                ))
+                return None  # 收集模式标记，由 _exec_bool 包装为 PendingCall
+        return self._execute_exist_sync(method, action_data, log_args, window=window)
 
-        # 同步执行模式
+    def _execute_exist_sync(
+        self,
+        method: str,
+        action_data: Dict[str, Any],
+        log_args: Dict[str, Any],
+        window: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """同步执行 exist 类型操作，不抛异常，返回 exists 结果。
+
+        （方法体为原 _execute_exist_check 同步执行部分原样迁移：
+        开头 platform 计算改为 self._platform_of_user()，其余不变。）
+        """
+        import json
+
+        platform = self._platform_of_user()
+
+        # ——以下为原 _execute_exist_check 的同步执行部分原样迁移——
         parent_aw, parent_call_id, parent_display = self._parent_call_info()
         logger = ReportLogger.get_current()
         start_time = time.time()
@@ -1225,25 +1229,25 @@ class BaseAW:
     ) -> dict:
         """执行 action 并记录日志，失败时抛 AWError。
 
-        收集模式下返回 PendingResult，使用时会抛 ParallelModeError。
+        收集模式下返回 PendingCall，使用时会抛 ParallelCallError。
         """
         full_action_data = {"action_type": action_type, **action_data}
         result = self._execute_with_log(action_type, full_action_data, log_args, window=window)
-        # 收集模式下返回 PendingResult（伪装成 dict）
+        # 收集模式下返回 PendingCall，块内消费时抛 ParallelCallError
         if result is None:
-            return PendingResult(action_type, "dict")
+            return PendingCall(action_type)
         return result
 
     def _exec_bool(self, action_type: str, action_data: dict, log_args: dict, window: Optional[Dict[str, Any]] = None) -> bool:
         """执行 exist 类 action，返回 bool，不抛异常。
 
-        收集模式下返回 PendingResult，使用时会抛 ParallelModeError。
+        收集模式下返回 PendingCall，使用时会抛 ParallelCallError。
         """
         full_action_data = {"action_type": action_type, **action_data}
         result = self._execute_exist_check(action_type, full_action_data, log_args, window=window)
-        # 收集模式下返回 PendingResult
+        # 收集模式下返回 PendingCall，块内消费时抛 ParallelCallError
         if result is None:
-            return PendingResult(action_type, "bool")
+            return PendingCall(action_type)
         return result.get("exists", False)
 
     def _exec_str(
