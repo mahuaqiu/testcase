@@ -236,7 +236,8 @@ def _auto_log_aw_call(func):
                     # 原子操作异常分支已补拍并挂到异常上，避免重复补拍
                     error_screenshot = getattr(e, "error_screenshot", "")
                     has_atomic_screenshot = True
-                if not error_screenshot:
+                # 预算耗尽的异常不再补拍截图（那会再发一次 HTTP 请求，违背预算约束）
+                if not error_screenshot and not getattr(e, "budget_exhausted", False):
                     try:
                         # Web 平台需要 system 级别截图
                         screenshot_kwargs = {}
@@ -476,10 +477,13 @@ class BaseAW:
         if deadline is not None:
             remaining_ms = int((deadline - time.monotonic()) * 1000)
             if remaining_ms <= 0:
-                raise AWError(f"{self._aw_name}.{method}", {
+                budget_error = AWError(f"{self._aw_name}.{method}", {
                     "status": "failed",
                     "error": f"并行预算已耗尽，跳过 {method}",
                 })
+                # 哨兵属性：业务方法装饰器据此跳过补拍截图，避免再发 HTTP 请求
+                budget_error.budget_exhausted = True
+                raise budget_error
             config = {"timeout": remaining_ms}
             request_timeout = max(125.0, (deadline - time.monotonic()) + 15.0)
 
