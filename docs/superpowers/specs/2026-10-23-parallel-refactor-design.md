@@ -141,7 +141,9 @@ return None    # 由 _exec 包装为 PendingCall
 
 - 主线程按 deadline 等待，超时组记 `TimeoutError` 进 errors
 - 线程内每个 CallTask 执行前检查 deadline，超时跳过组内剩余
-- **与现状的差异**：无法中断正在执行中的单个原子操作（现状 `cancel_task` 可让 Worker 停止当前 action）。最坏情况：超时瞬间某操作在跑，线程等其自然结束（OCR 操作自带 timeout，上限可控）。接受此权衡
+- **超时传导（关键设计）**：每个同步 `/task/execute` 请求携带 `config={"timeout": 剩余预算ms}`。`TestagentClient.execute` 的 `config` 参数通路已存在，Worker 端 `TaskConfig.timeout` 会把正在执行 action 的 `action_deadline` 收紧到任务 deadline（`ExecutionControl.checkpoint()` 处抛超时）、后续 action 不执行，任务以 TIMEOUT 终态返回——**用现有 Worker 能力实现与现状 `cancel_task` 等价的中断精度，Worker 零改动**
+- **HTTP read_timeout 协调**：执行请求的 read_timeout（默认 125s）需覆盖剩余预算（取 `max(125s, 剩余预算+15s缓冲)`），避免客户端先于 Worker 断连产生孤儿任务
+- 残留差距：超时瞬间未到达自身 checkpoint 的 action 需等其 checkpoint/自身 timeout——与现状 cancel 的实际语义一致（现状 cancel 也是 checkpoint 响应，且客户端发完 cancel 不等确认即抛错）
 
 ### 4.7 嵌套 parallel
 
@@ -178,10 +180,27 @@ return None    # 由 _exec 包装为 PendingCall
 3. 单测重写 + 架构契约测试
 4. `AGENTS.md` 第六章重写：删旧限制（"验证不应在并行块内"等），新增唯一禁止点（块内顶层调用返回值不可用）
 
-## 八、风险与开放问题
+## 八、Worker 并发模型（已核实）与风险
+
+### Worker 并发能力（源码核实，autotest 工程）
+
+- FastAPI 实现；`/task/execute` 为 async 路由，内部 `asyncio.to_thread(worker.execute_sync, ...)` 派发，不阻塞事件循环
+- `execute_sync` 内部复用异步路径：`submit_async` 提交到 `TaskService._executor`（ThreadPoolExecutor, max_workers=16）后阻塞等 Future——同步/异步走**同一执行与租约模型**
+- 409 DEVICE_BUSY 来源为 `ResourceScheduler` 租约，粒度（`worker/task/service.py::_resource_key_for_task`）：
+
+| 平台 | 租约粒度 | 同 Worker 并行能力 |
+|------|----------|--------------------|
+| windows / mac（Worker 本机，DESKTOP_PLATFORMS） | `platform:{platform}`（共享物理键鼠） | 同平台任务互斥 |
+| ios / android / harmony_pc / harmony_mobile（带 device_id） | `device:{platform}:{sn}` | **不同设备互不冲突，真并行** |
+| 纯 cmd_exec | 设备级命令锁 | 不同设备互不冲突 |
+
+- **结论**：一台 Windows Worker 连三台鸿蒙 PC/手机，三台设备三个独立租约 + 16 线程池，并行完全支持，Worker 零改动
+- **409 行为与现状等价**：同步/异步走同一租约模型，新方案不引入新的冲突面；仅"同一 Worker 同平台（windows/mac/web）多用户"会冲突——该场景现状同样 409，通常资源分配上每桌面/web 用户对应独立 Worker
+
+### 风险
 
 | 风险 | 缓解 |
 |------|------|
-| 同一 Worker 同平台多用户（如两个 web 用户）同步 execute 可能 409 DEVICE_BUSY | 实施后实测；若触发，客户端对 409 加自动重试退避（仍无需改 Worker） |
-| 超时不可中断正在执行的操作 | 已文档化；OCR 自带 timeout 兜底 |
+| 同 Worker 同平台多用户（如两个 web 用户）409 | 与现状等价（同一租约模型）；若资源分配确实出现该场景，客户端对 409 加自动重试退避 |
+| 超时不可中断正在执行的操作 | 通过 `config.timeout` 传导剩余预算（见 4.6），中断精度与现状 cancel 等价；OCR 自带 timeout 兜底 |
 | 存量用例依赖批量模式的隐性行为（如失败截图时序） | 日志/截图走同步路径与顺序执行一致，风险低；上线后回归存量关键用例 |
