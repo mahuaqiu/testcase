@@ -102,7 +102,7 @@ return None    # 由 _exec 包装为 PendingCall
 ```
 退出 with parallel():
   1. 关闭收集模式
-  2. CallTask 按 (user_id, id(client)) 分组，组内按声明顺序
+  2. CallTask 按 user_id 分组，组内按声明顺序
   3. ThreadPoolExecutor(max_workers)，每执行组一个线程任务：
        a. set_collecting(False)                    # 防御状态泄漏
        b. ReportLogger.set_current(主线程 logger)   # 日志写入同一份报告
@@ -211,6 +211,6 @@ return None    # 由 _exec 包装为 PendingCall
 
 | 风险 | 缓解 |
 |------|------|
-| 同 Worker 同平台多用户（如两个 web 用户）409 | 已确认上层不会对 Worker 本机（windows/mac）发起并行任务，并行仅发生在 Worker 本机与 SN 设备之间（不同资源域），该场景实际不存在；保留客户端 409 重试作为防御性兜底 |
+| 同 Worker 同平台多用户（如两个 web 用户）409 | 已确认上层不会对 Worker 本机（windows/mac）发起并行任务，并行仅发生在 Worker 本机与 SN 设备之间（不同资源域），该场景实际不存在；客户端目前无 409 自动重试，如未来资源分配出现该场景，需为客户端增加 409 重试退避（follow-up） |
 | 超时不可中断正在执行的操作 | 通过 `config.timeout` 传导剩余预算（见 4.6），中断精度与现状 cancel 等价；OCR 自带 timeout 兜底 |
 | 存量用例依赖批量模式的隐性行为（如失败截图时序） | 日志/截图走同步路径与顺序执行一致，风险低；上线后回归存量关键用例 |

@@ -163,7 +163,10 @@ def _auto_log_aw_call(func):
                 call_stack = _business_call_stack()
                 parent_frame = call_stack[-1] if call_stack else None
                 queue.append(CallTask(
-                    fn=lambda: func(self, *args, **kwargs),
+                    # 经装饰后的类属性分发：线程内走完整同步路径
+                    # （压业务调用栈 + 业务方法日志 + parent 归组 + 失败截图），
+                    # 不能直接调裸函数 func——那会绕过装饰器导致报告分组丢失
+                    fn=lambda: getattr(self, func.__name__)(*args, **kwargs),
                     platform=self._platform_of_user(),
                     user_id=user_id,
                     user_name=user_name,

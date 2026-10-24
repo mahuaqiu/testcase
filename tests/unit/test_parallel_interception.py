@@ -7,6 +7,7 @@ import pytest
 from aw.api.base_api_aw import BaseApiAW
 from aw.base_aw import BaseAW
 from common.parallel import CallTask, PendingCall, parallel
+from common.report_logger import ReportLogger
 
 
 def make_user(user_id="userA", platform="web"):
@@ -182,3 +183,68 @@ def test_api_aw_method_collected_and_runs():
     assert len(context._tasks) == 1
     assert context._tasks[0].user_id == "userA_api"
     assert FakeApiAW.fetched == [{"id": 1}]
+
+
+def _run_and_collect_aw_call_logs(run):
+    """重置当前线程 ReportLogger 后执行 run，返回收集到的 aw_call 日志条目。"""
+    ReportLogger.reset()
+    run()
+    return [
+        entry for entry in ReportLogger.get_current().get_logs()
+        if entry.get("type") == "aw_call"
+    ]
+
+
+def test_parallel_business_method_logs_grouped_like_sequential():
+    """并行块内业务方法的报告分组与顺序执行一致（业务条目+parent_call_id 归组）。"""
+    # 并行执行：do_login 内部 ocr_exist(False) → 走 ocr_click 分支
+    parallel_client = Mock()
+    parallel_client.execute.side_effect = [exist_result(False), click_result()]
+    parallel_aw = DemoAW(parallel_client, make_user())
+    entries = _run_and_collect_aw_call_logs(lambda: _run_parallel_do_login(parallel_aw))
+
+    # 1) 并行路径存在 method=='do_login' 的业务方法条目（is_business_method 标记）
+    business = [
+        e for e in entries
+        if e["method"] == "do_login" and e["is_business_method"]
+    ]
+    assert business, "并行路径缺少 do_login 业务方法日志条目（报告卡片消失）"
+    business_entry = business[0]
+    assert business_entry["call_id"] != ""
+
+    # 2) 并行路径的 ocr_click 原子条目 parent_call_id 非空，且等于业务条目的 call_id
+    click_entries = [e for e in entries if e["method"] == "ocr_click"]
+    assert click_entries, "并行路径缺少 ocr_click 原子操作日志条目"
+    assert click_entries[0]["parent_call_id"] != "", (
+        "并行路径原子条目 parent_call_id 为空（全落'直接操作'分组）"
+    )
+    assert click_entries[0]["parent_call_id"] == business_entry["call_id"]
+    assert click_entries[0]["parent_aw"] == "DemoAW.do_login"
+
+    # 3) 顺序基线同样结构（对照断言，证明"与顺序执行一致"）
+    sequential_client = Mock()
+    sequential_client.execute.side_effect = [exist_result(False), click_result()]
+    sequential_aw = DemoAW(sequential_client, make_user())
+    seq_entries = _run_and_collect_aw_call_logs(
+        lambda: sequential_aw.do_login()
+    )
+    seq_business = [
+        e for e in seq_entries
+        if e["method"] == "do_login" and e["is_business_method"]
+    ]
+    assert seq_business and seq_business[0]["call_id"] != ""
+    seq_click = [e for e in seq_entries if e["method"] == "ocr_click"]
+    assert seq_click and seq_click[0]["parent_call_id"] == seq_business[0]["call_id"]
+    assert seq_click[0]["parent_aw"] == "DemoAW.do_login"
+
+    # 两条路径的 (method, is_business_method, parent_aw) 结构序列完全一致
+    def structural_signature(logs):
+        return [(e["method"], e["is_business_method"], e["parent_aw"]) for e in logs]
+
+    assert structural_signature(entries) == structural_signature(seq_entries)
+
+
+def _run_parallel_do_login(aw):
+    """在 parallel 块内调用业务方法（执行线程内真实运行）。"""
+    with parallel():
+        aw.do_login()
