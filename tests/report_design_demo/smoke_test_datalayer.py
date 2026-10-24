@@ -42,10 +42,10 @@ check("弹栈后回到外层", BaseAW._parent_call_info()[1] == "abc123")
 stack.pop()
 check("清空后无父级", BaseAW._parent_call_info() == ("", "", ""))
 
-# 4. Action dataclass 新字段
-from common.parallel import Action
-a = Action(action_data={}, platform="web", parent_call_id="x1", parent_display="登录系统")
-check("Action 新字段可用", a.parent_call_id == "x1" and a.parent_display == "登录系统")
+# 4. CallTask dataclass 新字段
+from common.parallel import CallTask
+a = CallTask(fn=lambda: None, platform="web", parent_call_id="x1", parent_display="登录系统")
+check("CallTask 新字段可用", a.parent_call_id == "x1" and a.parent_display == "登录系统")
 
 # 5. log_aw_call 新签名
 from common.report_logger import ReportLogger

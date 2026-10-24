@@ -309,71 +309,73 @@ with parallel():
     userC.do_login()
 ```
 
-**适用场景**：
-- 多用户同时登录
-- 多用户同时入会
-- 多用户同时呼叫
+**适用场景**：任意 AW 方法（含取值、分支、循环逻辑）在不同用户间并行，
+如多用户同时登录、同时入会、同时呼叫，以及 API 用户与 UI 用户混合并发。
 
 ### 6.2 工作原理
 
-1. **收集模式**：进入 `with parallel()` 时，所有 AW 方法调用不立即执行
-2. **动作队列**：方法调用构建 Action 对象并加入队列
-3. **并行执行**：退出上下文时，使用 ThreadPoolExecutor 并行执行
-4. **结果汇总**：所有执行完成后，汇总结果和错误
+1. **收集调用**：进入 `with parallel()` 时，块内的 AW 调用（业务方法或
+   原子操作）不立即执行，包装为调用任务加入队列
+2. **分组执行**：退出上下文时按用户分组，每个用户一个线程完整同步执行
+   其调用链——AW 方法内的 `ocr_exist` 判断、`ocr_get_text` 取值等
+   Python 逻辑在执行期真实运行，与顺序执行行为一致
+3. **结果汇总**：所有用户执行完成后汇总，有失败抛 `ParallelExecutionError`
 
 ### 6.3 使用规范
 
 ```python
-# 正确用法：并行操作后顺序验证
+# ✅ 任意 AW 方法可并行，方法内部逻辑自由
 with parallel():
     userA.do_login()
-    userB.do_login()
+    userB.do_check_and_join()   # 内部 if self.ocr_exist(...) 完全可用
 
-userA.should_login_success()  # 顺序验证
-userB.should_login_success()
-
-# 错误用法：验证不应在并行块内
+# ❌ 唯一禁止点：块内顶层调用的返回值不能在块内消费
 with parallel():
-    userA.do_login()
-    userA.should_login_success()  # ❌ 验证依赖登录结果
+    text = userA.ocr_get_text()   # text 此刻不存在，使用时报错
+
+# ✅ 取值逻辑封装进 AW 方法
+with parallel():
+    userA.do_check_main_page()
 ```
 
 **规范要点**：
-- 并行操作后必须使用顺序验证
-- 并行操作不应有数据依赖
-- 合理设置并发数（默认 max_workers=10）
+- 并行操作不应有跨用户数据依赖（A 的结果作 B 的输入时分两个块或块外顺序执行）
+- 同一用户的多个调用按声明顺序执行
+- 合理设置并发数（默认 max_workers=10）与预算（默认 timeout=300 秒）
+- 预算耗尽时：未开始的调用跳过，正在执行的操作由 Worker 任务级超时终止
 
 ### 6.4 API 说明
 
 ```python
 from common.parallel import parallel, is_collecting
 
-# 创建并行上下文
 with parallel(max_workers=5, timeout=60):
     ...
-
-# 检查是否在收集模式
-if is_collecting():
-    # 当前在 parallel() 上下文中
-    pass
 ```
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | max_workers | int | 10 | 最大并发线程数 |
-| timeout | float | 300 | 总超时时间（秒） |
+| timeout | float | 300 | 总预算（秒），传导为每个请求的 Worker 任务级超时 |
 
 ### 6.5 基础设施边界
 
-- `TestagentClient.execute_async()` 会为每次逻辑调用生成幂等键；网络重试复用同一键，不同主动调用使用不同键。
-- Worker 的 `detail` 结构化错误由公共客户端解析为 `TestagentError`，包含 `code`、`message`、`retryable`、`details`、HTTP 状态码和 `request_id`。
-- `parallel(timeout=...)` 使用单调时钟作为批次统一预算，处理 `pending/running/cancelling` 活跃状态以及 `success/failed/timeout/cancelled/interrupted` 终态；查询结果可以重复读取。
-- 用例和 AW 不直接处理 Worker 任务生命周期，不根据业务错误的 `retryable` 属性自动重放动作；传输层重试由基础设施统一处理。
-- `/ws/screen/{platform}/{device_id}` 的 H.264 推流首帧必须包含解码所需配置和可信真实 IDR；Worker 会过滤暖机黑帧/不可独立解码帧，RSM1 二进制通道和兼容推流协议以 `api.yaml` 为准。
+- 每个原子操作独立调用 `/task/execute`，请求携带剩余预算
+  （`config.timeout`）；Worker 在预算耗尽处终止任务，未开始的调用跳过
+- 同一 Worker 上不同设备（SN）天然并行（设备级资源租约）；
+  windows/mac 本机任务互斥；`cmd_exec` 走独立命令域，与平台操作不可
+  混在同一任务——并行模式下每次调用独立请求，天然满足
+- Worker 的 `detail` 结构化错误由公共客户端解析为 `TestagentError`，
+  包含 `code`、`message`、`retryable`、`details`、HTTP 状态码和 `request_id`
+- 用例和 AW 不直接处理 Worker 任务生命周期，不根据业务错误的
+  `retryable` 属性自动重放动作；传输层重试由基础设施统一处理
+- `/ws/screen/{platform}/{device_id}` 的 H.264 推流首帧必须包含解码所需
+  配置和可信真实 IDR；Worker 会过滤暖机黑帧/不可独立解码帧，RSM1
+  二进制通道和兼容推流协议以 `api.yaml` 为准
 
 ### 6.6 异常处理
 
-并行执行失败时抛出 `ParallelExecutionError`，包含所有失败的动作：
+并行执行失败时抛出 `ParallelExecutionError`，包含所有失败的调用：
 
 ```python
 from common.parallel import ParallelExecutionError
@@ -386,6 +388,9 @@ except ParallelExecutionError as e:
     for error in e.errors:
         print(f"{error.action.user_id} 执行失败: {error.original_error}")
 ```
+
+某用户失败不影响其它用户执行完毕；失败精确定位到用户、AW 类与
+原子操作（`action.user_id / aw_name / method`）。
 
 ---
 

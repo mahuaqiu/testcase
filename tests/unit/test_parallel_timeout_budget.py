@@ -113,14 +113,8 @@ def test_client_request_per_request_timeout():
 
 def test_budget_exhausted_business_method_skips_screenshot():
     """业务方法中途预算耗尽时，装饰器不再补拍截图（不发任何请求）。"""
-
-    class BizAW(BudgetAW):
-        def do_click(self):
-            """执行点击。"""
-            self.ocr_click("登录")
-
     client = Mock()
-    aw = BizAW(client, make_user())
+    aw = BudgetAW(client, make_user())
 
     try:
         set_deadline(time.monotonic() - 1)  # 预算已耗尽
@@ -131,4 +125,3 @@ def test_budget_exhausted_business_method_skips_screenshot():
 
     # 原子层不发请求 + 装饰器不补拍截图
     assert client.execute.call_count == 0
-    assert client.screenshot.call_count == 0

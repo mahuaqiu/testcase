@@ -449,13 +449,12 @@ class BaseAW:
     ) -> Dict[str, Any]:
         """同步执行原子操作并记录日志，失败时抛出 AWError。
 
-        （方法体为原 _execute_with_log 同步执行部分原样迁移：
-        开头 platform 计算改为 self._platform_of_user()，
-        其余从 "# 同步执行模式" 注释到原方法结尾保持不变。）
+        通过 client.execute 发送单个 action。存在并行预算时将剩余时间
+        传导为 Worker 任务级超时（config.timeout），并按预算放大 HTTP
+        read_timeout；预算已耗尽则不发请求直接抛 AWError。
         """
         platform = self._platform_of_user()
 
-        # ——以下为原 _execute_with_log 的同步执行部分原样迁移——
         # 自动识别父级业务方法
         parent_aw, parent_call_id, parent_display = self._parent_call_info()
         logger = ReportLogger.get_current()
@@ -1046,14 +1045,13 @@ class BaseAW:
     ) -> Dict[str, Any]:
         """同步执行 exist 类型操作，不抛异常，返回 exists 结果。
 
-        （方法体为原 _execute_exist_check 同步执行部分原样迁移：
-        开头 platform 计算改为 self._platform_of_user()，其余不变。）
+        调用 client.execute 发送单个 action，解析 output 中的 exists
+        字段；传输或执行异常均降级为 {"exists": False}，不向上抛出。
         """
         import json
 
         platform = self._platform_of_user()
 
-        # ——以下为原 _execute_exist_check 的同步执行部分原样迁移——
         parent_aw, parent_call_id, parent_display = self._parent_call_info()
         logger = ReportLogger.get_current()
         start_time = time.time()

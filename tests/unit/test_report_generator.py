@@ -5,7 +5,11 @@ from types import SimpleNamespace
 from aw.base_aw import BaseAW
 from common.report_generator import HTMLReportGenerator
 from common.report_logger import ReportLogger
-from common.parallel import Action, ParallelActionError, ParallelExecutionError
+from common.parallel import (
+    CallTask,
+    ParallelActionError,
+    ParallelExecutionError,
+)
 from conftest import _record_test_failure
 
 
@@ -281,13 +285,13 @@ def test_parallel_failure_error_follows_correct_user():
     """并行失败时每个错误归属自己的用户，过滤时正确显示。"""
     ReportLogger.reset()
     logger = ReportLogger.get_current()
-    action_a = Action(
-        action_data={}, aw_name="LoginAW", method="do_login", log_args={},
+    action_a = CallTask(
+        fn=lambda: None, aw_name="LoginAW", method="do_login", log_args={},
         user_id="userA", user_name="甲", user_account="a", user_ip="1.1.1.1",
         platform="web", client=None,
     )
-    action_b = Action(
-        action_data={}, aw_name="LoginAW", method="do_login", log_args={},
+    action_b = CallTask(
+        fn=lambda: None, aw_name="LoginAW", method="do_login", log_args={},
         user_id="userB", user_name="乙", user_account="b", user_ip="1.1.1.2",
         platform="windows", client=None,
     )

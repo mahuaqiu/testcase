@@ -140,31 +140,6 @@ class CallTask:
     parent_display: str = ""
 
 
-@dataclass
-class Action:  # pragma: no cover - deprecated
-    """已废弃：旧收集模式的原子动作对象。
-
-    仅为本重构过渡期保留（base_aw 改造完成后删除），
-    新代码使用 CallTask。字段集与旧版保持一致，
-    供 base_aw 过渡期继续构造（Task 3 改造、Task 5 删除）。
-    """
-
-    action_data: Dict[str, Any]
-    platform: str
-    user_id: str = ""
-    user_name: str = ""
-    user_account: str = ""
-    user_ip: str = ""
-    aw_name: str = ""
-    method: str = ""
-    log_args: Dict[str, Any] = field(default_factory=dict)
-    client: Optional["TestagentClient"] = None
-    parent_aw: str = ""
-    window: Optional[Dict[str, Any]] = None
-    parent_call_id: str = ""
-    parent_display: str = ""
-
-
 # ── 异常与保护对象 ───────────────────────────────────────────────
 
 

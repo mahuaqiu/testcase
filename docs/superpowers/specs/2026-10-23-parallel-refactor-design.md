@@ -1,7 +1,7 @@
 # parallel() 并行执行重构设计
 
 - 日期：2026-10-23
-- 状态：已评审通过
+- 状态：已实施
 - 影响范围：`common/parallel.py`、`aw/base_aw.py`、`tests/unit/`；报告、conftest、AW 业务代码、用例层零改动
 
 ## 一、背景与问题
