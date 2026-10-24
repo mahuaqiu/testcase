@@ -12,6 +12,7 @@ from common.testagent_client import TestagentClient, is_retryable_transport_erro
 from common.report_logger import ReportLogger
 from common.parallel import (
     CallTask,
+    ParallelCallError,
     PendingCall,
     get_action_queue,
     get_deadline,
@@ -1313,6 +1314,9 @@ class BaseAW:
     ) -> str:
         """执行 action 并提取 str 返回值（如 ocr_get_text 的 text 字段）。"""
         result = self._exec(action_type, action_data, log_args, window=window)
+        if isinstance(result, PendingCall):
+            # 块内顶层取值调用：给出带方法名的针对性指引
+            raise ParallelCallError(action_type, "取文本")
         if result.get("actions"):
             output = result["actions"][0].get("output", "")
             if output:
@@ -1333,6 +1337,9 @@ class BaseAW:
         """执行 action 并解析 list 返回值（如 positions）。"""
         import json
         result = self._exec(action_type, action_data, log_args, window=window)
+        if isinstance(result, PendingCall):
+            # 块内顶层取值调用：给出带方法名的针对性指引
+            raise ParallelCallError(action_type, "取列表")
         if result.get("actions"):
             output = result["actions"][0].get("output", "")
             if output:

@@ -6,7 +6,12 @@ import pytest
 
 from aw.api.base_api_aw import BaseApiAW
 from aw.base_aw import BaseAW
-from common.parallel import CallTask, PendingCall, parallel
+from common.parallel import (
+    CallTask,
+    ParallelCallError,
+    PendingCall,
+    parallel,
+)
 from common.report_logger import ReportLogger
 
 
@@ -157,6 +162,31 @@ def test_pending_call_error_message():
     with pytest.raises(Exception, match="封装进 AW 业务方法"):
         if result:
             pass
+
+
+def test_get_text_in_block_raises_targeted_guidance():
+    """块内顶层取文本调用抛带方法名与"取文本"指引的 ParallelCallError。"""
+    client = Mock()
+    aw = DemoAW(client, make_user())
+
+    # raises 在块外：ParallelCallError 逃出 with 块，已收集任务不执行
+    with pytest.raises(ParallelCallError, match=r"ocr_get_text[\s\S]*取文本"):
+        with parallel():
+            aw.ocr_get_text()
+
+    assert client.execute.call_count == 0
+
+
+def test_get_position_in_block_raises_targeted_guidance():
+    """块内顶层取位置列表调用抛带方法名与"取列表"指引的 ParallelCallError。"""
+    client = Mock()
+    aw = DemoAW(client, make_user())
+
+    with pytest.raises(ParallelCallError, match=r"ocr_get_position[\s\S]*取列表"):
+        with parallel():
+            aw.ocr_get_position("登录")
+
+    assert client.execute.call_count == 0
 
 
 def test_nested_parallel_inside_aw_method():
