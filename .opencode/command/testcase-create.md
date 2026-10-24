@@ -308,7 +308,7 @@ class TestClass:
 | 用户标记 | `@pytest.mark.users()` | `{"userA": "web", "userB": "web"}` |
 | API用户 | 自动创建 `_api` 实例 | `userA_api = users["userA_api"]` |
 | 步骤注释 | 每个步骤标注编号 | `# 步骤 1: 并行登录` |
-| 并行操作 | `with parallel():` 包裹 | 并行登录、并行断言 |
+| 并行操作 | `with parallel():` 包裹，块内只调用 `do_*/should_` 方法 | 并行登录、并行断言 |
 | 断言时机 | 跨用户依赖的断言放块外（避免时序竞态） | 先操作后断言 |
 
 #### 6.3 生成AW代码（需要时）
