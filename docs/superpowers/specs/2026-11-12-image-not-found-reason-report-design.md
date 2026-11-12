@@ -110,6 +110,28 @@ nearest_distance: float | None = None # 仅 match_near_text 距离超限时
 
 页首错误框不再加摘要行——worker 文案变富后，现有 traceback 与"首个失败步骤"自动可读。
 
+### 4. 日志补齐（worker / ocr_service）
+
+原则：失败时**一行可 grep 的结构化摘要**（带 request_id、阈值、实际分、原因），不再整包倾倒响应/base64。已打的行不重复加。
+
+**ocr_service（logs/ocr.log，request-id 格式，过滤器只放行 [REQUEST]/[RESPONSE]/[OCR_RAW]/[MATCH] 标签与 ERROR 级）**：
+
+| 位置 | 现状 | 补齐 |
+|---|---|---|
+| `server.py:106-125` [RESPONSE] 记录键 | 只挑 status/texts/coords/duration_ms/error/text/matches | 键列表加 `ocr_info`（列表显示 `[N items]`，即识别条数）与 3 个新诊断字段（`not_found_reason`/`best_confidence`/`nearest_distance`） |
+| `image_matcher.py:199-201` 单目标未命中行 | 已有 `gray fail: 0.xxxx < thr=` | 无需改 |
+| `image_matcher.py:325-330, 426-441` match_all / feature 未命中 | 分数只在过程日志，收尾行不带原因 | 收尾行统一带 `reason + best + threshold` |
+| `routes.py:236-243` 文本未命中 | info 行（确认现状） | 带上 `filter_text` 与识别条数（取 ocr_info 长度），缺则补 |
+
+**worker（logs/worker.log）**：
+
+| 位置 | 现状 | 补齐 |
+|---|---|---|
+| `worker/actions/base.py:331-335, 371-380` | 失败时把整个 `ocr_response` 字典倾倒进一行 warning | 替换为一行结构化摘要：复用 `format_find_failure` 的消息 + `request_id`（与报告文案同源），不再 dump 原始响应 |
+| `common/ocr_client.py:504` 最终失败行 | 只有 url + 异常字符串 | 补 `http_status`（重试行 :500 同步带上第几次/状态码） |
+| `worker/worker.py:1305` Task failed 行 | log_dict 来自 `TaskResult.to_dict` | 无需单独改——`error_type` 字段加入模型后自动出现在该行 |
+| `worker/server.py:386-400` 响应日志 | 只脱敏 `screenshot` | `region_screenshot` 纳入脱敏（即 §2 第 6 条） |
+
 ### 报告效果示意
 
 图像匹配失败：
@@ -156,7 +178,7 @@ nearest_distance: float | None = None # 仅 match_near_text 距离超限时
 ## 测试计划
 
 - **ocr_service**（当前错误路径 0 覆盖）：低于阈值 → 断言 `not_found_reason=below_threshold` + `best_confidence`；颜色关失败 → 断言 `color_check_failed`；near_text 三种失败 → 断言对应 reason；data-URI 前缀剥离；引擎错误 → status=error。
-- **autotest**：`get_last_failure` 透传单测；`format_find_failure` 消息拼装单测（含数值）；更新断言 `"Image not found"` 固定文案的既有用例；`error_type` 序列化往返测试。
+- **autotest**：`get_last_failure` 透传单测；`format_find_failure` 消息拼装单测（含数值）；更新断言 `"Image not found"` 固定文案的既有用例；`error_type` 序列化往返测试；base.py 失败摘要行用 caplog 断言（不再含 `ocr_response` 整包）。
 - **testcase**：`tests/unit/test_report_generator.py` 回归 + 新增：徽章按类型配色、无 error_type 回退、空 ocr_info 提示、占位块；`_load_template_or_raise` 单测（相近文件提示）。
 
 ## 实施顺序
