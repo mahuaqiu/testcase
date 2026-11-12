@@ -3,6 +3,7 @@
 import functools
 import inspect
 import logging
+import os
 import threading
 import time
 import uuid
@@ -18,6 +19,7 @@ from common.parallel import (
     get_deadline,
     is_collecting,
 )
+from common import utils
 from common.utils import load_image_as_base64
 from common.user import PLATFORMS_NEED_DEVICE_ID
 
@@ -254,7 +256,7 @@ def _auto_log_aw_call(func):
                 # 记录失败日志
                 error_result = {
                     "error": str(e),
-                    "error_type": type(e).__name__,
+                    "error_type": "文件缺失" if isinstance(e, FileNotFoundError) else type(e).__name__,
                 }
                 # 只有截图来自业务方法自身时才记录到业务方法日志
                 if error_screenshot and not has_atomic_screenshot:
@@ -608,6 +610,9 @@ class BaseAW:
             full_result["ocr_info"] = action_result["ocr_info"]
         if "region_screenshot" in action_result:
             full_result["region_screenshot"] = action_result["region_screenshot"]
+        if action_result.get("error_type"):
+            # 失败类型（worker 生成或本地"文件缺失"），报告据此渲染类型徽章
+            full_result["error_type"] = action_result["error_type"]
         if request_id:
             # 携带 request_id，失败时随 AWError 透传给业务方法日志
             full_result["request_id"] = request_id
@@ -897,9 +902,7 @@ class BaseAW:
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
 
         action_data = {
             "anchor_text": anchor_text,
@@ -970,9 +973,7 @@ class BaseAW:
             True 如果存在，False 如果不存在。不抛异常。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
 
         action_data = {
             "anchor_text": anchor_text,
@@ -1000,6 +1001,22 @@ class BaseAW:
             base64 编码的图片内容，如果文件不存在则返回 None。
         """
         return load_image_as_base64(image_path)
+
+    def _load_template_or_raise(self, image_path: str) -> str:
+        """加载模板图片 base64；文件不存在时抛出带定位信息的 FileNotFoundError。"""
+        base64_str = self._load_image_as_base64(image_path)
+        if base64_str:
+            return base64_str
+        root = utils.get_project_root()
+        full_path = image_path if os.path.isabs(image_path) else root / image_path
+        lines = [
+            f"图片文件不存在: {image_path}",
+            f" ↳ 绝对路径: {full_path}（项目根: {root}）",
+        ]
+        similar = utils.find_similar_templates(image_path, root / "images")
+        if similar:
+            lines.append(" ↳ images/ 下相近文件: " + "、".join(similar))
+        raise FileNotFoundError("\n".join(lines))
 
     def _execute_exist_check(
         self,
@@ -1389,9 +1406,7 @@ class BaseAW:
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         params = self._image_params(kwargs)
         if "click_duration" in kwargs:
             params["click_duration"] = kwargs["click_duration"]
@@ -1413,9 +1428,7 @@ class BaseAW:
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         return self._exec("image_wait",
             {"image_base64": image_base64, **self._image_params(kwargs)},
             {"image_path": image_path, **kwargs},
@@ -1434,9 +1447,7 @@ class BaseAW:
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         return self._exec("image_assert",
             {"image_base64": image_base64, "negate": negate, **self._image_params(kwargs)},
             {"image_path": image_path, "negate": negate, **kwargs},
@@ -1456,9 +1467,7 @@ class BaseAW:
             region: 操作区域名称或坐标 [x1, y1, x2, y2]。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         params = self._image_params(kwargs)
         if "click_duration" in kwargs:
             params["click_duration"] = kwargs["click_duration"]
@@ -1482,9 +1491,7 @@ class BaseAW:
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         return self._exec("image_move",
             {"image_base64": image_base64, **self._image_params(kwargs)},
             {"image_path": image_path, **kwargs},
@@ -1505,9 +1512,7 @@ class BaseAW:
             monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         return self._exec("image_double_click",
             {"image_base64": image_base64, **self._image_params(kwargs)},
             {"image_path": image_path, **kwargs},
@@ -1530,9 +1535,7 @@ class BaseAW:
             True 如果图像存在，False 如果不存在。不抛异常。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         return self._exec_bool("image_exist",
             {"image_base64": image_base64, **self._image_params(kwargs)},
             {"image_path": image_path, **kwargs},
@@ -1554,9 +1557,7 @@ class BaseAW:
             坐标列表 [[x1, y1], [x2, y2], ...]。
         """
         window = self._build_window(window_spec)
-        image_base64 = self._load_image_as_base64(image_path)
-        if not image_base64:
-            raise FileNotFoundError(f"图片文件不存在: {image_path}")
+        image_base64 = self._load_template_or_raise(image_path)
         return self._exec_list("image_get_position",
             {"image_base64": image_base64, **self._image_params(kwargs)},
             {"image_path": image_path, **kwargs},
