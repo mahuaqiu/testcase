@@ -1664,6 +1664,24 @@ class BaseAW:
         """
         return self.swipe(from_x, from_y, to_x, to_y, **kwargs)
 
+    def scroll(self, x: int, y: int, value: int = 3, **kwargs) -> dict:
+        """滚轮滚动。
+
+        Args:
+            x: 滚动位置 X 坐标。
+            y: 滚动位置 Y 坐标。
+            value: 滚动齿格数（notch），正数向下滚、负数向上滚，默认 3，最小绝对值 1。
+                - Windows: 1 齿 = 120 wheel delta
+                - Web: 1 齿 ≈ 120px（browser 层 Playwright mouse.wheel）
+                - 鸿蒙 PC: 1 齿 = 一条 uinput ±500 注入
+
+        Note:
+            仅 Windows/Web/鸿蒙 PC 支持；与 swipe 不同，不触发鼠标按下状态。
+        """
+        action_data = {"x": x, "y": y, "value": value}
+        return self._exec("scroll", action_data,
+            {"x": x, "y": y, "value": value, **kwargs})
+
     def input_text(self, x: int, y: int, text: str) -> dict:
         """在指定坐标输入文本。
 

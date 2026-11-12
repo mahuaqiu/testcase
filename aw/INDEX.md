@@ -67,6 +67,7 @@
 | `move(x, y, **kwargs)` | 移动鼠标到指定坐标（仅桌面端） |
 | `swipe(from_x, from_y, to_x, to_y, **kwargs)` | 滑动操作 |
 | `drag(from_x, from_y, to_x, to_y, **kwargs)` | 拖拽操作（参数与 swipe 一致） |
+| `scroll(x, y, value=3, **kwargs)` | 滚轮滚动（value 为齿格数，正数向下、负数向上，默认 3；Windows/Web/鸿蒙 PC） |
 | `input_text(x, y, text)` | 在指定坐标输入文本 |
 | `paste_text(text)` | 直接粘贴文本（使用剪贴板 Ctrl+V） |
 
