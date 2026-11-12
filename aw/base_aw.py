@@ -1205,6 +1205,10 @@ class BaseAW:
 
         Returns:
             区域坐标 [x1, y1, x2, y2]，或 None
+
+        Raises:
+            ValueError: 字符串区域名在配置中查不到时，
+                报错包含平台、区域名和可用区域列表。
         """
         if region is None:
             return None
@@ -1214,7 +1218,24 @@ class BaseAW:
         # 字符串名称 → 查配置
         from common.region_manager import RegionManager
         platform = self.user.platform if self.user else ""
-        return RegionManager.get_instance().get_region(platform, region)
+        resolved = RegionManager.get_instance().get_region(platform, region)
+        if resolved is None:
+            available = RegionManager.get_instance().list_regions(platform)
+            hint = ""
+            if region.strip().startswith("["):
+                # 坐标被当成了字符串传入，才会走到名称查找
+                hint = "（坐标请直接传 list，如 [0, 0, 960, 540]，不要传字符串）"
+            self.log(
+                f"region '{region}' 在平台 '{platform}' 未解析到坐标{hint}",
+                level="warning",
+            )
+            raise ValueError(
+                f"region '{region}' 在平台 '{platform}' 未解析到坐标{hint}。"
+                f"可用区域: {available or '无'}。"
+                f"请检查 config/regions/{platform}.yaml 中是否存在该区域，"
+                f"且格式为 [x1, y1, x2, y2]（四个整数）"
+            )
+        return resolved
 
     def _ocr_params(self, kwargs: dict) -> dict:
         """构建 OCR 类 action 的通用参数。
