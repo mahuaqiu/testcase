@@ -585,3 +585,93 @@ def test_user_tag_tooltip_absent_when_no_user_info():
     )
 
     assert "u-tip" not in html
+
+
+# ── 失败类型徽章 / 空识别提示 / 目标图片缺失占位块 ──
+
+
+def _fail_log(**extra):
+    """构造失败 aw_call 行日志基线。"""
+    log = {
+        "type": "aw_call",
+        "method": "image_click",
+        "args": {},
+        "success": False,
+        "result": {"error": "未找到目标图片\"x.png\"：最高相似度 0.72，低于阈值 0.90"},
+        "request_id": "abc123",
+    }
+    log.update(extra)
+    return log
+
+
+def test_error_type_renders_badge():
+    log = _fail_log(result={"error": "e", "error_type": "相似度不足"})
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert 'type-badge t-amber' in html
+    assert '相似度不足' in html
+
+
+def test_error_type_service_error_is_red():
+    log = _fail_log(result={"error": "boom", "error_type": "OCR服务错误"})
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert 'type-badge t-red' in html
+
+
+def test_unknown_error_type_falls_back_gray():
+    log = _fail_log(result={"error": "e", "error_type": "某种新类型"})
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert 'type-badge t-gray' in html
+
+
+def test_no_error_type_renders_plain():
+    """无 error_type（旧数据）保持现状，无徽章。"""
+    html = HTMLReportGenerator._render_row_detail(_fail_log())
+    assert 'type-badge' not in html
+    assert '未找到目标图片' in html
+
+
+def test_empty_ocr_info_hint_on_failure():
+    log = _fail_log(result={"error": "e", "error_type": "文本未找到", "ocr_info": []})
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert 'OCR 未识别到任何文字' in html
+
+
+def test_empty_ocr_hint_skipped_for_non_find_methods():
+    """非 find 类失败（如 assert）不显示空识别提示。"""
+    log = _fail_log(method="assert_check", result={"error": "断言失败"})
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert 'OCR 未识别到任何文字' not in html
+
+
+def test_text_method_failure_uses_recognized_label():
+    """ocr_* 失败时标签为"屏幕实际识别到"（与已批准效果图一致）。"""
+    log = _fail_log(
+        method="ocr_wait",
+        result={"error": "e", "error_type": "文本未找到",
+                "ocr_info": [{"text": "会议加载中", "center": {"x": 512, "y": 300}}]},
+    )
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert '屏幕实际识别到' in html
+
+
+def test_target_image_missing_placeholder():
+    log = _fail_log(
+        target_image="",
+        target_image_path="images/web/摄像头_开启.png",
+        result={"error": "e", "error_type": "文件缺失"},
+    )
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert '目标图片缺失' in html
+    assert 'images/web/摄像头_开启.png' in html
+
+
+def test_target_image_present_still_renders_img():
+    """target_image 有 base64 时保持原图片渲染，不出占位块。"""
+    log = _fail_log(
+        target_image="a" * 200,
+        target_image_path="images/web/x.png",
+        result={"error": "e"},
+    )
+    html = HTMLReportGenerator._render_row_detail(log)
+    assert '目标图片' in html
+    assert '目标图片缺失' not in html

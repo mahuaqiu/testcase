@@ -25,6 +25,17 @@ _HIDDEN_ARGS = {
 # 原子操作耗时超过该阈值时高亮显示（毫秒）
 _SLOW_MS = 5000
 
+# 失败类型 → 徽章配色（词汇表与 worker/actions/failure.py 对齐；未收录词回退灰）
+_TYPE_BADGE_STYLES = {
+    "文件缺失": "t-orange",
+    "OCR服务错误": "t-red",
+    "OCR请求失败": "t-red",
+    "文本未找到": "t-amber",
+    "相似度不足": "t-amber",
+    "颜色校验未通过": "t-amber",
+    "距离超限": "t-amber",
+}
+
 
 def _esc(text: Any) -> str:
     """HTML 转义（所有用户数据渲染前必须经过）。"""
@@ -472,14 +483,19 @@ class HTMLReportGenerator:
 
         parts = []
 
-        # 错误信息
+        # 错误信息（含失败类型徽章；无 error_type 的旧数据保持平文本）
         if not success:
             error_msg = result.get("error", "")
             if error_msg:
                 clean_err = HTMLReportGenerator._clean_text_for_display(str(error_msg))
                 rid = f'<div class="rid">request_id: {_esc(request_id)}</div>' if request_id else ""
+                error_type = result.get("error_type", "")
+                badge = ""
+                if error_type:
+                    style = _TYPE_BADGE_STYLES.get(error_type, "t-gray")
+                    badge = f'<span class="type-badge {style}">🏷️ {_esc(error_type)}</span>'
                 parts.append(
-                    f'<div class="err-box"><div class="k">错误信息</div>'
+                    f'<div class="err-box"><div class="k">错误信息</div>{badge}'
                     f'<div class="v">{_esc(clean_err)}</div>{rid}</div>'
                 )
         elif request_id:
@@ -536,7 +552,10 @@ class HTMLReportGenerator:
             parts.append(f'<div class="kv">{"".join(kv_parts)}</div>')
 
         # OCR 识别结果：有数据即显示（不再按方法名白名单门控）
+        # 失败时标签按已批准效果图：文本类 ocr_* 方法显示"屏幕实际识别到"；
+        # 空识别提示仅对 find 类方法显示，避免 click/assert 等普通失败误标。
         ocr_info = result.get("ocr_info", [])
+        is_find_method = str(log.get("method", "")).startswith(("ocr_", "image_"))
         if isinstance(ocr_info, list) and ocr_info:
             chips = []
             for item in ocr_info:
@@ -549,7 +568,10 @@ class HTMLReportGenerator:
                 if text:
                     chips.append(f'<span class="ocr-chip">"{_esc(text)}" ({_esc(x)}, {_esc(y)})</span>')
             if chips:
-                parts.append(f'<div class="ocr-box"><div class="k">OCR 识别结果</div><div>{"".join(chips)}</div></div>')
+                label = "屏幕实际识别到" if (not success and str(log.get("method", "")).startswith("ocr_")) else "OCR 识别结果"
+                parts.append(f'<div class="ocr-box"><div class="k">{label}</div><div>{"".join(chips)}</div></div>')
+        elif not success and is_find_method:
+            parts.append('<div class="ocr-box"><div class="k">OCR 识别结果</div><div class="ocr-empty-hint">OCR 未识别到任何文字</div></div>')
 
         # 截图（失败时）；同时检查 region_screenshot（区域截图）
         if not success:
@@ -571,6 +593,12 @@ class HTMLReportGenerator:
                 shots.append(
                     f'<div class="shot" onclick="showImage(this.querySelector(\'img\').src);event.stopPropagation()">'
                     f'<img src="data:image/png;base64,{target_image}"><span class="cap">目标图片</span></div>'
+                )
+            elif log.get("target_image_path"):
+                # 模板文件缺失/未加载：用占位块替代空白，明示"没发出去"而不是"没匹配上"
+                shots.append(
+                    f'<div class="shot-missing"><span class="m1">⬚ 目标图片缺失</span>'
+                    f'<span class="m2">{_esc(log.get("target_image_path"))}</span></div>'
                 )
             if shots:
                 parts.append(f'<div class="shots">{"".join(shots)}</div>')
@@ -1337,6 +1365,17 @@ body {
 }
 .modal.show { display: flex; }
 .modal img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
+
+/* ── 失败类型徽章 / 目标图片缺失占位（新增） ── */
+.type-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:6px; font-size:11px; font-weight:700; margin:2px 0 6px; }
+.type-badge.t-amber { background:#fef3c7; color:#b45309; }
+.type-badge.t-orange { background:#ffedd5; color:#c2410c; }
+.type-badge.t-red { background:#fee2e2; color:#dc2626; }
+.type-badge.t-gray { background:#f1f5f9; color:#475569; }
+.shot-missing { width:168px; height:104px; border:1.5px dashed #cbd5e1; border-radius:8px; background:#f8fafc; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:8px; text-align:center; }
+.shot-missing .m1 { font-size:10.5px; font-weight:600; color:#94a3b8; }
+.shot-missing .m2 { font-family:var(--mono); font-size:9.5px; color:#94a3b8; word-break:break-all; line-height:1.3; }
+.ocr-empty-hint { font-size:11.5px; color:#94a3b8; font-family:var(--mono); }
 
 /* ── 过滤态 ── */
 body.only-fail .group.ok, body.only-fail .phase, body.only-fail .phase-wrap { display: none; }
