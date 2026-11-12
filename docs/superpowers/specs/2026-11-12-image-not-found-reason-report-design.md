@@ -1,7 +1,7 @@
 ---
 title: 图片找不到时报告呈现失败原因
 date: 2026-11-12
-status: draft
+status: approved
 ---
 
 # 图片找不到时报告呈现失败原因
