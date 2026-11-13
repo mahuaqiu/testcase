@@ -4,6 +4,7 @@ import pytest
 
 from common.user import User
 from common.users_marker import parse_users_requirement, validate_companion_platforms
+from conftest import _build_keepalive_resources, _build_report_user_details
 
 
 def test_parse_plain_platform_unchanged():
@@ -110,3 +111,38 @@ def test_deferred_setup_exception_propagates_and_cleared():
         _ = user.should_toast_exists
 
     _ = user.should_toast_exists  # 已清空，不再触发
+
+
+def _make_user_triple():
+    """构造 主用户(web) + 伴生用户(windows) + api 用户 三元组。"""
+    main = User(user_id="userA", platform="web", ip="127.0.0.1", port=8080)
+    companion = User(user_id="userA_windows", platform="windows", ip="127.0.0.1", port=8080)
+    companion._is_companion = True
+    api = User(user_id="userA_api", platform="api", ip="127.0.0.1", port=8080)
+    return main, companion, api
+
+
+def test_report_details_filters_unused_api_and_companion():
+    """未使用的伴生用户与 api 用户不进报告；使用过的伴生用户正常展示。"""
+    main, companion, api = _make_user_triple()
+    instances = {"userA": main, "userA_windows": companion, "userA_api": api}
+
+    details = _build_report_user_details(instances)
+    assert set(details) == {"userA"}
+
+    companion._used = True
+    details = _build_report_user_details(instances)
+    assert set(details) == {"userA", "userA_windows"}
+    assert details["userA_windows"]["platform"] == "windows"
+    assert details["userA_windows"]["is_api"] is False
+
+
+def test_keepalive_resources_only_include_applied_machines():
+    """keepalive 只包含平台实际返回的机器（伴生/api 用户天然不在其中）。"""
+    main, companion, api = _make_user_triple()
+    raw = {"userA": {"id": "machine-1", "ip": "1.1.1.1"}}
+
+    result = _build_keepalive_resources(
+        {"userA": main, "userA_windows": companion, "userA_api": api}, raw
+    )
+    assert result == {"userA": {"id": "machine-1", "ip": "1.1.1.1"}}

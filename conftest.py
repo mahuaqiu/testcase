@@ -16,6 +16,7 @@ from common.runtime import get_config, get_exe_param, set_exe_param
 from common.testagent_client import is_retryable_transport_error
 from common.user_manager import UserManager
 from common.user import User
+from common.users_marker import parse_users_requirement, validate_companion_platforms
 from common.hooks_resolver import HooksResolver
 from common.keepalive import KeepAliveManager
 from common.report_logger import ReportLogger
@@ -107,6 +108,13 @@ def users(request) -> Dict[str, User]:
     if not users_requirement:
         return {}
 
+    # 解析伴生平台声明（如 "web+windows"），申请体只保留主平台
+    try:
+        platform_requests, companions = parse_users_requirement(users_requirement)
+        validate_companion_platforms(companions)
+    except ValueError as e:
+        pytest.fail(f"users 标记解析失败: {e}")
+
     # 重置日志收集器
     ReportLogger.reset()
     logger = ReportLogger.get_current()
@@ -122,7 +130,7 @@ def users(request) -> Dict[str, User]:
     testcase_id = request.node.name
 
     with UserManager(config, namespace=namespace) as manager:
-        resources = manager.apply(users_requirement, testcase_id=testcase_id)
+        resources = manager.apply(platform_requests, testcase_id=testcase_id)
         raw_resources = manager.get_raw_resources()
 
         # 记录申请到的机器资源信息
@@ -159,20 +167,38 @@ def users(request) -> Dict[str, User]:
             )
             user_instances[api_user_id] = api_user
 
+        # 创建伴生平台 User：复用主用户资源（同机器同 worker 同账号），
+        # 不额外申请机器、不生成 _api 用户
+        for main_user_id, companion_platform in companions.items():
+            resource = resources[main_user_id]
+            companion_id = f"{main_user_id}_{companion_platform}"
+            companion = User(
+                user_id=companion_id,
+                platform=companion_platform,
+                ip=resource.ip,
+                port=resource.port,
+                device_id=resource.device_id,
+                account=resource.account,
+                password=resource.password,
+                name=resource.name,
+                **resource.extra
+            )
+            companion._is_companion = True
+            user_instances[companion_id] = companion
+
         # 设置 API User 的 user_instances 引用
         for user_id, user in user_instances.items():
             if user_id.endswith("_api"):
                 user._user_instances_ref = user_instances
 
-        # 启动保活（远程模式）
+        # 启动保活（远程模式）——只对平台实际返回的机器；
+        # 伴生用户未申请机器，天然不在 raw_resources 中
         rm_config = config.get("resource_manager", {})
         base_url = rm_config.get("base_url", "")
         if base_url:
-            for user_id, user in user_instances.items():
-                if user.platform == "api":
-                    continue  # API 用户不需要保活
+            for user_id, resource_data in _build_keepalive_resources(user_instances, raw_resources).items():
                 keepalive = KeepAliveManager(base_url, rm_config.get("timeout", 30))
-                keepalive.start({user_id: raw_resources.get(user_id, {})})
+                keepalive.start({user_id: resource_data})
                 _keepalive_managers[user_id] = keepalive
 
         # 执行 setup hooks
@@ -206,6 +232,16 @@ def users(request) -> Dict[str, User]:
 
         for user_id, user in user_instances.items():
             final_hooks = final_hooks_map[user_id]
+            # 伴生用户 setup hooks 懒执行：首次取 AW 方法时才触发，
+            # 用例未涉及伴生端则全程不执行
+            if user._is_companion:
+                setup_hooks = final_hooks.get("setup", [])
+                if setup_hooks:
+                    user.set_deferred_setup(
+                        lambda u=user, hooks=setup_hooks, uid=user_id:
+                            _execute_deferred_setup(u, hooks, uid)
+                    )
+                continue
             try:
                 _execute_hooks(
                     user, final_hooks.get("setup", []), hook_type="setup",
@@ -306,6 +342,9 @@ def pytest_runtest_makereport(item, call):
             # 只对没有截图的用户补充截图
             for user_id, user in users.items():
                 if user_id.endswith("_api"):
+                    continue
+                # 伴生用户与主用户同一台机器，主用户截图已覆盖同一桌面
+                if getattr(user, "_is_companion", False):
                     continue
                 if user_id in users_with_screenshot:
                     continue  # 已有失败截图，跳过
@@ -540,6 +579,74 @@ def _get_namespace(node, config) -> str:
     return config.get("resource_manager", {}).get("namespace", "default")
 
 
+def _build_report_user_details(user_instances: Dict[str, User]) -> Dict[str, Dict[str, Any]]:
+    """构建报告用户明细，过滤未使用的 api 用户与伴生用户。
+
+    Args:
+        user_instances: 用户 ID 到 User 实例的映射。
+
+    Returns:
+        报告 user_details 字典。
+    """
+    report_user_details = {}
+    for user_id, user in user_instances.items():
+        is_api = user.platform == "api"
+        is_companion = getattr(user, "_is_companion", False)
+        if (is_api or is_companion) and not user._used:
+            continue
+        report_user_details[user_id] = {
+            "name": user.name,
+            "ip": user.ip,
+            "account": user.account,
+            "device_sn": user.device_id,
+            "platform": user.platform,
+            # API 用户只用于 HTTP 数据操作，不展示关联 UI 用户的设备类型。
+            "display_platform": "" if is_api else user.platform,
+            "is_api": is_api,
+        }
+    return report_user_details
+
+
+def _build_keepalive_resources(
+    user_instances: Dict[str, User], raw_resources: Dict[str, Any]
+) -> Dict[str, Any]:
+    """构建 keepalive 资源映射，只保留平台实际返回的机器。
+
+    伴生用户未申请机器、api 用户不在申请响应中，天然被排除。
+
+    Args:
+        user_instances: 用户 ID 到 User 实例的映射。
+        raw_resources: 平台申请响应的原始资源字典。
+
+    Returns:
+        {user_id: 原始机器资源} 字典。
+    """
+    return {
+        user_id: raw_resources[user_id]
+        for user_id in user_instances
+        if user_id in raw_resources
+    }
+
+
+def _execute_deferred_setup(user: User, hooks: list, user_id: str) -> None:
+    """伴生用户 setup hooks 懒执行入口（User 首次取 AW 方法时触发）。
+
+    执行失败记录到报告日志（跟随伴生用户显示）后原样抛出，
+    由用例调用点失败终结本用例。
+
+    Args:
+        user: 伴生 User 实例。
+        hooks: 解析后的 setup hooks 列表。
+        user_id: 伴生用户 ID，用于日志归属。
+    """
+    logger = ReportLogger.get_current()
+    try:
+        _execute_hooks(user, hooks, hook_type="setup", user_id=user_id)
+    except HookFailureError as e:
+        logger.log_error(f"伴生用户 setup hook 失败: {e}", user_id=user_id)
+        raise
+
+
 def _generate_report(
     request,
     logger: ReportLogger,
@@ -600,20 +707,7 @@ def _generate_report(
 
     # 将申请到的用户设备类型传给报告，避免仅依赖 AW 日志推断用户平台。
     # API 用户仅在实际使用过时才写入报告，避免出现“未调用的 userB_api”。
-    report_user_details = {}
-    for user_id, user in user_instances.items():
-        if user.platform == "api" and not getattr(user, "_used", False):
-            continue
-        report_user_details[user_id] = {
-            "name": user.name,
-            "ip": user.ip,
-            "account": user.account,
-            "device_sn": user.device_id,
-            "platform": user.platform,
-            # API 用户只用于 HTTP 数据操作，不展示关联 UI 用户的设备类型。
-            "display_platform": "" if user.platform == "api" else user.platform,
-            "is_api": user.platform == "api",
-        }
+    report_user_details = _build_report_user_details(user_instances)
 
     HTMLReportGenerator.generate(
         report_path=report_path,
@@ -674,7 +768,9 @@ def _run_teardown_phase(
     """
     error: Optional[HookFailureError] = None
     for user_id, user in _sort_users_for_teardown(user_instances):
-        if only_used and not user._used:
+        # only_used：普通路径只执行使用过的用户；伴生用户额外收紧：
+        # 未使用的伴生端全程不动作（含 setup 失障清理路径）
+        if not user._used and (only_used or user._is_companion):
             continue
         hooks = final_hooks_map.get(user_id, {}).get(hooks_key, [])
         if not hooks:
