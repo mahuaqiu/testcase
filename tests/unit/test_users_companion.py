@@ -2,6 +2,7 @@
 
 import pytest
 
+from common.user import User
 from common.users_marker import parse_users_requirement, validate_companion_platforms
 
 
@@ -59,3 +60,53 @@ def test_validate_companion_platforms_rejects_unknown():
     """不存在的平台没有 AW 目录，报错。"""
     with pytest.raises(ValueError, match="AW 目录"):
         validate_companion_platforms({"userA": "no_such_platform"})
+
+
+def _make_windows_user() -> User:
+    return User(user_id="userA_windows", platform="windows", ip="127.0.0.1", port=8080)
+
+
+def test_deferred_setup_runs_once_on_first_aw_fetch():
+    """首次取 AW 方法触发一次，之后不再触发。"""
+    user = _make_windows_user()
+    calls = []
+    user.set_deferred_setup(lambda: calls.append(1))
+
+    method = user.should_toast_exists  # 仅取方法，不调用
+    assert callable(method)
+    assert calls == [1]
+    assert user._used is True
+
+    _ = user.should_toast_exists  # 再次取不再触发
+    assert calls == [1]
+
+
+def test_deferred_setup_not_triggered_without_registration():
+    """未注册回调时取 AW 方法不报错、行为不变。"""
+    user = _make_windows_user()
+    assert callable(user.should_toast_exists)
+
+
+def test_deferred_setup_not_triggered_by_non_callable():
+    """extra 字段访问不触发懒执行。"""
+    user = _make_windows_user()
+    calls = []
+    user.set_deferred_setup(lambda: calls.append(1))
+    user.extra["env"] = "test"
+
+    assert user.env == "test"
+    assert calls == []
+
+
+def test_deferred_setup_exception_propagates_and_cleared():
+    """懒执行失败：异常从取方法处抛出，且回调已清空不重复执行。"""
+    user = _make_windows_user()
+
+    def boom():
+        raise RuntimeError("start_app failed")
+
+    user.set_deferred_setup(boom)
+    with pytest.raises(RuntimeError, match="start_app failed"):
+        _ = user.should_toast_exists
+
+    _ = user.should_toast_exists  # 已清空，不再触发

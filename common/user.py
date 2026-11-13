@@ -69,6 +69,8 @@ class User:
         self._ui_user_id = _ui_user_id  # 独立属性，不存入 extra
         self._user_instances_ref: Optional[Dict[str, "User"]] = None  # 新增：user_instances 引用
         self._used = False  # 新增：用户是否被实际使用
+        self._is_companion = False  # 伴生平台用户（web+windows 的 windows 端），fixture 中置 True
+        self._deferred_setup = None  # 伴生用户 setup hooks 懒执行回调（users fixture 注入）
 
         # API 平台不需要 TestagentClient
         if platform == "api":
@@ -130,6 +132,8 @@ class User:
                 # 如果是可调用方法，标记用户已使用
                 if callable(attr):
                     self._used = True
+                    # 伴生用户 setup hooks 懒执行：首次取 AW 方法时触发
+                    self._run_deferred_setup()
                 return attr
 
         # 2. 查找 extra 字段（支持动态扩展）
@@ -154,6 +158,26 @@ class User:
             users["userA_api"].mark_used()
         """
         self._used = True
+
+    def set_deferred_setup(self, callback) -> None:
+        """注册伴生用户 setup hooks 懒执行回调（由 users fixture 注入）。
+
+        Args:
+            callback: 无参回调，首次取 AW 方法时执行一次。
+        """
+        self._deferred_setup = callback
+
+    def _run_deferred_setup(self) -> None:
+        """触发并清空待执行的 setup hooks（仅伴生用户会注册回调）。"""
+        try:
+            callback = object.__getattribute__(self, "_deferred_setup")
+        except AttributeError:
+            return
+        if callback is None:
+            return
+        # 先清空再执行：避免 hooks 内部再取 AW 方法导致重复触发
+        object.__setattr__(self, "_deferred_setup", None)
+        callback()
 
     def screenshot(self, level: Optional[str] = None) -> str:
         """截图并返回 base64。
