@@ -13,6 +13,8 @@
 - **测试只调 User 实例**：`users["userA"].do_login()`，不直接调 testagent_client；
   `userA_api` 随 `userA` 自动创建（API 数据准备/清理）
 - **用户声明**：`@pytest.mark.users({"userA": "web"})`，User 属性见 AGENTS.md 5.1
+- **伴生平台**：`@pytest.mark.users({"userA": "web+windows"})`，伴生端
+  `users["userA_windows"]` 同机器同账号，只申请主平台；伴生 hooks 懒触发（详见 AGENTS.md 5.6）
 - **并行**：`with parallel():` 块内只放操作（多用户登录/入会等），验证放块外顺序执行
 - **Hooks**：`@pytest.mark.hooks(setup=["+x", "-y", {"z": arg}])`；目录 conftest 用
   `get_hooks()` 提供公共层，多级全部叠加，用例层 > 内层 conftest > 外层 > config.yaml；

@@ -292,6 +292,30 @@ pytest --exeParam='{"namespace": "project_b", "log_level": "DEBUG"}'
   全局配置用 `common.runtime.get_config()`。**不要 `from conftest import`**：
   目录 conftest 与根 conftest 模块同名，会解析到错误对象。
 
+### 5.6 伴生平台（web+windows）
+
+同一账号需要同时操作 web 端与 windows 端时，用 `"{主平台}+{伴生平台}"` 声明：
+
+```python
+@pytest.mark.users({"userA": "web+windows"})
+class TestClass:
+    def test_xxx(self, users):
+        userA = users["userA"]            # web 端（主平台）
+        userA_windows = users["userA_windows"]  # windows 端（伴生，同账号）
+        userA_api = users["userA_api"]    # API 端（同账号，自动创建）
+```
+
+规则：
+
+- **资源**：只向平台申请主平台（web）一台机器；伴生端复用同一台机器、
+  同一个 worker 端口、同一账号。申请、释放、keepalive 只涉及主平台机器
+- **hooks**：伴生用户沿用其平台默认 hooks（可按平台/用户键分层覆盖），
+  但 setup 懒触发 —— 用例首次调用 `userA_windows` 的 AW 方法时才执行；
+  用例未涉及伴生端则 setup/teardown 全程不执行，客户端不拉起
+- **不生成** `userA_windows_api`（`userA_api` 已覆盖同账号 API 操作）
+- **报告**：失败截图只取主用户（同机器一张即可）；未使用的伴生用户不进报告
+- 校验失败（主平台为 api、伴生平台无 AW 目录、键冲突）在申请资源前直接报错
+
 ---
 
 ## 六、并行执行模式
