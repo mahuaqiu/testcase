@@ -1665,23 +1665,33 @@ class BaseAW:
         """
         return self.swipe(from_x, from_y, to_x, to_y, **kwargs)
 
-    def scroll(self, x: int, y: int, value: int = 3, **kwargs) -> dict:
+    def scroll(self, x: int, y: int, value: int = 3,
+               window_spec: Optional[Dict[str, str]] = None, **kwargs) -> dict:
         """滚轮滚动。
 
         Args:
-            x: 滚动位置 X 坐标。
-            y: 滚动位置 Y 坐标。
+            x: 滚动位置 X 坐标（绑定 window 后为窗口内相对坐标）。
+            y: 滚动位置 Y 坐标（绑定 window 后为窗口内相对坐标）。
             value: 滚动齿格数（notch），正数向下滚、负数向上滚，默认 3，最小绝对值 1。
                 - Windows: 1 齿 = 120 wheel delta
                 - Web: 1 齿 ≈ 120px（browser 层 Playwright mouse.wheel）
                 - 鸿蒙 PC: 1 齿 = 一条 uinput ±500 注入
+            window_spec: 窗口定位参数（仅 Windows 平台），如 {"class": "HwmMainWndClass"} 或 {"title": "华为云会议"}；绑定后 x/y 为窗口内相对坐标。
+            level: 执行层级（仅 Web），browser 或 system。
+            monitor: 显示器编号（仅 Web，配合 level: system），1=主屏幕，2=副屏幕。
 
         Note:
             仅 Windows/Web/鸿蒙 PC 支持；与 swipe 不同，不触发鼠标按下状态。
+            region（OCR/图像搜索裁剪区）不适用本操作：滚动不做识别，直接使用坐标。
         """
+        window = self._build_window(window_spec)
         action_data = {"x": x, "y": y, "value": value}
+        if "level" in kwargs:
+            action_data["level"] = kwargs["level"]
+            if "monitor" in kwargs:
+                action_data["monitor"] = kwargs["monitor"]
         return self._exec("scroll", action_data,
-            {"x": x, "y": y, "value": value, **kwargs})
+            {"x": x, "y": y, "value": value, **kwargs}, window=window)
 
     def input_text(self, x: int, y: int, text: str) -> dict:
         """在指定坐标输入文本。

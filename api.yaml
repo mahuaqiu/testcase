@@ -1131,7 +1131,7 @@ components:
             - move: 移动鼠标到指定坐标（Windows/Mac/Web/鸿蒙 PC；鸿蒙 PC 使用 HDC uinput）
             - swipe: 滑动手势
             - drag: 拖拽手势（与 swipe 参数相同）
-            - scroll: 在指定坐标滚动滚轮（Windows/Web/鸿蒙 PC；value 为齿格数，正数向下滚、负数向上滚，默认 3；鸿蒙 PC 走 HDC uinput，Web 的 browser 层每齿约 120px）
+            - scroll: 在指定坐标滚动滚轮（Windows/Web/鸿蒙 PC；value 为齿格数，正数向下滚、负数向上滚，默认 3；鸿蒙 PC 走 HDC uinput，Web 的 browser 层每齿约 120px；支持 window 窗口绑定，绑定后 x/y 为窗口内相对坐标）
             - input: 在指定坐标输入文本
             - paste: 直接粘贴文本（使用剪贴板 Ctrl+V，不点击坐标）
 
